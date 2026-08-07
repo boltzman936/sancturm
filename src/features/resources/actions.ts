@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
-import { uploadToR2 } from "@/lib/r2";
+import { uploadToR2, deleteFromR2 } from "@/lib/r2";
 
 /**
  * Takes down an already-published resource — same RLS-enforced
@@ -14,8 +14,24 @@ import { uploadToR2 } from "@/lib/r2";
  */
 export async function deleteResource(resourceId: string) {
   const supabase = await createClient();
-  const { error } = await supabase.from("resources").delete().eq("id", resourceId);
+  const { data, error } = await supabase
+    .from("resources")
+    .delete()
+    .eq("id", resourceId)
+    .select("file_url")
+    .single();
   if (error) throw error;
+
+  // Best-effort: the row is already gone (the outcome that actually
+  // matters to whoever clicked delete), so a storage hiccup here
+  // shouldn't surface as a failed delete.
+  try {
+    await deleteFromR2(data?.file_url);
+  } catch {
+    // Orphaned object in R2 — same as before this fix existed, not a
+    // new failure mode, so nothing more to do here.
+  }
+
   revalidatePath("/cr/manage");
   revalidatePath("/notes");
   revalidatePath("/cr");

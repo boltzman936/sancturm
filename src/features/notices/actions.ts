@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { uploadToR2 } from "@/lib/r2";
+import { uploadToR2, deleteFromR2 } from "@/lib/r2";
 
 /**
  * Only a CR (own branch) or admin (any branch) can ever call this
@@ -64,8 +64,20 @@ export async function createCustomNotice(formData: FormData) {
 
 export async function deleteNotice(noticeId: string) {
   const supabase = await createClient();
-  const { error } = await supabase.from("notices").delete().eq("id", noticeId);
+  const { data, error } = await supabase
+    .from("notices")
+    .delete()
+    .eq("id", noticeId)
+    .select("pdf_url")
+    .single();
   if (error) throw error;
+
+  try {
+    await deleteFromR2(data?.pdf_url);
+  } catch {
+    // Best-effort — see deleteResource's identical comment.
+  }
+
   revalidatePath("/notices");
   revalidatePath("/cr/manage");
 }

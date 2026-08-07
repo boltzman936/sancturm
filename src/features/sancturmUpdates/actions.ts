@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { uploadToR2 } from "@/lib/r2";
+import { uploadToR2, deleteFromR2 } from "@/lib/r2";
 
 /**
  * Admin-only, full stop — RLS ("Admin only manages", supabase/
@@ -54,8 +54,20 @@ export async function createCustomSancturmUpdate(formData: FormData) {
 
 export async function deleteSancturmUpdate(updateId: string) {
   const supabase = await createClient();
-  const { error } = await supabase.from("sancturm_updates").delete().eq("id", updateId);
+  const { data, error } = await supabase
+    .from("sancturm_updates")
+    .delete()
+    .eq("id", updateId)
+    .select("pdf_url")
+    .single();
   if (error) throw error;
+
+  try {
+    await deleteFromR2(data?.pdf_url);
+  } catch {
+    // Best-effort — see deleteResource's identical comment.
+  }
+
   revalidatePath("/sancturm-updates");
 }
 
