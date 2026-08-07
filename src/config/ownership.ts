@@ -12,6 +12,7 @@
 // since that one's just not built yet, not permanently absent.
 export const OWNER = {
   name: "Anurag Kumar",
+  batch: "AIML 3rd sem",
   role: "Sancturm — creator & admin",
   photoUrl: "/anurag.jpg",
   links: {

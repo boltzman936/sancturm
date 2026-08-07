@@ -43,7 +43,8 @@
       "Bash(git commit -m ' *)",
       "Bash(npm uninstall *)",
       "Bash(git checkout *)",
-      "Bash(node add-active-states.mjs)"
+      "Bash(node add-active-states.mjs)",
+      "Bash(git commit *)"
     ]
   }
 }

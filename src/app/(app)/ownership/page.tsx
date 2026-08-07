@@ -41,7 +41,10 @@ export default function OwnershipPage() {
         )}
 
         <div className="flex flex-col gap-1">
-          <p className="text-lg text-foreground">{OWNER.name}</p>
+          <p className="text-lg text-foreground">
+            {OWNER.name}{" "}
+            <span className="text-sm font-normal text-muted-foreground">({OWNER.batch})</span>
+          </p>
           <p className="text-sm text-muted-foreground">{OWNER.role}</p>
         </div>
       </div>
