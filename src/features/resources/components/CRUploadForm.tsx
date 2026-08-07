@@ -92,14 +92,17 @@ export function CRUploadForm({
   const typeToggle = (
     <div className="flex flex-col gap-1">
       <label className="font-mono text-xs text-subtle-foreground">Type</label>
-      <div className="flex gap-1 rounded-md border border-border bg-background p-1">
+      {/* flex-wrap: with 5 options (admin gets Update too) this row
+          doesn't fit unbroken on a narrow phone — wrapping to a second
+          line beats squeezing every label down to a sliver. */}
+      <div className="flex flex-wrap gap-1 rounded-md border border-border bg-background p-1">
         {typeOptions.map((type) => (
           <button
             key={type}
             type="button"
             onClick={() => setResourceType(type)}
             className={cn(
-              "flex-1 rounded px-3 py-1.5 text-sm transition-colors",
+              "min-w-[4.5rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
               resourceType === type
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:text-foreground"
@@ -123,14 +126,14 @@ export function CRUploadForm({
   const howToggle = (mode: PublishMode, labels: [string, string]) => (
     <div className="flex flex-col gap-1">
       <label className="font-mono text-xs text-subtle-foreground">How</label>
-      <div className="flex gap-1 rounded-md border border-border bg-background p-1">
+      <div className="flex flex-wrap gap-1 rounded-md border border-border bg-background p-1">
         {(["upload", "custom"] as const).map((m, i) => (
           <button
             key={m}
             type="button"
             onClick={() => setPublishMode(m)}
             className={cn(
-              "flex-1 rounded px-3 py-1.5 text-sm transition-colors",
+              "min-w-[8rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
               mode === m ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
             )}
           >
