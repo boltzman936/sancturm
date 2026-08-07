@@ -10,7 +10,7 @@ export function OwnerPhoto({
   alt,
 }: {
   // A dedicated square, retina-sized crop for the small avatar button —
-  // sized for how it's actually displayed (128 CSS px, so up to 384
+  // sized for how it's actually displayed (123 CSS px, so up to ~370
   // physical px on a 3x phone), not a downscaled thumbnail of the raw
   // upload, which is what made this look soft/blurry before. fullSrc
   // is the untouched original, only ever fetched on demand when the
@@ -38,11 +38,11 @@ export function OwnerPhoto({
         <Image
           src={src}
           alt={alt}
-          width={224}
-          height={224}
+          width={246}
+          height={246}
           priority
           unoptimized
-          className="h-28 w-28 rounded-full border-2 border-border object-cover object-center transition-opacity hover:opacity-90"
+          className="h-[123px] w-[123px] rounded-full border-2 border-border object-cover object-center transition-opacity hover:opacity-90"
         />
       </button>
 
