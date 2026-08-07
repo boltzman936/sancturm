@@ -40,7 +40,8 @@
       "Bash(npx vercel *)",
       "Bash(curl -s -o /dev/null -w \"sancturm.vercel.app: %{http_code}\\\\n\" https://sancturm.vercel.app)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(npm uninstall *)"
     ]
   }
 }

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
+import { uploadToR2 } from "@/lib/r2";
 
 /**
  * Takes down an already-published resource — same RLS-enforced
@@ -58,10 +59,7 @@ export async function uploadResourceDirect(formData: FormData) {
   const file = formData.get("file") as File;
 
   const filePath = `${branchId}/${section}/${crypto.randomUUID()}-${file.name}`;
-  const { error: uploadError } = await supabase.storage.from("resources").upload(filePath, file);
-  if (uploadError) throw uploadError;
-
-  const { data: publicUrlData } = supabase.storage.from("resources").getPublicUrl(filePath);
+  const fileUrl = await uploadToR2(filePath, file);
 
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
@@ -70,7 +68,7 @@ export async function uploadResourceDirect(formData: FormData) {
     resource_type: resourceType,
     title,
     description,
-    file_url: publicUrlData.publicUrl,
+    file_url: fileUrl,
     status: "approved",
     uploaded_by_device: null,
     uploaded_by_name: role?.displayName ?? null,

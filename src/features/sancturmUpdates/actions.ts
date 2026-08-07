@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { uploadToR2 } from "@/lib/r2";
 
 /**
  * Admin-only, full stop — RLS ("Admin only manages", supabase/
@@ -19,14 +20,11 @@ export async function createSancturmUpdate(formData: FormData) {
   const file = formData.get("file") as File;
 
   const filePath = `sancturm-updates/${crypto.randomUUID()}-${file.name}`;
-  const { error: uploadError } = await supabase.storage.from("resources").upload(filePath, file);
-  if (uploadError) throw uploadError;
-
-  const { data: publicUrlData } = supabase.storage.from("resources").getPublicUrl(filePath);
+  const fileUrl = await uploadToR2(filePath, file);
 
   const { error: insertError } = await supabase.from("sancturm_updates").insert({
     title,
-    pdf_url: publicUrlData.publicUrl,
+    pdf_url: fileUrl,
   });
   if (insertError) throw insertError;
 
