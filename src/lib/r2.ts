@@ -1,5 +1,6 @@
 import "server-only";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
  * Cloudflare R2 for file storage (PDFs) — Supabase's own Storage quota
@@ -18,24 +19,34 @@ const r2Client = new S3Client({
 });
 
 /**
- * Uploads a file to the R2 bucket at `path` and returns its public
- * URL. R2_PUBLIC_URL is the bucket's public base (either the r2.dev
- * dev URL or a custom domain you've connected) — see .env.example.
+ * The public URL a file at `path` will be reachable at once uploaded —
+ * pure string math, no request. R2_PUBLIC_URL is the bucket's public
+ * base (either the r2.dev dev URL or a custom domain) — see .env.example.
  */
-export async function uploadToR2(path: string, file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  await r2Client.send(
-    new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
-      Key: path,
-      Body: bytes,
-      ContentType: file.type || "application/octet-stream",
-    })
-  );
-
+export function r2PublicUrl(path: string): string {
   const base = process.env.R2_PUBLIC_URL!.replace(/\/$/, "");
   return `${base}/${path}`;
+}
+
+/**
+ * A short-lived URL the BROWSER can PUT a file to directly. Used to
+ * exist as uploadToR2(path, file) — a Server Action that took the
+ * file, read its bytes into memory, and forwarded them to R2 itself.
+ * That routed every upload through the Next.js server, which on
+ * Vercel means the whole file has to fit inside a serverless
+ * function's request body (~4.5MB) — anything bigger (a real PDF,
+ * easily) failed with no useful error. A presigned URL lets the
+ * browser upload straight to R2, bypassing that limit entirely; the
+ * server's only job is minting this URL and, once the upload
+ * finishes, writing the resulting public URL into the database.
+ */
+export async function getPresignedUploadUrl(path: string, contentType: string): Promise<string> {
+  const command = new PutObjectCommand({
+    Bucket: process.env.R2_BUCKET_NAME,
+    Key: path,
+    ContentType: contentType || "application/octet-stream",
+  });
+  return getSignedUrl(r2Client, command, { expiresIn: 5 * 60 });
 }
 
 /**

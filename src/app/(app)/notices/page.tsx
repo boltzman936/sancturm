@@ -11,6 +11,7 @@ import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import type { Notice } from "@/features/notices/types";
+import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 function formatTimestamp(iso: string) {
@@ -54,7 +55,7 @@ export default function NoticesPage() {
   const filtered = useMemo(() => {
     const base = notices ?? [];
     const byDate = dateFilter
-      ? base.filter((notice) => notice.created_at.slice(0, 10) === dateFilter)
+      ? base.filter((notice) => localDateKey(notice.created_at) === dateFilter)
       : base;
     return byDate.filter((notice) => matchesSearch(notice, searchQuery));
   }, [notices, dateFilter, searchQuery]);

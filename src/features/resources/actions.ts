@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
-import { uploadToR2, deleteFromR2 } from "@/lib/r2";
+import { deleteFromR2 } from "@/lib/r2";
 
 /**
  * Takes down an already-published resource — same RLS-enforced
@@ -72,10 +72,11 @@ export async function uploadResourceDirect(formData: FormData) {
   const resourceType = formData.get("resourceType") as string;
   const title = formData.get("title") as string;
   const description = (formData.get("description") as string) || null;
-  const file = formData.get("file") as File;
-
-  const filePath = `${branchId}/${section}/${crypto.randomUUID()}-${file.name}`;
-  const fileUrl = await uploadToR2(filePath, file);
+  // Uploaded straight to R2 from the browser already (see
+  // features/uploads/uploadFile.ts) — this only ever receives the
+  // resulting URL, never the file itself, so there's no serverless
+  // body-size limit to hit regardless of how large the PDF is.
+  const fileUrl = formData.get("fileUrl") as string;
 
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
@@ -124,14 +125,11 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   const resourceType = formData.get("resourceType") as string;
   const title = formData.get("title") as string;
   const description = (formData.get("description") as string) || null;
-  const file = formData.get("file") as File;
+  const fileUrl = formData.get("fileUrl") as string;
 
   const { data: branches, error: branchesError } = await supabase.from("branches").select("id");
   if (branchesError) throw branchesError;
   if (!branches?.length) throw new Error("No branches found.");
-
-  const filePath = `all-branches/${section}/${crypto.randomUUID()}-${file.name}`;
-  const fileUrl = await uploadToR2(filePath, file);
 
   for (const branch of branches) {
     let subjectId: string | null = null;

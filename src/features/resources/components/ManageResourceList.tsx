@@ -4,19 +4,23 @@ import { useMemo, useState, useTransition } from "react";
 import { Search } from "lucide-react";
 import { DeleteResourceButton } from "@/features/resources/components/DeleteResourceButton";
 import { DeleteNoticeButton } from "@/features/notices/components/DeleteNoticeButton";
+import { DeleteSancturmUpdateButton } from "@/features/sancturmUpdates/components/DeleteSancturmUpdateButton";
 import { deleteResource } from "@/features/resources/actions";
 import { deleteNotice } from "@/features/notices/actions";
+import { deleteSancturmUpdate } from "@/features/sancturmUpdates/actions";
 import { useSubjects } from "@/features/resources/queries";
 import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { useBranch } from "@/hooks/useBranch";
 import { useBranchBySlug } from "@/features/branches/queries";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 const SECTION_LABEL: Record<string, string> = {
   notes_lab: "Notes & lab",
   pyq: "PYQ",
   notice: "Notices",
+  update: "Sancturm updates",
 };
 
 const RESOURCE_TYPE_LABEL: Record<string, string> = {
@@ -39,9 +43,10 @@ function typeGroupLabel(resource: ManageableResource) {
 
 export type ManageableResource = {
   id: string;
-  // "resource" rows delete through deleteResource; "notice" rows through
-  // deleteNotice — the two live in different tables with different RLS.
-  kind: "resource" | "notice";
+  // "resource" rows delete through deleteResource, "notice" rows
+  // through deleteNotice, "update" rows through deleteSancturmUpdate —
+  // three different tables, three different RLS scopes.
+  kind: "resource" | "notice" | "update";
   title: string;
   section: string;
   resource_type: string | null;
@@ -160,6 +165,8 @@ function ResourceRow({
       </div>
       {resource.kind === "notice" ? (
         <DeleteNoticeButton noticeId={resource.id} />
+      ) : resource.kind === "update" ? (
+        <DeleteSancturmUpdateButton updateId={resource.id} />
       ) : (
         <DeleteResourceButton resourceId={resource.id} />
       )}
@@ -188,11 +195,19 @@ export function ManageResourceList({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, startBulkDelete] = useTransition();
 
-  const branchOptions = useMemo(() => [...branches.map((b) => b.name)].sort(), [branches]);
+  // Not re-sorted here — `branches` already arrives in the app's
+  // standard branch order (AIML, Core, AIDS) straight from the query,
+  // and alphabetizing here would silently undo that.
+  const branchOptions = useMemo(() => branches.map((b) => b.name), [branches]);
 
-  // Fixed set, not derived — Notes/Lab/PYQ/Notices are the app's four
-  // upload types regardless of whether one currently has zero items.
-  const TYPE_OPTIONS = ["Notes", "Lab", "PYQ", "Notices"];
+  // Fixed set, not derived — these are the app's upload types
+  // regardless of whether one currently has zero items. Sancturm
+  // updates is admin-only (a CR's list can never contain one — see
+  // the query in cr/manage/page.tsx), so it's only offered as a
+  // filter option for admin.
+  const TYPE_OPTIONS = isAdmin
+    ? ["Notes", "Lab", "PYQ", "Notices", "Sancturm updates"]
+    : ["Notes", "Lab", "PYQ", "Notices"];
 
   // Full subject catalog (not just subjects that happen to have a
   // published item) — same source /notes and /cr/upload use. Subject
@@ -206,9 +221,10 @@ export function ManageResourceList({
   // Subjects are scoped to whichever type is picked (a "Lab" subject
   // list is only the subjects with a lab component) — resetting
   // typeFilter clears subjectFilter below so a stale selection never
-  // lingers. Notices have no subject at all, so nothing to offer.
+  // lingers. Notices and Sancturm updates have no subject at all, so
+  // nothing to offer for either.
   const subjectOptions = useMemo(() => {
-    if (typeFilter === "Notices") return [];
+    if (typeFilter === "Notices" || typeFilter === "Sancturm updates") return [];
     const subjects =
       typeFilter === "Lab"
         ? allSubjects?.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
@@ -218,7 +234,7 @@ export function ManageResourceList({
 
   const visible = useMemo(() => {
     return resources
-      .filter((r) => !dateFilter || r.created_at.slice(0, 10) === dateFilter)
+      .filter((r) => !dateFilter || localDateKey(r.created_at) === dateFilter)
       .filter((r) => matchesSearch(r, searchQuery))
       .filter((r) => branchFilter === ALL || r.branch?.name === branchFilter)
       .filter((r) => typeFilter === ALL || typeGroupLabel(r) === typeFilter)
@@ -292,11 +308,15 @@ export function ManageResourceList({
     if (!confirm(`Remove ${items.length} item${items.length > 1 ? "s" : ""}? This can't be undone.`)) return;
 
     startBulkDelete(async () => {
-      // Two different tables, two different delete actions — route
-      // each item to the one matching its kind, same as the per-row
-      // buttons do individually.
+      // Three different tables, three different delete actions —
+      // route each item to the one matching its kind, same as the
+      // per-row buttons do individually.
       await Promise.all(
-        items.map((item) => (item.kind === "notice" ? deleteNotice(item.id) : deleteResource(item.id)))
+        items.map((item) => {
+          if (item.kind === "notice") return deleteNotice(item.id);
+          if (item.kind === "update") return deleteSancturmUpdate(item.id);
+          return deleteResource(item.id);
+        })
       );
       setSelectedIds(new Set());
     });
@@ -350,7 +370,7 @@ export function ManageResourceList({
           options={[{ value: ALL, label: "All types" }, ...TYPE_OPTIONS.map((t) => ({ value: t, label: t }))]}
         />
 
-        {typeFilter !== "Notices" && (
+        {typeFilter !== "Notices" && typeFilter !== "Sancturm updates" && (
           <FilterSelect
             label="Subject"
             value={subjectFilter}

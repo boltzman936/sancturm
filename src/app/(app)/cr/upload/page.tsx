@@ -18,7 +18,7 @@ export default async function CRUploadPage() {
   // branch list when uploading a PYQ (any CR can publish a PYQ to any
   // branch; only notes_lab stays locked to their own).
   const supabase = await createClient();
-  const { data: branches } = await supabase.from("branches").select("id, name").order("name");
+  const { data: branches } = await supabase.from("branches").select("id, name").order("sort_order");
 
   return (
     <div className="flex flex-col gap-4">

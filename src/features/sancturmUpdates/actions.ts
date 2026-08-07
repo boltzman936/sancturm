@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { uploadToR2, deleteFromR2 } from "@/lib/r2";
+import { deleteFromR2 } from "@/lib/r2";
 
 /**
  * Admin-only, full stop — RLS ("Admin only manages", supabase/
@@ -17,10 +17,9 @@ export async function createSancturmUpdate(formData: FormData) {
   if (!user) throw new Error("Not signed in.");
 
   const title = formData.get("title") as string;
-  const file = formData.get("file") as File;
-
-  const filePath = `sancturm-updates/${crypto.randomUUID()}-${file.name}`;
-  const fileUrl = await uploadToR2(filePath, file);
+  // Uploaded straight to R2 from the browser already — see resources/
+  // actions.ts's uploadResourceDirect for the full reasoning.
+  const fileUrl = formData.get("fileUrl") as string;
 
   const { error: insertError } = await supabase.from("sancturm_updates").insert({
     title,

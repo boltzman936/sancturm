@@ -3,7 +3,9 @@
 import { useRef, useState, useTransition } from "react";
 import { useSubjects } from "@/features/resources/queries";
 import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
+import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
+import { titleFromFileName } from "@/features/uploads/titleFromFileName";
 import { NoticeComposer } from "@/features/notices/components/NoticeComposer";
 import { CustomNoticeComposer } from "@/features/notices/components/CustomNoticeComposer";
 import { UpdateComposer } from "@/features/sancturmUpdates/components/UpdateComposer";
@@ -65,23 +67,29 @@ export function CRUploadForm({
     setError(null);
 
     const form = event.currentTarget;
-    const title = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
+    const titleInput = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
+    const title = titleInput || titleFromFileName(file.name);
     const subjectValue = (form.elements.namedItem("subject") as HTMLSelectElement).value || "";
     const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value;
-    if (!title) return;
 
     if (isBulkPublish) {
       const subjectName = subjects?.find((subject) => subject.id === subjectValue)?.name ?? "";
-      const formData = new FormData();
-      formData.set("subjectName", subjectName);
-      formData.set("section", "notes_lab");
-      formData.set("resourceType", resourceType);
-      formData.set("title", title);
-      formData.set("description", description);
-      formData.set("file", file);
 
       startTransition(async () => {
         try {
+          // Straight to R2 from the browser, bypassing the serverless
+          // body-size limit a large PDF would otherwise hit.
+          const filePath = `all-branches/notes_lab/${crypto.randomUUID()}-${file.name}`;
+          const fileUrl = await uploadFileToR2(filePath, file);
+
+          const formData = new FormData();
+          formData.set("subjectName", subjectName);
+          formData.set("section", "notes_lab");
+          formData.set("resourceType", resourceType);
+          formData.set("title", title);
+          formData.set("description", description);
+          formData.set("fileUrl", fileUrl);
+
           await uploadResourceDirectAllBranches(formData);
           setSuccess(true);
           formRef.current?.reset();
@@ -93,17 +101,22 @@ export function CRUploadForm({
       return;
     }
 
-    const formData = new FormData();
-    formData.set("branchId", branchId);
-    formData.set("subjectId", subjectValue);
-    formData.set("section", resourceType === "pyq" ? "pyq" : "notes_lab");
-    formData.set("resourceType", resourceType === "pyq" ? "pdf" : resourceType);
-    formData.set("title", title);
-    formData.set("description", description);
-    formData.set("file", file);
+    const section = resourceType === "pyq" ? "pyq" : "notes_lab";
 
     startTransition(async () => {
       try {
+        const filePath = `${branchId}/${section}/${crypto.randomUUID()}-${file.name}`;
+        const fileUrl = await uploadFileToR2(filePath, file);
+
+        const formData = new FormData();
+        formData.set("branchId", branchId);
+        formData.set("subjectId", subjectValue);
+        formData.set("section", section);
+        formData.set("resourceType", resourceType === "pyq" ? "pdf" : resourceType);
+        formData.set("title", title);
+        formData.set("description", description);
+        formData.set("fileUrl", fileUrl);
+
         await uploadResourceDirect(formData);
         setSuccess(true);
         formRef.current?.reset();
@@ -257,12 +270,11 @@ export function CRUploadForm({
 
       <div className="flex flex-col gap-1">
         <label htmlFor="title" className="font-mono text-xs text-subtle-foreground">
-          Title
+          Title <span className="normal-case text-subtle-foreground/70">(optional — defaults to file name)</span>
         </label>
         <input
           id="title"
           name="title"
-          required
           className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
