@@ -80,6 +80,19 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Reserves the vertical scrollbar's gutter space permanently, instead
+   of only when content is actually tall enough to need one. Without
+   this, landing on any page whose content starts short (loading
+   states) and then grows past the viewport height once data arrives
+   (e.g. the resource list on Notes/PYQs/Notices right after picking a
+   branch) makes the scrollbar pop in and shove everything ~15px to
+   the left — which is exactly the "loads slightly off, then snaps
+   into place a moment later" symptom, on every page, not any one of
+   them specifically. */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

@@ -1,17 +1,7 @@
 "use client";
 
+import { useBranches } from "@/features/branches/queries";
 import { cn } from "@/lib/utils";
-
-// Same three branches as everywhere else in the app (Sidebar,
-// BranchSwitcher, and the database schema). Keeping this list in sync
-// by hand across those three files is a small, accepted tradeoff for
-// the MVP — see the architecture notes on why subjects/branches
-// aren't fetched from the database yet.
-const BRANCHES = [
-  { slug: "cse-aiml", name: "CSE AIML" },
-  { slug: "cse-core", name: "CSE Core" },
-  { slug: "cse-aids", name: "CSE AIDS" },
-];
 
 export function BranchSelectCard({
   onSelect,
@@ -20,6 +10,13 @@ export function BranchSelectCard({
   onSelect: (slug: string) => void;
   className?: string;
 }) {
+  // Reads from the `branches` table, not a hardcoded list — adding a
+  // new branch/department is a database INSERT, nothing here needs to
+  // change. IntroExperience prefetches this the moment the intro
+  // starts, so by the time this card actually appears (after the
+  // typing animation) the data is already sitting in cache.
+  const { data: branches } = useBranches();
+
   return (
     <div
       className={cn(
@@ -35,7 +32,7 @@ export function BranchSelectCard({
         select your branch
       </h2>
       <div className="flex flex-col gap-2">
-        {BRANCHES.map((branch) => (
+        {branches?.map((branch) => (
           <button
             key={branch.slug}
             onClick={() => onSelect(branch.slug)}

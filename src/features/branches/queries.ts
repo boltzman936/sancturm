@@ -5,6 +5,29 @@ import { createClient } from "@/lib/supabase/client";
 import type { Branch } from "./types";
 
 /**
+ * Every branch that exists, straight from the database — this is what
+ * makes adding a new branch/department a one-row INSERT instead of a
+ * code change. BranchSelectCard (onboarding) and BranchSwitcher
+ * (sidebar) both read from this instead of a hardcoded list; anything
+ * added to the `branches` table shows up in both automatically, no
+ * redeploy needed.
+ */
+export function useBranches() {
+  return useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase.from("branches").select("*").order("name");
+      if (error) throw error;
+      return data as Branch[];
+    },
+    // Same reasoning as useBranchBySlug below — branches are near-static
+    // reference data.
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
  * Resolves the slug stored by useBranch() (e.g. "cse-aiml") into the
  * actual branch row — every other query needs the real branch_id, not
  * the slug, to filter its table.

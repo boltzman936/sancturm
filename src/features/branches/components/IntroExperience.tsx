@@ -2,11 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { useBranch } from "@/hooks/useBranch";
 import { BranchSelectCard } from "@/features/branches/components/BranchSelectCard";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import type { Branch } from "@/features/branches/types";
 
 const HEADLINE = "Welcome to Sancturm";
 const TYPING_SPEED_MS = 70;
@@ -74,6 +77,7 @@ function useIsMobileWidth() {
 export function IntroExperience() {
   const router = useRouter();
   const { setBranch, isLoaded } = useBranch();
+  const queryClient = useQueryClient();
   const prefersReducedMotion = useReducedMotion();
   const isPortrait = usePortraitLayout();
   const isMobileWidth = useIsMobileWidth();
@@ -105,6 +109,32 @@ export function IntroExperience() {
     const fallback = setTimeout(() => setVideoReady(true), 2500);
     return () => clearTimeout(fallback);
   }, []);
+
+  // Every page after branch selection (Notes, PYQs, Notices, ...)
+  // waits on useBranchBySlug before it can even start its own
+  // resources query — a real network round trip, then a SECOND one
+  // once the branch id comes back, stacked in sequence rather than in
+  // parallel. Warming the cache here, while the person is just
+  // watching the intro type out, means that first hop is already
+  // sitting in cache by the time they land on /notes — one less round
+  // trip on the connection that matters most (a cold cache, right
+  // after picking a branch) instead of on every visit. One fetch
+  // seeds both useBranches() (the list BranchSelectCard renders below)
+  // and every individual useBranchBySlug(slug) a page might ask for.
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from("branches")
+      .select("*")
+      .order("name")
+      .then(({ data }) => {
+        const branches = (data as Branch[] | null) ?? [];
+        queryClient.setQueryData(["branches"], branches);
+        for (const branch of branches) {
+          queryClient.setQueryData(["branch", branch.slug], branch);
+        }
+      });
+  }, [queryClient]);
 
   // The typing sequence: 700ms wait after the video is actually ready,
   // then one character at a time. Runs every time this page mounts —
