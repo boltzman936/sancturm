@@ -33,7 +33,11 @@ export default function OwnershipPage() {
 
       <div className="flex flex-col items-center gap-5 rounded-lg border border-border bg-card p-6 text-center sm:flex-row sm:p-8 sm:text-left">
         {OWNER.photoUrl ? (
-          <OwnerPhoto src={OWNER.photoUrl} alt={OWNER.name} />
+          <OwnerPhoto
+            src={OWNER.photoUrl}
+            fullSrc={OWNER.photoFullUrl || OWNER.photoUrl}
+            alt={OWNER.name}
+          />
         ) : (
           <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-full border-2 border-border bg-primary/10 text-4xl font-medium text-primary">
             {OWNER.name.charAt(0)}

@@ -2,9 +2,12 @@
 // has no admin UI on purpose, since it's one person's static profile,
 // not data that changes often enough to need a database row.
 //
-// photoUrl: drop an image in /public (e.g. /public/anurag.jpg) and
-// point this at "/anurag.jpg". Leave "" to show the initial-letter
-// placeholder instead.
+// photoUrl: a square, pre-cropped thumbnail sized for the small
+// avatar button (drop it in /public, e.g. /public/anurag.jpg). Leave
+// "" to show the initial-letter placeholder instead. photoFullUrl:
+// the original, uncropped photo — only loaded when someone clicks the
+// avatar to view it full-size, so it can stay full quality without
+// slowing down the page itself.
 //
 // Leave any link "" to hide that button entirely — only the ones you
 // fill in will show up on the page. Exception: "portfolio" — leaving
@@ -15,6 +18,7 @@ export const OWNER = {
   batch: "AIML 3rd sem",
   role: "Sancturm — creator & admin",
   photoUrl: "/anurag.jpg",
+  photoFullUrl: "/anurag-full.jpg",
   links: {
     whatsapp: "https://wa.me/919651023894",
     email: "mailto:anurag56567878@gmail.com",

@@ -11,6 +11,7 @@ import {
 } from "@/features/resources/queries";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
+import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { cn } from "@/lib/utils";
 
 type DateSort = "newest" | "oldest";
@@ -59,6 +60,8 @@ export default function PYQsPage() {
   // mean the same thing regardless of which branch's PYQ it's on.
   const [subjectFilter, setSubjectFilter] = useState<string>(ALL_SUBJECTS);
   const [searchQuery, setSearchQuery] = useState("");
+  // yyyy-mm-dd from <input type="date">, or "" for no date filter.
+  const [dateFilter, setDateFilter] = useState("");
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
   const { data: subjectOptions } = useSubjects(branch?.id ?? null);
@@ -72,9 +75,12 @@ export default function PYQsPage() {
         : subjectFilter === EXTRA_SUBJECT
           ? base.filter((resource) => !resource.subject)
           : base.filter((resource) => resource.subject?.name === subjectFilter);
-    const bySearch = bySubject.filter((resource) => matchesSearch(resource, searchQuery));
+    const byDate = dateFilter
+      ? bySubject.filter((resource) => resource.created_at.slice(0, 10) === dateFilter)
+      : bySubject;
+    const bySearch = byDate.filter((resource) => matchesSearch(resource, searchQuery));
     return sortByDate(bySearch, dateSort);
-  }, [resources, subjectFilter, searchQuery, dateSort]);
+  }, [resources, subjectFilter, dateFilter, searchQuery, dateSort]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -120,14 +126,27 @@ export default function PYQsPage() {
         </div>
       </div>
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
-        <input
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Search title, subject, date…"
-          className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search title, subject, date…"
+            className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+
+        <DateFilterInput value={dateFilter} onChange={setDateFilter} className="min-w-[160px]" />
+
+        {dateFilter && (
+          <button
+            onClick={() => setDateFilter("")}
+            className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
+          >
+            Clear date
+          </button>
+        )}
       </div>
 
       {isLoading && (

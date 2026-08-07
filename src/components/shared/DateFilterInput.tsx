@@ -3,15 +3,16 @@
 import { Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// A bare <input type="date"> renders fine on desktop Chrome/Safari,
-// but on Android Chrome in a dark UI its empty-state placeholder text
-// ("dd/mm/yyyy") renders in a color that's effectively invisible
-// against a dark background — the calendar icon alone wasn't enough,
-// the field still LOOKED blank/broken. This overlays our own visible
-// "Any date" label on top of the native input whenever it's empty,
-// pointer-events-none so taps still reach the real input underneath
-// and open the native picker; once a value is chosen the overlay
-// disappears and the native (usually correctly colored) value shows.
+// A bare <input type="date"> renders its empty-state placeholder
+// ("dd/mm/yyyy") differently across browsers — invisible against a
+// dark background on Android Chrome, but clearly visible on desktop
+// Chrome/this preview's Chromium. Overlaying our own "Any date" label
+// on top without hiding the native one caused the two to mash
+// together ("Anld/date/yyyy") wherever the native text WAS visible.
+// The fix: force the native datetime-edit text transparent whenever
+// the field is empty, so our overlay is the only thing ever visibly
+// rendered, everywhere — pointer-events-none on the overlay so taps
+// still reach the real input underneath and open the native picker.
 export function DateFilterInput({
   value,
   onChange,
@@ -33,7 +34,10 @@ export function DateFilterInput({
         type="date"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [color-scheme:dark]"
+        className={cn(
+          "w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [color-scheme:dark]",
+          !value && "[&::-webkit-datetime-edit]:text-transparent"
+        )}
       />
     </div>
   );
