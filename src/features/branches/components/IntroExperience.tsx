@@ -126,7 +126,7 @@ export function IntroExperience() {
     supabase
       .from("branches")
       .select("*")
-      .order("name")
+      .order("sort_order")
       .then(({ data }) => {
         const branches = (data as Branch[] | null) ?? [];
         queryClient.setQueryData(["branches"], branches);

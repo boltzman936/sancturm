@@ -28,8 +28,6 @@ export default async function CRManagePage() {
     query = query.or(`section.eq.pyq,and(section.eq.notes_lab,branch_id.eq.${role.branchId})`);
   }
 
-  const { data: published } = await query;
-
   // Notices are branch-scoped only (no PYQ-style cross-branch exception),
   // so a CR only ever manages their own branch's notices here.
   let noticesQuery = supabase
@@ -39,9 +37,15 @@ export default async function CRManagePage() {
   if (role.type === "cr") {
     noticesQuery = noticesQuery.eq("branch_id", role.branchId);
   }
-  const { data: notices } = await noticesQuery;
 
-  const { data: branches } = await supabase.from("branches").select("name").order("name");
+  // Three unrelated queries — none depends on another's result — were
+  // being awaited one after another, paying for three round trips in
+  // sequence when they could all be in flight at once.
+  const [{ data: published }, { data: notices }, { data: branches }] = await Promise.all([
+    query,
+    noticesQuery,
+    supabase.from("branches").select("name").order("name"),
+  ]);
 
   const resourceItems: ManageableResource[] = (published ?? []).map((resource) => ({
     ...resource,

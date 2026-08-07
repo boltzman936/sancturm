@@ -17,7 +17,7 @@ export function useBranches() {
     queryKey: ["branches"],
     queryFn: async () => {
       const supabase = createClient();
-      const { data, error } = await supabase.from("branches").select("*").order("name");
+      const { data, error } = await supabase.from("branches").select("*").order("sort_order");
       if (error) throw error;
       return data as Branch[];
     },

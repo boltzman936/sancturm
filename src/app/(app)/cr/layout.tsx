@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getUser } from "@/lib/auth/role";
 
 /*
   This layout wraps every /cr/* route. It is the entire access-control
@@ -18,10 +18,10 @@ export default async function CRLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Shared via React's cache() with getCurrentRole() — every /cr/*
+  // page also calls that, and without the shared cache this would be
+  // the same auth round trip fired twice per request.
+  const user = await getUser();
 
   if (!user) {
     redirect("/login");
