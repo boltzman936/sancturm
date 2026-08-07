@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useSubjects } from "@/features/resources/queries";
-import { uploadResourceDirect } from "@/features/resources/actions";
+import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
 import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { NoticeComposer } from "@/features/notices/components/NoticeComposer";
 import { CustomNoticeComposer } from "@/features/notices/components/CustomNoticeComposer";
@@ -33,15 +33,25 @@ export function CRUploadForm({
   // PYQ is cross-branch even for a CR, so it needs its own pickable
   // branch, separate from the notes_lab-locked fixedBranchId.
   const [pyqBranchId, setPyqBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  // Admin-only: publish one Notes/Lab resource to every branch at once
+  // instead of repeating the upload per branch. Not offered for PYQ,
+  // which is already inherently shared across every branch in one row.
+  const [allBranches, setAllBranches] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  const showBranchPicker = resourceType === "pyq" || !fixedBranchId;
+  const canBulkPublish = isAdmin && (resourceType === "notes" || resourceType === "lab_manual");
+  const isBulkPublish = canBulkPublish && allBranches;
+  const showBranchPicker = !isBulkPublish && (resourceType === "pyq" || !fixedBranchId);
   const branchId = resourceType === "pyq" ? pyqBranchId : fixedBranchId ?? pyqBranchId;
 
+  // Even in bulk mode, subjects are fetched for one reference branch —
+  // every branch has its own subjects row (different id) for the same
+  // subject name, so this list only supplies which NAMES exist to
+  // choose from; the id itself is discarded when submitting in bulk.
   const { data: allSubjects } = useSubjects(branchId || null);
   const subjects =
     resourceType === "lab_manual"
@@ -50,19 +60,42 @@ export function CRUploadForm({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file || !branchId) return;
+    if (!file || (!isBulkPublish && !branchId)) return;
     setSuccess(false);
     setError(null);
 
     const form = event.currentTarget;
     const title = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
-    const subjectId = (form.elements.namedItem("subject") as HTMLSelectElement).value || "";
+    const subjectValue = (form.elements.namedItem("subject") as HTMLSelectElement).value || "";
     const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value;
     if (!title) return;
 
+    if (isBulkPublish) {
+      const subjectName = subjects?.find((subject) => subject.id === subjectValue)?.name ?? "";
+      const formData = new FormData();
+      formData.set("subjectName", subjectName);
+      formData.set("section", "notes_lab");
+      formData.set("resourceType", resourceType);
+      formData.set("title", title);
+      formData.set("description", description);
+      formData.set("file", file);
+
+      startTransition(async () => {
+        try {
+          await uploadResourceDirectAllBranches(formData);
+          setSuccess(true);
+          formRef.current?.reset();
+          setFile(null);
+        } catch {
+          setError("Something went wrong. Try again.");
+        }
+      });
+      return;
+    }
+
     const formData = new FormData();
     formData.set("branchId", branchId);
-    formData.set("subjectId", subjectId);
+    formData.set("subjectId", subjectValue);
     formData.set("section", resourceType === "pyq" ? "pyq" : "notes_lab");
     formData.set("resourceType", resourceType === "pyq" ? "pdf" : resourceType);
     formData.set("title", title);
@@ -178,6 +211,25 @@ export function CRUploadForm({
     >
       {typeToggle}
 
+      {canBulkPublish && (
+        <label className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={allBranches}
+            onChange={(event) => setAllBranches(event.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          Publish to all branches at once
+        </label>
+      )}
+
+      {isBulkPublish && (
+        <p className="rounded-md border border-dashed border-border px-3 py-2 font-mono text-xs text-subtle-foreground">
+          Will publish to every branch ({branches.map((branch) => branch.name).join(", ")}). Subject
+          is matched by name in each branch.
+        </p>
+      )}
+
       {showBranchPicker && (
         <div className="flex flex-col gap-1">
           <label htmlFor="branch" className="font-mono text-xs text-subtle-foreground">
@@ -261,15 +313,17 @@ export function CRUploadForm({
 
       <button
         type="submit"
-        disabled={isPending || !file || !branchId}
+        disabled={isPending || !file || (!isBulkPublish && !branchId)}
         className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
       >
-        {isPending ? "Publishing…" : "Publish now"}
+        {isPending ? "Publishing…" : isBulkPublish ? "Publish to all branches" : "Publish now"}
       </button>
 
       {success && (
         <p className="font-mono text-xs text-terminal-blue">
-          Published — it&apos;s already live, no review needed.
+          {isBulkPublish
+            ? "Published to every branch — already live, no review needed."
+            : "Published — it's already live, no review needed."}
         </p>
       )}
       {error && <p className="font-mono text-xs text-destructive">{error}</p>}

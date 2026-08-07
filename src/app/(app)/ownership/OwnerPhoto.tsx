@@ -15,16 +15,19 @@ export function OwnerPhoto({ src, alt }: { src: string; alt: string }) {
         aria-label={`View ${alt}'s photo`}
         className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {/* priority: this is the one photo on the page — it should
-            load with the same urgency as the page itself, not get
-            deprioritized behind fonts/scripts the way a plain <img>
-            can be by the browser's own heuristics. */}
+        {/* priority: loads with the same urgency as the page itself,
+            not deprioritized behind fonts/scripts. unoptimized: the
+            source file is already sized for this (200×300, ~11KB) —
+            skipping Vercel's on-demand image transform means the very
+            first request serves the static file directly instead of
+            waiting on a cold transform before it's cached at the edge. */}
         <Image
           src={src}
           alt={alt}
           width={128}
           height={128}
           priority
+          unoptimized
           className="h-32 w-32 rounded-full border-2 border-border object-cover object-center transition-opacity hover:opacity-90"
         />
       </button>

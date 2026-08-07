@@ -79,3 +79,72 @@ export async function uploadResourceDirect(formData: FormData) {
   revalidatePath("/pyqs");
   revalidatePath("/cr");
 }
+
+/**
+ * Admin-only: publishes one Notes/Lab resource to every branch in a
+ * single action, instead of repeating the upload per branch. Uploads
+ * the file to R2 once, then inserts one `resources` row per branch —
+ * each branch has its own `subjects` rows with different UUIDs even
+ * for identically-named subjects, so the subject is resolved by NAME
+ * within each branch rather than reusing one subject_id everywhere
+ * (same cross-branch-name-matching approach already used for PYQ).
+ * RLS only lets an admin insert outside their own branch scope at
+ * all (see supabase/restrict_uploads_to_cr.sql), so a non-admin
+ * calling this just gets a database rejection either way — the
+ * explicit role check here is just a faster, clearer failure.
+ */
+export async function uploadResourceDirectAllBranches(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const role = await getCurrentRole();
+  if (role?.type !== "admin") throw new Error("Admin only.");
+
+  const subjectName = (formData.get("subjectName") as string) || null;
+  const section = formData.get("section") as string;
+  const resourceType = formData.get("resourceType") as string;
+  const title = formData.get("title") as string;
+  const description = (formData.get("description") as string) || null;
+  const file = formData.get("file") as File;
+
+  const { data: branches, error: branchesError } = await supabase.from("branches").select("id");
+  if (branchesError) throw branchesError;
+  if (!branches?.length) throw new Error("No branches found.");
+
+  const filePath = `all-branches/${section}/${crypto.randomUUID()}-${file.name}`;
+  const fileUrl = await uploadToR2(filePath, file);
+
+  for (const branch of branches) {
+    let subjectId: string | null = null;
+    if (subjectName) {
+      const { data: subject } = await supabase
+        .from("subjects")
+        .select("id")
+        .eq("branch_id", branch.id)
+        .eq("name", subjectName)
+        .maybeSingle();
+      subjectId = subject?.id ?? null;
+    }
+
+    const { error: insertError } = await supabase.from("resources").insert({
+      branch_id: branch.id,
+      subject_id: subjectId,
+      section,
+      resource_type: resourceType,
+      title,
+      description,
+      file_url: fileUrl,
+      status: "approved",
+      uploaded_by_device: null,
+      uploaded_by_name: role.displayName,
+    });
+    if (insertError) throw insertError;
+  }
+
+  revalidatePath("/notes");
+  revalidatePath("/pyqs");
+  revalidatePath("/cr");
+}

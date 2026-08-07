@@ -4,12 +4,14 @@ import { Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // A bare <input type="date"> renders fine on desktop Chrome/Safari,
-// but on Android Chrome in a dark UI it can render as an essentially
-// blank box — no visible "dd/mm/yyyy" placeholder, no visible calendar
-// glyph, just an empty rounded rectangle with a chevron. This wraps it
-// with our own always-visible calendar icon (same left-icon treatment
-// as the search inputs next to it), so the field reads as "a date
-// filter" regardless of how any given browser renders the native part.
+// but on Android Chrome in a dark UI its empty-state placeholder text
+// ("dd/mm/yyyy") renders in a color that's effectively invisible
+// against a dark background — the calendar icon alone wasn't enough,
+// the field still LOOKED blank/broken. This overlays our own visible
+// "Any date" label on top of the native input whenever it's empty,
+// pointer-events-none so taps still reach the real input underneath
+// and open the native picker; once a value is chosen the overlay
+// disappears and the native (usually correctly colored) value shows.
 export function DateFilterInput({
   value,
   onChange,
@@ -21,7 +23,12 @@ export function DateFilterInput({
 }) {
   return (
     <div className={cn("relative", className)}>
-      <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
+      <Calendar className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
+      {!value && (
+        <span className="pointer-events-none absolute left-9 top-1/2 -translate-y-1/2 text-sm text-subtle-foreground">
+          Any date
+        </span>
+      )}
       <input
         type="date"
         value={value}
