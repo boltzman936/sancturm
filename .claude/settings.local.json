@@ -25,7 +25,22 @@
       "Bash(npm audit *)",
       "Bash(gh auth *)",
       "Bash(netlify status *)",
-      "Bash(gh api *)"
+      "Bash(gh api *)",
+      "Bash(sips -g pixelWidth -g pixelHeight -g format public/images/no-internet-bg.png)",
+      "Bash(lsof -ti:3001)",
+      "Bash(xargs kill -9)",
+      "Bash(netlify --version)",
+      "Bash(npm config *)",
+      "Bash(ls \"$\\(npm config get prefix\\)/bin\")",
+      "Bash(npm root *)",
+      "Bash(ls /usr/local/lib/node_modules 2>/dev/null | grep -i netlify; echo \"---\"; tail -40 \"/private/tmp/claude-501/-Users-anuragkumar-Downloads-sancturm/cddecec7-6e61-44d4-85b3-b2cd8d3bb50a/tasks/b1kpi6ja5.output\")",
+      "Bash(npx netlify *)",
+      "Bash(curl -s -o /dev/null -w \"github.com: %{http_code}\\\\n\" https://api.github.com)",
+      "Bash(curl -s -o /dev/null -w \"netlify: %{http_code}\\\\n\" https://api.netlify.com)",
+      "Bash(npx vercel *)",
+      "Bash(curl -s -o /dev/null -w \"sancturm.vercel.app: %{http_code}\\\\n\" https://sancturm.vercel.app)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
