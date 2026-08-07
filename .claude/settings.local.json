@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npx next *)",
+      "Bash(npx eslint *)",
+      "Bash(ffmpeg -y -f lavfi -i color=c=black:s=640x360:d=5 -f lavfi -i anullsrc=r=44100:cl=stereo -shortest -c:v libx264 -c:a aac -pix_fmt yuv420p /Users/anuragkumar/Downloads/sanctum/public/videos/intro-cockpit.mp4)",
+      "Bash(ls -la \"/Users/anuragkumar/Downloads/Spaceship_cockpit_deep_space_ani…_202608060151.mp4\" 2>&1)",
+      "Bash(cp \"/Users/anuragkumar/Downloads/Spaceship_cockpit_deep_space_ani…_202608060151.mp4\" \"/Users/anuragkumar/Downloads/sanctum/public/videos/intro-cockpit.mp4\" && ls -la \"/Users/anuragkumar/Downloads/sanctum/public/videos/\")",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s -o /dev/null -w 'DNS: %{time_namelookup}s | Connect: %{time_connect}s | TLS: %{time_appconnect}s | TTFB: %{time_starttransfer}s | Total: %{time_total}s\\\\n' 'https://bdhuwdsugzqsvviuungc.supabase.co/rest/v1/branches?select=*&slug=eq.cse-core' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkaHV3ZHN1Z3pxc3Z2aXV1bmdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5NTYzMTksImV4cCI6MjEwMTUzMjMxOX0.UVLEdB9SnhvpMfJwiQlTT8M-5oxbaj6YqYaCG8flMWY')",
+      "Read(//private/tmp/claude-501/**)",
+      "Read(//private/tmp/**)",
+      "Bash(find /Users/anuragkumar -maxdepth 4 -type f \\\\\\( -iname \"*.png\" -o -iname \"*.jpg\" -o -iname \"*.jpeg\" -o -iname \"*.webp\" \\\\\\) -newermt \"-1 hour\" 2>/dev/null | grep -v node_modules | head -50)",
+      "Bash(curl -s -o /tmp/offline_response.html -w \"HTTP Status: %{http_code}\\\\n\" http://localhost:3000/offline)",
+      "Read(//tmp/**)",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/anuragkumar/Downloads/sanctum/public/images/no-internet-bg.png)",
+      "Bash(perl -i -pe 's/<ResourceRow key=\\\\{resource\\\\.id\\\\} resource=\\\\{resource\\\\} showBranch=\\\\{showBranch\\\\} \\\\/>/<ResourceRow key={resource.id} resource={resource} isAdmin={isAdmin} \\\\/>/g' src/features/resources/components/ManageResourceList.tsx)",
+      "Bash(grep -rn \"notes/\\\\[resourceId\\\\]\\\\|notes/\\\\${.*}\\\\|notes/\\\\\" + \\\\|/notes/\\\\`\" src/app src/features src/components)",
+      "Bash(grep -rn \"\\\\`/notes/\" src)",
+      "Bash(grep -rn \"href={\\\\`/notes\" src)",
+      "Bash(cd /Users/anuragkumar/Downloads/sanctum *)",
+      "Bash(grep -rn \"notes/\\\\${\" /Users/anuragkumar/Downloads/sanctum/src)",
+      "Bash(npm audit *)",
+      "Bash(gh auth *)",
+      "Bash(netlify status *)",
+      "Bash(gh api *)"
+    ]
+  }
+}

@@ -1,0 +1,87 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+  Sancturm is dark-only by design (no light-mode toggle in the MVP), so
+  these tokens live directly on :root rather than behind a .dark class.
+  Every value below is taken straight from the approved brand palette —
+  change a color ONCE here and it updates everywhere, since every
+  component reads the --color-* variables, never a raw hex code.
+*/
+:root {
+  /* Surfaces, darkest to lightest */
+  --background: #06070a;           /* Deep Space Black — page background */
+  --background-secondary: #111318; /* Space Gray — secondary sections */
+  --card: #1a1d24;                 /* Graphite — cards, panels, popovers */
+  --border: #2b313d;               /* Metallic Gray — hairlines, dividers */
+
+  /* Text, brightest to dimmest */
+  --foreground: #f4f7fb;           /* Primary text */
+  --muted-foreground: #a9b3c4;     /* Secondary text */
+  --subtle-foreground: #6e7686;    /* Muted / hint text */
+  --disabled-foreground: #4a4f5a;  /* Disabled state */
+
+  /* Brand accents */
+  --primary: #ff4a2d;              /* Red Horizon — CTAs, active links, hover */
+  --primary-foreground: #f4f7fb;
+  --accent-secondary: #ff6a3d;     /* Orange Glow — highlights, icons */
+  --terminal-blue: #4da8ff;        /* Code, links, active states */
+  --electric-cyan: #00cfff;        /* Sparing use — small ambient accents */
+
+  /* Semantic (kept distinct from brand red so a form error never
+     reads as a call-to-action) */
+  --destructive: #e5484d;
+  --destructive-foreground: #f4f7fb;
+
+  /* Glow colors — for box-shadow / radial-gradient effects, used
+     deliberately at the component level rather than globally */
+  --glow-red: rgba(255, 74, 45, 0.35);
+  --glow-blue: rgba(77, 168, 255, 0.25);
+  --glow-card: rgba(255, 255, 255, 0.03);
+
+  --radius: 0.625rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-secondary: var(--background-secondary);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--primary);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--card);
+  --color-secondary-foreground: var(--foreground);
+  --color-accent: var(--card);
+  --color-accent-foreground: var(--foreground);
+  --color-muted: var(--background-secondary);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* Sancturm-specific — not part of the shadcn defaults, used directly
+     as e.g. text-terminal-blue, bg-electric-cyan/10 */
+  --color-accent-secondary: var(--accent-secondary);
+  --color-terminal-blue: var(--terminal-blue);
+  --color-electric-cyan: var(--electric-cyan);
+
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-jetbrains-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), sans-serif;
+}

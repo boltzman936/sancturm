@@ -1,0 +1,275 @@
+"use client";
+
+import { useRef, useState, useTransition } from "react";
+import { useSubjects } from "@/features/resources/queries";
+import { uploadResourceDirect } from "@/features/resources/actions";
+import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
+import { NoticeComposer } from "@/features/notices/components/NoticeComposer";
+import { CustomNoticeComposer } from "@/features/notices/components/CustomNoticeComposer";
+import { UpdateComposer } from "@/features/sancturmUpdates/components/UpdateComposer";
+import { CustomUpdateComposer } from "@/features/sancturmUpdates/components/CustomUpdateComposer";
+import { cn } from "@/lib/utils";
+
+type UploadType = "notes" | "lab_manual" | "pyq" | "notice" | "update";
+type PublishMode = "upload" | "custom";
+type BranchOption = { id: string; name: string };
+
+export function CRUploadForm({
+  branches,
+  fixedBranchId,
+  isAdmin,
+}: {
+  // Every branch, always fetched now — needed even for a CR when
+  // resourceType is "pyq" (any CR can publish a PYQ to any branch;
+  // notes_lab stays locked to fixedBranchId).
+  branches: BranchOption[];
+  fixedBranchId?: string;
+  // "Update" is admin-only (Sancturm updates has no CR access at all,
+  // see supabase/sancturm_updates_v2.sql) — CRs never see that type.
+  isAdmin: boolean;
+}) {
+  const [resourceType, setResourceType] = useState<UploadType>("notes");
+  const [publishMode, setPublishMode] = useState<PublishMode>("upload");
+  // PYQ is cross-branch even for a CR, so it needs its own pickable
+  // branch, separate from the notes_lab-locked fixedBranchId.
+  const [pyqBranchId, setPyqBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  const [file, setFile] = useState<File | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const showBranchPicker = resourceType === "pyq" || !fixedBranchId;
+  const branchId = resourceType === "pyq" ? pyqBranchId : fixedBranchId ?? pyqBranchId;
+
+  const { data: allSubjects } = useSubjects(branchId || null);
+  const subjects =
+    resourceType === "lab_manual"
+      ? allSubjects?.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
+      : allSubjects;
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!file || !branchId) return;
+    setSuccess(false);
+    setError(null);
+
+    const form = event.currentTarget;
+    const title = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
+    const subjectId = (form.elements.namedItem("subject") as HTMLSelectElement).value || "";
+    const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value;
+    if (!title) return;
+
+    const formData = new FormData();
+    formData.set("branchId", branchId);
+    formData.set("subjectId", subjectId);
+    formData.set("section", resourceType === "pyq" ? "pyq" : "notes_lab");
+    formData.set("resourceType", resourceType === "pyq" ? "pdf" : resourceType);
+    formData.set("title", title);
+    formData.set("description", description);
+    formData.set("file", file);
+
+    startTransition(async () => {
+      try {
+        await uploadResourceDirect(formData);
+        setSuccess(true);
+        formRef.current?.reset();
+        setFile(null);
+      } catch {
+        setError("Something went wrong. Try again.");
+      }
+    });
+  }
+
+  const typeOptions = [
+    "notes",
+    "lab_manual",
+    "pyq",
+    "notice",
+    ...(isAdmin ? (["update"] as const) : []),
+  ] as const;
+
+  const typeToggle = (
+    <div className="flex flex-col gap-1">
+      <label className="font-mono text-xs text-subtle-foreground">Type</label>
+      <div className="flex gap-1 rounded-md border border-border bg-background p-1">
+        {typeOptions.map((type) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => setResourceType(type)}
+            className={cn(
+              "flex-1 rounded px-3 py-1.5 text-sm transition-colors",
+              resourceType === type
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {type === "notes"
+              ? "Notes"
+              : type === "lab_manual"
+                ? "Lab"
+                : type === "pyq"
+                  ? "PYQ"
+                  : type === "notice"
+                    ? "Notice"
+                    : "Update"}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const howToggle = (mode: PublishMode, labels: [string, string]) => (
+    <div className="flex flex-col gap-1">
+      <label className="font-mono text-xs text-subtle-foreground">How</label>
+      <div className="flex gap-1 rounded-md border border-border bg-background p-1">
+        {(["upload", "custom"] as const).map((m, i) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setPublishMode(m)}
+            className={cn(
+              "flex-1 rounded px-3 py-1.5 text-sm transition-colors",
+              mode === m ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {labels[i]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (resourceType === "notice") {
+    return (
+      <div className="flex flex-col gap-3">
+        {typeToggle}
+        {howToggle(publishMode, ["Upload PDF", "Write custom notice"])}
+
+        {publishMode === "upload" ? (
+          <NoticeComposer branches={branches} fixedBranchId={fixedBranchId} />
+        ) : (
+          <CustomNoticeComposer branches={branches} fixedBranchId={fixedBranchId} />
+        )}
+      </div>
+    );
+  }
+
+  if (resourceType === "update") {
+    return (
+      <div className="flex flex-col gap-3">
+        {typeToggle}
+        {howToggle(publishMode, ["Upload PDF", "Write custom update"])}
+
+        {publishMode === "upload" ? <UpdateComposer /> : <CustomUpdateComposer />}
+      </div>
+    );
+  }
+
+  return (
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
+    >
+      {typeToggle}
+
+      {showBranchPicker && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="branch" className="font-mono text-xs text-subtle-foreground">
+            Branch
+            {resourceType === "pyq" && (
+              <span className="ml-1.5 normal-case text-subtle-foreground/70">
+                (PYQs are shared, but still need one branch on record)
+              </span>
+            )}
+          </label>
+          <select
+            id="branch"
+            value={branchId}
+            onChange={(event) => setPyqBranchId(event.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="title" className="font-mono text-xs text-subtle-foreground">
+          Title
+        </label>
+        <input
+          id="title"
+          name="title"
+          required
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="subject" className="font-mono text-xs text-subtle-foreground">
+          Subject
+        </label>
+        <select
+          key={`${resourceType}-${branchId}`}
+          id="subject"
+          name="subject"
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="">Extra</option>
+          {subjects?.map((subject) => (
+            <option key={subject.id} value={subject.id}>
+              {subject.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="description" className="font-mono text-xs text-subtle-foreground">
+          Description (optional)
+        </label>
+        <textarea
+          id="description"
+          name="description"
+          rows={2}
+          className="resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="file" className="font-mono text-xs text-subtle-foreground">
+          File
+        </label>
+        <input
+          id="file"
+          type="file"
+          required
+          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          className="text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background-secondary file:px-3 file:py-1.5 file:text-sm file:text-foreground"
+        />
+      </div>
+
+      <button
+        type="submit"
+        disabled={isPending || !file || !branchId}
+        className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+      >
+        {isPending ? "Publishing…" : "Publish now"}
+      </button>
+
+      {success && (
+        <p className="font-mono text-xs text-terminal-blue">
+          Published — it&apos;s already live, no review needed.
+        </p>
+      )}
+      {error && <p className="font-mono text-xs text-destructive">{error}</p>}
+    </form>
+  );
+}

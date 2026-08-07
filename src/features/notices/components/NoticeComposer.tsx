@@ -1,0 +1,128 @@
+"use client";
+
+import { useRef, useState, useTransition } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { createNotice } from "@/features/notices/actions";
+import { cn } from "@/lib/utils";
+
+type BranchOption = { id: string; name: string };
+
+export function NoticeComposer({
+  branches,
+  fixedBranchId,
+}: {
+  branches: BranchOption[];
+  fixedBranchId?: string;
+}) {
+  const [branchId, setBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  const [file, setFile] = useState<File | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const queryClient = useQueryClient();
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!file || !branchId) return;
+    setSuccess(false);
+    setError(null);
+
+    const form = event.currentTarget;
+    const title = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
+    if (!title) return;
+
+    const formData = new FormData();
+    formData.set("branchId", branchId);
+    formData.set("title", title);
+    formData.set("file", file);
+
+    startTransition(async () => {
+      try {
+        await createNotice(formData);
+        // revalidatePath (in the server action) refreshes server-rendered
+        // pages, but /notices reads through TanStack Query's client
+        // cache — that needs its own invalidation to show the new notice
+        // without a manual refresh.
+        queryClient.invalidateQueries({ queryKey: ["notices", branchId] });
+        setSuccess(true);
+        formRef.current?.reset();
+        setFile(null);
+      } catch {
+        setError("Something went wrong. Try again.");
+      }
+    });
+  }
+
+  return (
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4"
+    >
+      {branches.length > 1 && !fixedBranchId && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="branch" className="font-mono text-xs text-subtle-foreground">
+            Branch
+          </label>
+          <select
+            id="branch"
+            value={branchId}
+            onChange={(event) => setBranchId(event.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="title" className="font-mono text-xs text-subtle-foreground">
+          Title
+        </label>
+        <input
+          id="title"
+          name="title"
+          required
+          placeholder="e.g. Mid-semester exam schedule"
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="file" className="font-mono text-xs text-subtle-foreground">
+          PDF
+        </label>
+        <input
+          id="file"
+          type="file"
+          accept="application/pdf"
+          required
+          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          className="text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background-secondary file:px-3 file:py-1.5 file:text-sm file:text-foreground"
+        />
+      </div>
+
+      <button
+        type="submit"
+        disabled={isPending || !file || !branchId}
+        className={cn(
+          "self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+        )}
+      >
+        {isPending ? "Publishing…" : "Publish notice"}
+      </button>
+
+      {success && (
+        <p className="font-mono text-xs text-terminal-blue">
+          Published — it&apos;s already live, no review needed.
+        </p>
+      )}
+      {error && <p className="font-mono text-xs text-destructive">{error}</p>}
+    </form>
+  );
+}
