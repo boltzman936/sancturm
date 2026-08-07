@@ -27,7 +27,7 @@ export function PinButton({
         "rounded-md p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
         pinned
           ? "text-primary"
-          : "text-muted-foreground hover:bg-background-secondary hover:text-foreground"
+          : "text-muted-foreground hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
       )}
     >
       <Pin className={cn("h-4 w-4", pinned && "fill-current")} />

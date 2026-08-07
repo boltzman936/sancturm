@@ -105,7 +105,7 @@ export function CRUploadForm({
               "min-w-[4.5rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
               resourceType === type
                 ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground active:text-foreground"
             )}
           >
             {type === "notes"
@@ -134,7 +134,7 @@ export function CRUploadForm({
             onClick={() => setPublishMode(m)}
             className={cn(
               "min-w-[8rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
-              mode === m ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+              mode === m ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground active:text-foreground"
             )}
           >
             {labels[i]}
@@ -262,7 +262,7 @@ export function CRUploadForm({
       <button
         type="submit"
         disabled={isPending || !file || !branchId}
-        className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+        className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
       >
         {isPending ? "Publishing…" : "Publish now"}
       </button>

@@ -125,7 +125,7 @@ export default function NotesAndLabPage() {
                 "rounded px-3 py-1.5 text-sm transition-colors",
                 resourceType === type
                   ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground active:text-foreground"
               )}
             >
               {type === "notes" ? "Notes" : "Lab"}
@@ -143,7 +143,7 @@ export default function NotesAndLabPage() {
                   "rounded px-3 py-1.5 text-sm capitalize transition-colors",
                   dateSort === option
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground"
+                    : "text-muted-foreground hover:text-foreground active:text-foreground"
                 )}
               >
                 {option}
@@ -183,7 +183,7 @@ export default function NotesAndLabPage() {
         {dateFilter && (
           <button
             onClick={() => setDateFilter("")}
-            className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground"
+            className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
           >
             Clear date
           </button>

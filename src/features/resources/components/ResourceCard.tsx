@@ -113,21 +113,21 @@ export function ResourceCard({
         <button
           onClick={handleView}
           aria-label="View"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Eye className="h-4 w-4" />
         </button>
         <button
           onClick={handleShare}
           aria-label="Share"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {copied ? <Check className="h-4 w-4 text-primary" /> : <Share2 className="h-4 w-4" />}
         </button>
         <button
           onClick={handleDownload}
           aria-label="Download"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Download className="h-4 w-4" />
         </button>

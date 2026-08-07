@@ -41,7 +41,9 @@
       "Bash(curl -s -o /dev/null -w \"sancturm.vercel.app: %{http_code}\\\\n\" https://sancturm.vercel.app)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(npm uninstall *)"
+      "Bash(npm uninstall *)",
+      "Bash(git checkout *)",
+      "Bash(node add-active-states.mjs)"
     ]
   }
 }

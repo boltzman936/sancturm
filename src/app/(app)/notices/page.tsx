@@ -84,7 +84,7 @@ export default function NoticesPage() {
         {dateFilter && (
           <button
             onClick={() => setDateFilter("")}
-            className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground"
+            className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
           >
             Clear date
           </button>
@@ -141,7 +141,7 @@ export default function NoticesPage() {
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label="Download"
-                      className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground"
+                      className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
                     >
                       <Download className="h-4 w-4" />
                     </a>

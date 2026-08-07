@@ -64,6 +64,13 @@ export function IntroExperience() {
   const [showSubtitle, setShowSubtitle] = useState(false);
   const [showBranchCard, setShowBranchCard] = useState(false);
   const [exiting, setExiting] = useState(false);
+  // Gates the typing sequence so the headline never starts animating
+  // over a still-black screen on a slow connection — it used to fire
+  // on a flat 700ms timer with no idea whether the video had actually
+  // painted a frame yet. onLoadedData is the real signal; the fallback
+  // timer is just so a video that fails to load (bad network, format
+  // issue) doesn't leave the intro blank forever.
+  const [videoReady, setVideoReady] = useState(false);
 
   // The video is always muted, so autoplay never needs a user gesture
   // or permission prompt — no gate button, no volume fade, no audio at
@@ -73,12 +80,17 @@ export function IntroExperience() {
     videoRef.current?.play().catch(() => {});
   }, []);
 
-  // The typing sequence: 700ms wait, then one character at a time.
-  // Runs every time this page mounts — including for a returning
-  // visitor who clicked back to "sancturm" in the sidebar — rather
-  // than only ever showing it once.
   useEffect(() => {
-    if (!isLoaded) return;
+    const fallback = setTimeout(() => setVideoReady(true), 2500);
+    return () => clearTimeout(fallback);
+  }, []);
+
+  // The typing sequence: 700ms wait after the video is actually ready,
+  // then one character at a time. Runs every time this page mounts —
+  // including for a returning visitor who clicked back to "sancturm"
+  // in the sidebar — rather than only ever showing it once.
+  useEffect(() => {
+    if (!isLoaded || !videoReady) return;
     if (prefersReducedMotion) {
       // Skipping straight to the finished state when the person has
       // reduced motion enabled is exactly what this effect is for.
@@ -103,7 +115,7 @@ export function IntroExperience() {
       clearTimeout(startDelay);
       if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
     };
-  }, [isLoaded, prefersReducedMotion]);
+  }, [isLoaded, videoReady, prefersReducedMotion]);
 
   // Once typing finishes: subtitle fades in immediately, the cursor
   // keeps blinking a moment longer then fades away on its own, and the
@@ -189,6 +201,7 @@ export function IntroExperience() {
           playsInline
           aria-hidden="true"
           tabIndex={-1}
+          onLoadedData={() => setVideoReady(true)}
         />
         <div className="absolute inset-0 bg-black/35" />
 
@@ -197,15 +210,17 @@ export function IntroExperience() {
             card further down each time a new piece fades in, until it
             overlaps the desk in the lower frame. */}
         <div className="absolute inset-x-0 top-[15%] flex flex-col items-center gap-6 px-6 text-center">
-          <h1
-            className="font-mono text-[22px] font-medium tracking-[0.08em] text-foreground sm:text-[30px] md:text-[40px] lg:text-[56px]"
-            style={{ textShadow: "0 0 10px rgba(77,168,255,.18)" }}
-          >
-            {typedText}
-            <span className={cursorClassName(typingDone, cursorVisible)} aria-hidden="true">
-              |
-            </span>
-          </h1>
+          {videoReady && (
+            <h1
+              className="font-mono text-[22px] font-medium tracking-[0.08em] text-foreground sm:text-[30px] md:text-[40px] lg:text-[56px]"
+              style={{ textShadow: "0 0 10px rgba(77,168,255,.18)" }}
+            >
+              {typedText}
+              <span className={cursorClassName(typingDone, cursorVisible)} aria-hidden="true">
+                |
+              </span>
+            </h1>
+          )}
 
           {showSubtitle && (
             <motion.p

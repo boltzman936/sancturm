@@ -323,7 +323,7 @@ export function ManageResourceList({
         {dateFilter && (
           <button
             onClick={() => setDateFilter("")}
-            className="self-end font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground"
+            className="self-end font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
           >
             Clear date
           </button>
@@ -393,14 +393,14 @@ export function ManageResourceList({
               <span className="text-sm text-foreground">{selectedIds.size} selected</span>
               <button
                 onClick={() => setSelectedIds(new Set())}
-                className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground"
+                className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
               >
                 Clear
               </button>
               <button
                 onClick={handleBulkDelete}
                 disabled={isBulkDeleting}
-                className="rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
+                className="rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 active:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
               >
                 {isBulkDeleting ? "Removing…" : `Remove ${selectedIds.size}`}
               </button>

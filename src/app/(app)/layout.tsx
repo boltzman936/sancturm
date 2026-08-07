@@ -44,11 +44,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <button
           onClick={() => setNavOpen(true)}
           aria-label="Open menu"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
         >
           <Menu className="h-5 w-5" />
         </button>
-        <Link href="/" className="font-mono text-lg font-medium text-terminal-blue transition-opacity hover:opacity-80">
+        <Link href="/" className="font-mono text-lg font-medium text-terminal-blue transition-opacity hover:opacity-80 active:opacity-80">
           sancturm
         </Link>
         {/* Spacer matching the button's width so the wordmark stays

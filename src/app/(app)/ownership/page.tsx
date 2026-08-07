@@ -53,7 +53,7 @@ export default function OwnershipPage() {
             href={OWNER.links[link.key]}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:border-primary hover:text-primary"
+            className="flex items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:border-primary active:border-primary hover:text-primary active:text-primary"
           >
             <link.icon className="h-4 w-4" />
             {link.label}
@@ -65,7 +65,7 @@ export default function OwnershipPage() {
             href={OWNER.links.portfolio}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:border-primary hover:text-primary"
+            className="flex items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:border-primary active:border-primary hover:text-primary active:text-primary"
           >
             <Briefcase className="h-4 w-4" />
             Portfolio

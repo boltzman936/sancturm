@@ -49,14 +49,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <Link
             href="/"
             onClick={onClose}
-            className="px-1 font-mono text-base font-medium text-terminal-blue transition-opacity hover:opacity-80"
+            className="px-1 font-mono text-base font-medium text-terminal-blue transition-opacity hover:opacity-80 active:opacity-80"
           >
             sancturm
           </Link>
           <button
             onClick={onClose}
             aria-label="Close menu"
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-card hover:text-foreground md:hidden"
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-card active:bg-card hover:text-foreground active:text-foreground md:hidden"
           >
             <X className="h-4 w-4" />
           </button>
@@ -76,7 +76,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                     "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
                     isActive
                       ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-card hover:text-foreground"
+                      : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
                   )}
                 >
                   <link.icon className="h-4 w-4" />
@@ -95,7 +95,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
               pathname.startsWith("/cr")
                 ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-card hover:text-foreground"
+                : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
             )}
           >
             <ShieldCheck className="h-4 w-4" />
