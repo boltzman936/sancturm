@@ -38,11 +38,11 @@ export function OwnerPhoto({
         <Image
           src={src}
           alt={alt}
-          width={256}
-          height={256}
+          width={224}
+          height={224}
           priority
           unoptimized
-          className="h-32 w-32 rounded-full border-2 border-border object-cover object-center transition-opacity hover:opacity-90"
+          className="h-28 w-28 rounded-full border-2 border-border object-cover object-center transition-opacity hover:opacity-90"
         />
       </button>
 
