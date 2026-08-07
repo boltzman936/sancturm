@@ -83,7 +83,6 @@ export function IntroExperience() {
   const [typedText, setTypedText] = useState("");
   const [typingDone, setTypingDone] = useState(false);
   const [cursorVisible, setCursorVisible] = useState(true);
-  const [showSubtitle, setShowSubtitle] = useState(false);
   const [showBranchCard, setShowBranchCard] = useState(false);
   const [exiting, setExiting] = useState(false);
   // Gates the typing sequence so the headline never starts animating
@@ -139,13 +138,11 @@ export function IntroExperience() {
     };
   }, [isLoaded, videoReady, prefersReducedMotion]);
 
-  // Once typing finishes: subtitle fades in immediately, the cursor
-  // keeps blinking a moment longer then fades away on its own, and the
-  // branch card follows shortly after the subtitle.
+  // Once typing finishes: the cursor keeps blinking a moment longer
+  // then fades away on its own, and the branch card follows shortly
+  // after.
   useEffect(() => {
     if (!typingDone) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setShowSubtitle(true);
     const cursorTimer = setTimeout(
       () => setCursorVisible(false),
       prefersReducedMotion ? 0 : CURSOR_HOLD_MS
@@ -232,14 +229,17 @@ export function IntroExperience() {
         />
         <div className="absolute inset-0 bg-black/35" />
 
-        {/* Positioned at 15% down the frame (the window/stars area),
-            not vertically centered — centering would push the branch
-            card further down each time a new piece fades in, until it
-            overlaps the desk in the lower frame. */}
-        <div className="absolute inset-x-0 top-[15%] flex flex-col items-center gap-6 px-6 text-center">
+        {/* Positioned at 15% down the frame on tablet/desktop (the
+            window/stars area) — not vertically centered, since
+            centering would push the branch card further down each time
+            a new piece fades in, until it overlaps the desk in the
+            lower frame. On mobile the dedicated portrait video has more
+            open sky above the desk, so the anchor sits a bit lower
+            (19%) with room to spare before the desk. */}
+        <div className="absolute inset-x-0 top-[19%] flex flex-col items-center gap-6 px-6 text-center sm:top-[15%]">
           {videoReady && (
             <h1
-              className="font-mono text-[22px] font-medium tracking-[0.08em] text-foreground sm:text-[30px] md:text-[40px] lg:text-[56px]"
+              className="whitespace-nowrap font-mono text-[24px] font-medium tracking-[0.02em] text-foreground sm:text-[30px] sm:tracking-[0.08em] md:text-[40px] lg:text-[56px]"
               style={{ textShadow: "0 0 10px rgba(77,168,255,.18)" }}
             >
               {typedText}
@@ -247,17 +247,6 @@ export function IntroExperience() {
                 |
               </span>
             </h1>
-          )}
-
-          {showSubtitle && (
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              className="max-w-md text-sm text-muted-foreground sm:text-base"
-            >
-              Your gateway to everything on campus.
-            </motion.p>
           )}
 
           {showBranchCard && (
