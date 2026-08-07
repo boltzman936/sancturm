@@ -1,39 +1,47 @@
-import { Briefcase, Camera, Code, Mail } from "lucide-react";
+import { Briefcase, Code } from "lucide-react";
 import { OWNER } from "@/config/ownership";
 import { OwnerPhoto } from "./OwnerPhoto";
-import { WhatsAppIcon, SnapchatIcon, LinkedInIcon, RedditIcon } from "@/components/shared/BrandIcons";
+import {
+  WhatsAppIcon,
+  GmailIcon,
+  InstagramIcon,
+  SnapchatIcon,
+  LinkedInIcon,
+  RedditIcon,
+} from "@/components/shared/BrandIcons";
 import { cn } from "@/lib/utils";
 
-// lucide-react dropped brand/logo icons — Code and Camera stand in for
-// GitHub and Instagram (no close brand equivalent exists either way);
-// WhatsApp, Snapchat, LinkedIn, and Reddit get actual hand-drawn logos
-// from BrandIcons. Portfolio is handled separately below — it's not a
-// real link yet, so it needs a "coming soon" state, not simple hide.
+// lucide-react dropped brand/logo icons — Code stands in for GitHub
+// (no close brand equivalent exists). WhatsApp, Gmail, Instagram,
+// Snapchat, LinkedIn, and Reddit get real hand-drawn "app icon" badges
+// from BrandIcons — each one carries its own brand color baked in, not
+// driven by `currentColor`, so no color class is needed here for
+// those. Portfolio is handled separately below — it's not a real link
+// yet, so it needs a "coming soon" state, not simple hide.
 const LINK_META = [
   { key: "whatsapp", label: "WhatsApp", icon: WhatsAppIcon },
-  { key: "email", label: "Email", icon: Mail },
+  { key: "email", label: "Email", icon: GmailIcon },
   { key: "github", label: "GitHub", icon: Code },
-  { key: "instagram", label: "Instagram", icon: Camera },
+  { key: "instagram", label: "Instagram", icon: InstagramIcon },
   { key: "snapchat", label: "Snapchat", icon: SnapchatIcon },
   { key: "linkedin", label: "LinkedIn", icon: LinkedInIcon },
   { key: "reddit", label: "Reddit", icon: RedditIcon },
 ] as const;
 
 // Shared by every button below — height, radius, padding, and colors
-// stay identical for the social grid AND Portfolio, only the width
-// differs (Portfolio gets its own wider, centered treatment further
-// down instead of matching the fixed w-40 grid).
+// stay identical for the social grid AND Portfolio. `w-full` (not a
+// fixed px width) so each button fills its grid cell exactly — sizing
+// itself to whatever 3 equal columns works out to at the current
+// viewport width, instead of a fixed width that either wraps to a new
+// row or leaves dead space depending on how wide the container is.
 const LINK_BUTTON_BASE =
-  "flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-border bg-card px-4 text-sm text-foreground transition-colors hover:border-primary active:border-primary hover:text-primary active:text-primary";
+  "flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden rounded-md border border-border bg-card px-2 text-xs text-foreground transition-colors hover:border-primary active:border-primary hover:text-primary active:text-primary sm:h-10 sm:gap-2 sm:px-3 sm:text-sm";
 
-// The social grid: fixed width so every button lines up on a perfect
-// 2-column grid regardless of label length — a button sized to fit
-// its own text ("Email" vs "Instagram") is what broke this before.
-const LINK_BUTTON_CLASS = cn(LINK_BUTTON_BASE, "w-40");
+const LINK_BUTTON_CLASS = LINK_BUTTON_BASE;
 
 // Portfolio sits on its own row, centered, at ~2/3 width — capped so
-// it doesn't balloon on wide screens — rather than joining the fixed
-// w-40 grid, since as the one full-sentence "(soon)" button it reads
+// it doesn't balloon on wide screens — rather than joining the social
+// grid, since as the one button with a "(soon)" qualifier it reads
 // better as a deliberately wider, standalone row.
 const PORTFOLIO_BUTTON_CLASS = cn(LINK_BUTTON_BASE, "mx-auto w-2/3 max-w-[260px]");
 
@@ -72,11 +80,16 @@ export default function OwnershipPage() {
         </div>
       </div>
 
-      {/* Same flex-wrap/justify-center/gap-2 arrangement as before —
-          the 2-column grid and every button's position stays exactly
-          as is. Only Portfolio moves out to its own centered row below. */}
+      {/* A real CSS grid, not flex-wrap — flex-wrap reflows to however
+          many columns fit once the container gets wide enough, which is
+          exactly the "arrangement changed" bug this fixes. grid-cols-2
+          (mobile/tablet) and lg:grid-cols-3 (desktop, 1024px+) pin an
+          exact column count at each tier; each button is w-full so it
+          sizes itself to whatever that column works out to, rather than
+          wrapping to a new row or leaving dead space. Only Portfolio
+          sits outside this grid, on its own centered row below. */}
       <div className="flex flex-col gap-2 pb-14">
-        <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
           {activeLinks.map((link) => (
             <a
               key={link.key}
@@ -85,7 +98,7 @@ export default function OwnershipPage() {
               rel="noopener noreferrer"
               className={LINK_BUTTON_CLASS}
             >
-              <link.icon className="h-4 w-4 shrink-0" />
+              <link.icon className="h-4 w-4 shrink-0 sm:h-[18px] sm:w-[18px]" />
               {link.label}
             </a>
           ))}
@@ -98,12 +111,12 @@ export default function OwnershipPage() {
             rel="noopener noreferrer"
             className={PORTFOLIO_BUTTON_CLASS}
           >
-            <Briefcase className="h-4 w-4 shrink-0" />
+            <Briefcase className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
             Portfolio
           </a>
         ) : (
           <span aria-disabled="true" className={cn(PORTFOLIO_BUTTON_CLASS, "border-dashed text-subtle-foreground opacity-70")}>
-            <Briefcase className="h-4 w-4 shrink-0" />
+            <Briefcase className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
             Portfolio
             <span className="font-mono text-xs">(soon)</span>
           </span>
