@@ -50,11 +50,33 @@ function usePortraitLayout() {
   return isPortrait;
 }
 
+// Separate from PORTRAIT_QUERY on purpose: that one also matches a
+// tablet held upright (per its own comment), but only an actual phone
+// should get the dedicated portrait-shot video — a tablet in portrait
+// still gets the wide cockpit video (just via the isPortrait
+// object-cover fallback below, unchanged). 640px matches the same
+// mobile/desktop split (`sm:`) used everywhere else in the app.
+const MOBILE_WIDTH_QUERY = "(max-width: 640px)";
+
+function useIsMobileWidth() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_WIDTH_QUERY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing to matchMedia, an external system
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isMobile;
+}
+
 export function IntroExperience() {
   const router = useRouter();
   const { setBranch, isLoaded } = useBranch();
   const prefersReducedMotion = useReducedMotion();
   const isPortrait = usePortraitLayout();
+  const isMobileWidth = useIsMobileWidth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -187,10 +209,15 @@ export function IntroExperience() {
       >
         {/* Background video — decorative only, not meaningful content,
             so it's hidden from screen readers and never keyboard-focusable.
-            Always muted: no audio, no permission prompt, no controls. */}
+            Always muted: no audio, no permission prompt, no controls.
+            A phone-width viewport gets a dedicated portrait (9:16) shot
+            instead of a cropped slice of the wide 16:9 one — same scene,
+            framed so the window/stars area lines up with the headline's
+            anchor point without cutting off the sides. Tablet and desktop
+            keep the original video regardless of orientation. */}
         <video
           ref={videoRef}
-          src="/videos/intro-cockpit.mp4"
+          src={isMobileWidth ? "/videos/intro-mobile.mp4" : "/videos/intro-cockpit.mp4"}
           className={cn(
             "absolute inset-0 h-full w-full bg-background",
             isPortrait ? "object-cover" : "object-contain"
