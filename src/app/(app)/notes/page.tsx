@@ -13,6 +13,7 @@ import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import type { ResourceType } from "@/features/resources/types";
 
@@ -100,7 +101,7 @@ export default function NotesAndLabPage() {
           ? base.filter((resource) => !resource.subject)
           : base.filter((resource) => resource.subject?.id === subjectFilter);
     const byDate = dateFilter
-      ? bySubject.filter((resource) => resource.created_at.slice(0, 10) === dateFilter)
+      ? bySubject.filter((resource) => localDateKey(resource.created_at) === dateFilter)
       : bySubject;
     const bySearch = byDate.filter((resource) => matchesSearch(resource, searchQuery));
     return sortByDate(bySearch, dateSort);

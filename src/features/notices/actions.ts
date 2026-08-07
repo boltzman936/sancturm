@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { uploadToR2, deleteFromR2 } from "@/lib/r2";
+import { deleteFromR2 } from "@/lib/r2";
 
 /**
  * Only a CR (own branch) or admin (any branch) can ever call this
@@ -20,10 +20,9 @@ export async function createNotice(formData: FormData) {
 
   const branchId = formData.get("branchId") as string;
   const title = formData.get("title") as string;
-  const file = formData.get("file") as File;
-
-  const filePath = `notices/${branchId}/${crypto.randomUUID()}-${file.name}`;
-  const fileUrl = await uploadToR2(filePath, file);
+  // Uploaded straight to R2 from the browser already — see resources/
+  // actions.ts's uploadResourceDirect for the full reasoning.
+  const fileUrl = formData.get("fileUrl") as string;
 
   const { error: insertError } = await supabase.from("notices").insert({
     branch_id: branchId,

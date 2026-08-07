@@ -38,13 +38,23 @@ export default async function CRManagePage() {
     noticesQuery = noticesQuery.eq("branch_id", role.branchId);
   }
 
-  // Three unrelated queries — none depends on another's result — were
-  // being awaited one after another, paying for three round trips in
-  // sequence when they could all be in flight at once.
-  const [{ data: published }, { data: notices }, { data: branches }] = await Promise.all([
+  // Sancturm Updates are admin-only end to end (RLS rejects a CR's
+  // read too, see supabase/sancturm_updates_v2.sql) — only fire this
+  // query for an admin instead of sending one a CR can never get
+  // anything back from.
+  const updatesQuery =
+    role.type === "admin"
+      ? supabase.from("sancturm_updates").select("id, title, created_at").order("created_at", { ascending: false })
+      : Promise.resolve({ data: null });
+
+  // Unrelated queries — none depends on another's result — were being
+  // awaited one after another, paying for each round trip in sequence
+  // when they could all be in flight at once.
+  const [{ data: published }, { data: notices }, { data: updates }, { data: branches }] = await Promise.all([
     query,
     noticesQuery,
-    supabase.from("branches").select("name").order("name"),
+    updatesQuery,
+    supabase.from("branches").select("name").order("sort_order"),
   ]);
 
   const resourceItems: ManageableResource[] = (published ?? []).map((resource) => ({
@@ -65,6 +75,19 @@ export default async function CRManagePage() {
     branch: Array.isArray(notice.branch) ? notice.branch[0] ?? null : notice.branch,
   }));
 
+  const updateItems: ManageableResource[] = (updates ?? []).map((update) => ({
+    id: update.id,
+    kind: "update",
+    title: update.title,
+    section: "update",
+    resource_type: null,
+    uploaded_by_device: null,
+    uploaded_by_name: null,
+    created_at: update.created_at,
+    subject: null,
+    branch: null,
+  }));
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -77,7 +100,7 @@ export default async function CRManagePage() {
       </div>
 
       <ManageResourceList
-        resources={[...resourceItems, ...noticeItems]}
+        resources={[...resourceItems, ...noticeItems, ...updateItems]}
         isAdmin={role.type === "admin"}
         branches={branches ?? []}
       />

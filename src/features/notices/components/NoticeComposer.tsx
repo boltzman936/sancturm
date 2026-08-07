@@ -3,6 +3,8 @@
 import { useRef, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createNotice } from "@/features/notices/actions";
+import { uploadFileToR2 } from "@/features/uploads/uploadFile";
+import { titleFromFileName } from "@/features/uploads/titleFromFileName";
 import { cn } from "@/lib/utils";
 
 type BranchOption = { id: string; name: string };
@@ -29,16 +31,21 @@ export function NoticeComposer({
     setError(null);
 
     const form = event.currentTarget;
-    const title = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
-    if (!title) return;
-
-    const formData = new FormData();
-    formData.set("branchId", branchId);
-    formData.set("title", title);
-    formData.set("file", file);
+    const titleInput = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
+    const title = titleInput || titleFromFileName(file.name);
 
     startTransition(async () => {
       try {
+        // Straight to R2 from the browser — bypasses the serverless
+        // body-size limit a large PDF would otherwise hit.
+        const filePath = `notices/${branchId}/${crypto.randomUUID()}-${file.name}`;
+        const fileUrl = await uploadFileToR2(filePath, file);
+
+        const formData = new FormData();
+        formData.set("branchId", branchId);
+        formData.set("title", title);
+        formData.set("fileUrl", fileUrl);
+
         await createNotice(formData);
         // revalidatePath (in the server action) refreshes server-rendered
         // pages, but /notices reads through TanStack Query's client
@@ -82,12 +89,11 @@ export function NoticeComposer({
 
       <div className="flex flex-col gap-1">
         <label htmlFor="title" className="font-mono text-xs text-subtle-foreground">
-          Title
+          Title <span className="normal-case text-subtle-foreground/70">(optional — defaults to file name)</span>
         </label>
         <input
           id="title"
           name="title"
-          required
           placeholder="e.g. Mid-semester exam schedule"
           className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />

@@ -10,6 +10,7 @@ import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import type { SancturmUpdate } from "@/features/sancturmUpdates/types";
+import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -54,7 +55,7 @@ export default function SancturmUpdatesPage() {
   const filtered = useMemo(() => {
     const base = updates ?? [];
     const byDate = dateFilter
-      ? base.filter((update) => update.created_at.slice(0, 10) === dateFilter)
+      ? base.filter((update) => localDateKey(update.created_at) === dateFilter)
       : base;
     return byDate.filter((update) => matchesSearch(update, searchQuery));
   }, [updates, dateFilter, searchQuery]);

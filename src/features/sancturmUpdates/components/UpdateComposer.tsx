@@ -3,6 +3,8 @@
 import { useRef, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createSancturmUpdate } from "@/features/sancturmUpdates/actions";
+import { uploadFileToR2 } from "@/features/uploads/uploadFile";
+import { titleFromFileName } from "@/features/uploads/titleFromFileName";
 import { cn } from "@/lib/utils";
 
 export function UpdateComposer() {
@@ -20,15 +22,18 @@ export function UpdateComposer() {
     setError(null);
 
     const form = event.currentTarget;
-    const title = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
-    if (!title) return;
-
-    const formData = new FormData();
-    formData.set("title", title);
-    formData.set("file", file);
+    const titleInput = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
+    const title = titleInput || titleFromFileName(file.name);
 
     startTransition(async () => {
       try {
+        const filePath = `sancturm-updates/${crypto.randomUUID()}-${file.name}`;
+        const fileUrl = await uploadFileToR2(filePath, file);
+
+        const formData = new FormData();
+        formData.set("title", title);
+        formData.set("fileUrl", fileUrl);
+
         await createSancturmUpdate(formData);
         queryClient.invalidateQueries({ queryKey: ["sancturm-updates"] });
         setSuccess(true);
@@ -48,12 +53,11 @@ export function UpdateComposer() {
     >
       <div className="flex flex-col gap-1">
         <label htmlFor="update-title" className="font-mono text-xs text-subtle-foreground">
-          Title
+          Title <span className="normal-case text-subtle-foreground/70">(optional — defaults to file name)</span>
         </label>
         <input
           id="update-title"
           name="title"
-          required
           placeholder="e.g. Notes & Lab section revamped"
           className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
