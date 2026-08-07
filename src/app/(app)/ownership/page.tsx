@@ -35,7 +35,7 @@ const LINK_META = [
 // viewport width, instead of a fixed width that either wraps to a new
 // row or leaves dead space depending on how wide the container is.
 const LINK_BUTTON_BASE =
-  "flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden rounded-md border border-border bg-card px-2 text-xs text-foreground transition-colors hover:border-primary active:border-primary hover:text-primary active:text-primary sm:h-10 sm:gap-2 sm:px-3 sm:text-sm";
+  "flex h-11 w-full items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden rounded-md border border-border bg-card px-2 text-xs text-foreground transition-colors hover:border-primary active:border-primary hover:text-primary active:text-primary sm:h-12 sm:gap-2 sm:px-3 sm:text-sm";
 
 const LINK_BUTTON_CLASS = LINK_BUTTON_BASE;
 
