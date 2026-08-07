@@ -9,6 +9,7 @@ import { useNotices } from "@/features/notices/queries";
 import { toggleNoticePin } from "@/features/notices/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
+import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import type { Notice } from "@/features/notices/types";
 import { cn } from "@/lib/utils";
 
@@ -78,12 +79,7 @@ export default function NoticesPage() {
           />
         </div>
 
-        <input
-          type="date"
-          value={dateFilter}
-          onChange={(event) => setDateFilter(event.target.value)}
-          className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [color-scheme:dark]"
-        />
+        <DateFilterInput value={dateFilter} onChange={setDateFilter} className="min-w-[160px]" />
 
         {dateFilter && (
           <button

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useBranchBySlug } from "@/features/branches/queries";
 import {
@@ -12,7 +12,7 @@ import {
 import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
-import { UploadResourceForm } from "@/features/resources/components/UploadResourceForm";
+import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { cn } from "@/lib/utils";
 import type { ResourceType } from "@/features/resources/types";
 
@@ -66,7 +66,6 @@ export default function NotesAndLabPage() {
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
-  const [showUpload, setShowUpload] = useState(false);
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
   const { data: allSubjects } = useSubjects(branch?.id ?? null);
@@ -165,19 +164,6 @@ export default function NotesAndLabPage() {
             ))}
             <option value={EXTRA_SUBJECT}>Extra</option>
           </select>
-
-          <button
-            onClick={() => setShowUpload((v) => !v)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
-              showUpload
-                ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
-                : "border-border bg-card text-foreground hover:border-primary"
-            )}
-          >
-            {showUpload ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            Upload
-          </button>
         </div>
       </div>
 
@@ -192,12 +178,7 @@ export default function NotesAndLabPage() {
           />
         </div>
 
-        <input
-          type="date"
-          value={dateFilter}
-          onChange={(event) => setDateFilter(event.target.value)}
-          className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [color-scheme:dark]"
-        />
+        <DateFilterInput value={dateFilter} onChange={setDateFilter} className="min-w-[160px]" />
 
         {dateFilter && (
           <button
@@ -208,10 +189,6 @@ export default function NotesAndLabPage() {
           </button>
         )}
       </div>
-
-      {showUpload && branch && (
-        <UploadResourceForm branchId={branch.id} resourceType={resourceType} />
-      )}
 
       {isLoading && (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">

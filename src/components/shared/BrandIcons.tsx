@@ -40,3 +40,44 @@ export function SnapchatIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function LinkedInIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <circle cx="7.5" cy="8.5" r="0.6" fill="currentColor" stroke="none" />
+      <line x1="7.5" y1="11" x2="7.5" y2="17" />
+      <line x1="11.5" y1="11" x2="11.5" y2="17" />
+      <path d="M11.5 13.5a2 2 0 0 1 4 0V17" />
+    </svg>
+  );
+}
+
+export function RedditIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <circle cx="12" cy="13.5" r="6.2" />
+      <circle cx="9.4" cy="13.2" r="1" fill="currentColor" stroke="none" />
+      <circle cx="14.6" cy="13.2" r="1" fill="currentColor" stroke="none" />
+      <path d="M9 16.2c.9.8 1.9 1.1 3 1.1s2.1-.3 3-1.1" />
+      <line x1="12" y1="7.3" x2="12" y2="4.2" />
+      <circle cx="12" cy="3.4" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}

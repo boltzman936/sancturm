@@ -49,7 +49,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <Link
             href="/"
             onClick={onClose}
-            className="px-1 font-mono text-xs text-terminal-blue transition-opacity hover:opacity-80"
+            className="px-1 font-mono text-base font-medium text-terminal-blue transition-opacity hover:opacity-80"
           >
             sancturm
           </Link>

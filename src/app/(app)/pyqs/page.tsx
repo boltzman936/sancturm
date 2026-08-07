@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useBranchBySlug } from "@/features/branches/queries";
 import {
@@ -11,7 +11,6 @@ import {
 } from "@/features/resources/queries";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
-import { UploadPyqForm } from "@/features/resources/components/UploadPyqForm";
 import { cn } from "@/lib/utils";
 
 type DateSort = "newest" | "oldest";
@@ -60,7 +59,6 @@ export default function PYQsPage() {
   // mean the same thing regardless of which branch's PYQ it's on.
   const [subjectFilter, setSubjectFilter] = useState<string>(ALL_SUBJECTS);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showUpload, setShowUpload] = useState(false);
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
   const { data: subjectOptions } = useSubjects(branch?.id ?? null);
@@ -119,19 +117,6 @@ export default function PYQsPage() {
             ))}
             <option value={EXTRA_SUBJECT}>Extra</option>
           </select>
-
-          <button
-            onClick={() => setShowUpload((v) => !v)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
-              showUpload
-                ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
-                : "border-border bg-card text-foreground hover:border-primary"
-            )}
-          >
-            {showUpload ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            Upload
-          </button>
         </div>
       </div>
 
@@ -144,8 +129,6 @@ export default function PYQsPage() {
           className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
-
-      {showUpload && branch && <UploadPyqForm branchId={branch.id} />}
 
       {isLoading && (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">

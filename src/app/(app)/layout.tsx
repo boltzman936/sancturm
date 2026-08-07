@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import { Menu } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useCommandPaletteShortcut } from "@/hooks/useCommandPaletteShortcut";
@@ -47,7 +48,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         >
           <Menu className="h-5 w-5" />
         </button>
-        <span className="font-mono text-xs text-terminal-blue">sancturm</span>
+        <Link href="/" className="font-mono text-lg font-medium text-terminal-blue transition-opacity hover:opacity-80">
+          sancturm
+        </Link>
         {/* Spacer matching the button's width so the wordmark stays
             visually centered instead of drifting toward the button. */}
         <span className="w-9" aria-hidden="true" />

@@ -5,36 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
 
 /**
- * Approve/reject a pending resource. No manual branch check here —
- * that's the whole point of doing this as the CR's own authenticated
- * session: Postgres RLS's "CR updates own branch" policy (see
- * supabase/migrations/0001_init.sql) rejects the update outright if
- * this resource's branch_id isn't the caller's own. The database is
- * the actual security boundary, not this function.
- */
-export async function approveResource(resourceId: string) {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("resources")
-    .update({ status: "approved" })
-    .eq("id", resourceId);
-  if (error) throw error;
-  revalidatePath("/cr/approvals");
-  revalidatePath("/cr");
-}
-
-export async function rejectResource(resourceId: string) {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("resources")
-    .update({ status: "rejected" })
-    .eq("id", resourceId);
-  if (error) throw error;
-  revalidatePath("/cr/approvals");
-  revalidatePath("/cr");
-}
-
-/**
  * Takes down an already-published resource — same RLS-enforced
  * "CR or admin deletes" policy as everything else here. Only removes
  * the database row; the underlying file stays in Storage (harmless,
@@ -66,15 +36,9 @@ export async function toggleResourcePin(resourceId: string, pinned: boolean) {
 
 /**
  * CR/admin direct upload — published immediately, no review queue.
- * There's no INSERT policy that allows inserting straight in as
- * 'approved' (the only insert policy is "Anyone can submit for
- * review", which requires status = 'pending' for literally everyone,
- * CR or not — see supabase/migrations/0001_init.sql). So this does it
- * as two RLS-legal steps instead of one: insert as pending (always
- * allowed), then immediately update to approved, which only succeeds
- * because "CR or admin updates" (supabase/add_admins.sql) permits it
- * for this caller's branch. Anyone else's attempt at the second step
- * would be rejected by Postgres, not by this function.
+ * Students can't insert into `resources` at all (see supabase/
+ * restrict_uploads_to_cr.sql) — the only INSERT policy is CR/admin
+ * scoped, so this can insert straight in as 'approved' in one step.
  */
 export async function uploadResourceDirect(formData: FormData) {
   const supabase = await createClient();
@@ -99,30 +63,21 @@ export async function uploadResourceDirect(formData: FormData) {
 
   const { data: publicUrlData } = supabase.storage.from("resources").getPublicUrl(filePath);
 
-  const { data: inserted, error: insertError } = await supabase
-    .from("resources")
-    .insert({
-      branch_id: branchId,
-      subject_id: subjectId,
-      section,
-      resource_type: resourceType,
-      title,
-      description,
-      file_url: publicUrlData.publicUrl,
-      status: "pending",
-      uploaded_by_device: null,
-      uploaded_by_name: role?.displayName ?? null,
-    })
-    .select("id")
-    .single();
+  const { error: insertError } = await supabase.from("resources").insert({
+    branch_id: branchId,
+    subject_id: subjectId,
+    section,
+    resource_type: resourceType,
+    title,
+    description,
+    file_url: publicUrlData.publicUrl,
+    status: "approved",
+    uploaded_by_device: null,
+    uploaded_by_name: role?.displayName ?? null,
+  });
   if (insertError) throw insertError;
 
-  const { error: approveError } = await supabase
-    .from("resources")
-    .update({ status: "approved" })
-    .eq("id", inserted.id);
-  if (approveError) throw approveError;
-
   revalidatePath("/notes");
+  revalidatePath("/pyqs");
   revalidatePath("/cr");
 }

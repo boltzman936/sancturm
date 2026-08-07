@@ -10,6 +10,7 @@ import { useSubjects } from "@/features/resources/queries";
 import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { useBranch } from "@/hooks/useBranch";
 import { useBranchBySlug } from "@/features/branches/queries";
+import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { cn } from "@/lib/utils";
 
 const SECTION_LABEL: Record<string, string> = {
@@ -316,12 +317,7 @@ export function ManageResourceList({
 
         <div className="flex flex-col gap-1">
           <label className="font-mono text-xs text-subtle-foreground">Exact date</label>
-          <input
-            type="date"
-            value={dateFilter}
-            onChange={(event) => setDateFilter(event.target.value)}
-            className={`${selectClass} [color-scheme:dark]`}
-          />
+          <DateFilterInput value={dateFilter} onChange={setDateFilter} className="min-w-[160px]" />
         </div>
 
         {dateFilter && (

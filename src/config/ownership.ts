@@ -7,7 +7,9 @@
 // placeholder instead.
 //
 // Leave any link "" to hide that button entirely — only the ones you
-// fill in will show up on the page.
+// fill in will show up on the page. Exception: "portfolio" — leaving
+// it "" shows a disabled "Coming soon" button instead of hiding it,
+// since that one's just not built yet, not permanently absent.
 export const OWNER = {
   name: "Anurag Kumar",
   role: "Sancturm — creator & admin",
@@ -18,5 +20,8 @@ export const OWNER = {
     github: "", // e.g. "https://github.com/username"
     instagram: "https://www.instagram.com/anuragk1001?igsh=dXR3NTIxYzhyZTBw",
     snapchat: "https://www.snapchat.com/add/anurag50005?share_id=q676zGGSy4o&locale=en-IN",
+    linkedin: "https://www.linkedin.com/in/anurag-kumar-9837443b5?utm_source=share_via&utm_content=profile&utm_medium=member_android",
+    reddit: "https://www.reddit.com/u/anuragk50005/s/vf6NslLwjV",
+    portfolio: "", // not built yet — shows as "Coming soon" until filled in
   },
 };
