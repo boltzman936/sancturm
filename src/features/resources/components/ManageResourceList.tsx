@@ -8,12 +8,6 @@ import { DeleteSancturmUpdateButton } from "@/features/sancturmUpdates/component
 import { deleteResource } from "@/features/resources/actions";
 import { deleteNotice } from "@/features/notices/actions";
 import { deleteSancturmUpdate } from "@/features/sancturmUpdates/actions";
-import { useSubjects } from "@/features/resources/queries";
-import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
-import { useBranch } from "@/hooks/useBranch";
-import { useTerm } from "@/hooks/useTerm";
-import { useBranchBySlug } from "@/features/branches/queries";
-import { useTermBySlug } from "@/features/terms/queries";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
@@ -245,30 +239,29 @@ export function ManageResourceList({
     ? ["Notes", "Lab", "PYQ", "Notices", "Sancturm updates"]
     : ["Notes", "Lab", "PYQ", "Notices"];
 
-  // Full subject catalog (not just subjects that happen to have a
-  // published item) — same source /notes and /cr/upload use. Subject
-  // names are identical across every branch (only the row id differs
-  // per branch), so the viewer's own sidebar branch+year is a fine
-  // stand-in even when Branch/Year is set to "All" above.
-  const { branch: branchSlug } = useBranch();
-  const { data: currentBranch } = useBranchBySlug(branchSlug);
-  const { term: termSlug } = useTerm();
-  const { data: currentTerm } = useTermBySlug(termSlug);
-  const { data: allSubjects } = useSubjects(currentBranch?.id ?? null, currentTerm?.id ?? null);
-
-  // Subjects are scoped to whichever type is picked (a "Lab" subject
-  // list is only the subjects with a lab component) — resetting
-  // typeFilter clears subjectFilter below so a stale selection never
-  // lingers. Notices and Sancturm updates have no subject at all, so
-  // nothing to offer for either.
+  // Derived from the actual published resources currently in scope
+  // (matching Branch/Year/Type, same as `visible` below), not a
+  // separate subjects-table query scoped to the viewer's own branch —
+  // that stand-in broke once AIDS's 1st-Year subject list diverged
+  // from AIML/Core's: an admin browsing "All branches" would only
+  // ever see AIML/Core's subject names as filter options, with
+  // AIDS-only ones (e.g. Soft Skill) never selectable even though
+  // real AIDS resources existed under them. Reading subjects straight
+  // off `resources` is also naturally correct for what's Lab-capable —
+  // a resource's own resource_type already says so, no separate
+  // LAB_SUBJECT_SLUGS lookup needed here.
   const subjectOptions = useMemo(() => {
     if (typeFilter === "Notices" || typeFilter === "Sancturm updates") return [];
-    const subjects =
-      typeFilter === "Lab"
-        ? allSubjects?.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
-        : allSubjects?.filter((subject) => !LAB_ONLY_SUBJECT_SLUGS.has(subject.slug));
-    return [...(subjects?.map((subject) => subject.name) ?? []).sort(), "Extra"];
-  }, [allSubjects, typeFilter]);
+    const names = new Set<string>();
+    for (const r of resources) {
+      if (r.section !== "notes_lab" && r.section !== "pyq") continue;
+      if (branchFilter !== ALL && r.branch?.name !== branchFilter) continue;
+      if (termFilter !== ALL && termShortLabel(r.term) !== termFilter) continue;
+      if (typeFilter !== ALL && typeGroupLabel(r) !== typeFilter) continue;
+      if (r.subject?.name) names.add(r.subject.name);
+    }
+    return [...Array.from(names).sort(), "Extra"];
+  }, [resources, branchFilter, termFilter, typeFilter]);
 
   const visible = useMemo(() => {
     return resources

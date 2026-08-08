@@ -39,5 +39,13 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // Session refresh is only relevant to /cr/* — the only routes that
+  // do a server-side auth check (CRLayout's getUser()). /login is a
+  // Client Component that signs in via the browser SDK directly, no
+  // server-side session read involved. Every public student page —
+  // Notes, PYQs, Notices, Sancturm Updates, Ownership, onboarding —
+  // never touches Supabase Auth at all, so it was paying for a real
+  // network round trip to Supabase on every single navigation for
+  // nothing — the majority of all traffic on the site.
+  matcher: ["/cr/:path*"],
 };

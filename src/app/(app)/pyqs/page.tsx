@@ -2,15 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
-import { useBranchBySlug } from "@/features/branches/queries";
 import { useTermBySlug } from "@/features/terms/queries";
-import {
-  usePyqResources,
-  useSubjects,
-  type ResourceWithSubject,
-} from "@/features/resources/queries";
+import { usePyqResources, type ResourceWithSubject } from "@/features/resources/queries";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
@@ -53,8 +47,6 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
 }
 
 export default function PYQsPage() {
-  const { branch: branchSlug } = useBranch();
-  const { data: branch } = useBranchBySlug(branchSlug);
   const { term: termSlug } = useTerm();
   const { data: term } = useTermBySlug(termSlug);
 
@@ -69,8 +61,21 @@ export default function PYQsPage() {
   const [dateFilter, setDateFilter] = useState("");
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
-  const { data: subjectOptions } = useSubjects(branch?.id ?? null, term?.id ?? null);
   const { data: resources, isLoading, isError } = usePyqResources(term?.id ?? null);
+  // Derived from the actual PYQs, not the viewer's own branch's
+  // subjects table — a branch's subject list (e.g. AIDS's, which is
+  // entirely different from AIML/Core's for 1st Year) doesn't cover
+  // every subject a PYQ might exist under, since PYQs are shared
+  // across every branch in the term. This way the dropdown always
+  // matches what's actually filterable, regardless of which branch
+  // uploaded which PYQ.
+  const subjectOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const resource of resources ?? []) {
+      if (resource.subject?.name) names.add(resource.subject.name);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [resources]);
 
   const filtered = useMemo(() => {
     const base = resources ?? [];
@@ -125,9 +130,9 @@ export default function PYQsPage() {
             className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value={ALL_SUBJECTS}>All subjects</option>
-            {subjectOptions?.map((subject) => (
-              <option key={subject.id} value={subject.name}>
-                {subject.name}
+            {subjectOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
               </option>
             ))}
             <option value={EXTRA_SUBJECT}>Extra</option>
@@ -187,9 +192,9 @@ export default function PYQsPage() {
             className="min-w-0 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value={ALL_SUBJECTS}>All subjects</option>
-            {subjectOptions?.map((subject) => (
-              <option key={subject.id} value={subject.name}>
-                {subject.name}
+            {subjectOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
               </option>
             ))}
             <option value={EXTRA_SUBJECT}>Extra</option>
