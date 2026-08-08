@@ -103,16 +103,27 @@ function FilterSelect({
   value,
   onChange,
   options,
+  fullWidth = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
+  // Desktop sizes selects to their content (a wrapping flex row of
+  // mismatched widths reads fine there); mobile/tablet lays them out
+  // in a fixed grid instead, where a content-sized select looks
+  // misaligned against its neighbor — fullWidth makes it fill the
+  // grid cell so every control in a row lines up.
+  fullWidth?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <label className="font-mono text-xs text-subtle-foreground">{label}</label>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className={selectClass}>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(selectClass, fullWidth && "w-full min-w-0")}
+      >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -352,7 +363,10 @@ export function ManageResourceList({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Desktop (lg+) — exact original layout, untouched. Duplicated
+          rather than reflowed with responsive classes so the mobile/
+          tablet redesign below can't accidentally affect it. */}
+      <div className="hidden lg:flex lg:flex-wrap lg:items-center lg:gap-3">
         <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
           <input
@@ -378,7 +392,7 @@ export function ManageResourceList({
         )}
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="hidden lg:flex lg:flex-wrap lg:items-end lg:gap-3">
         {isAdmin && (
           <FilterSelect
             label="Year"
@@ -425,6 +439,97 @@ export function ManageResourceList({
             { value: "oldest", label: "Oldest first" },
           ]}
         />
+      </div>
+
+      {/* Mobile/tablet (below lg) — grouped into one visually distinct
+          card, filters laid out in a fixed 2-column grid (fullWidth
+          selects) so every control lines up regardless of how long
+          its selected option's text is. */}
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card/40 p-3 lg:hidden">
+        <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">Filters</h2>
+
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search title, subject, branch, year, date…"
+            className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+
+        {isAdmin && (
+          <div className="grid grid-cols-2 gap-2">
+            <FilterSelect
+              label="Year"
+              value={termFilter}
+              onChange={setTermFilter}
+              options={[{ value: ALL, label: "All years" }, ...termOptions.map((t) => ({ value: t, label: t }))]}
+              fullWidth
+            />
+            <FilterSelect
+              label="Branch"
+              value={branchFilter}
+              onChange={setBranchFilter}
+              options={[
+                { value: ALL, label: "All branches" },
+                ...branchOptions.map((b) => ({ value: b, label: b })),
+              ]}
+              fullWidth
+            />
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <FilterSelect
+            label="Type"
+            value={typeFilter}
+            onChange={(value) => {
+              setTypeFilter(value);
+              setSubjectFilter(ALL);
+            }}
+            options={[{ value: ALL, label: "All types" }, ...TYPE_OPTIONS.map((t) => ({ value: t, label: t }))]}
+            fullWidth
+          />
+          {typeFilter !== "Notices" && typeFilter !== "Sancturm updates" && (
+            <FilterSelect
+              label="Subject"
+              value={subjectFilter}
+              onChange={setSubjectFilter}
+              options={[
+                { value: ALL, label: "All subjects" },
+                ...subjectOptions.map((s) => ({ value: s, label: s })),
+              ]}
+              fullWidth
+            />
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label className="font-mono text-xs text-subtle-foreground">Exact date</label>
+            <DateFilterInput value={dateFilter} onChange={setDateFilter} className="w-full" />
+          </div>
+          <FilterSelect
+            label="Date"
+            value={dateSort}
+            onChange={(value) => setDateSort(value as "newest" | "oldest")}
+            options={[
+              { value: "newest", label: "Newest first" },
+              { value: "oldest", label: "Oldest first" },
+            ]}
+            fullWidth
+          />
+        </div>
+
+        {dateFilter && (
+          <button
+            onClick={() => setDateFilter("")}
+            className="self-start font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
+          >
+            Clear date
+          </button>
+        )}
       </div>
 
       {isEmpty && (

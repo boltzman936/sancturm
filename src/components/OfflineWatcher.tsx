@@ -4,19 +4,24 @@ import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 const OFFLINE_PATH = "/offline";
+const OFFLINE_BG_SRC = "/images/no-internet-bg.webp";
 // Where to send the student back to once they're reconnected —
 // sessionStorage (not a ref) because the redirect to /offline is a
 // full route change, and this needs to survive that.
 const RETURN_PATH_KEY = "sancturm:pre-offline-path";
 
 /**
- * Mounted once in the root layout. Two jobs:
+ * Mounted once in the root layout. Three jobs:
  *  1. Prefetch /offline while still online, so the moment the
  *     connection actually drops, router.push() can resolve it from
  *     the client-side router cache instead of needing a network
  *     round-trip it can no longer make — the whole point of the page
  *     is to appear exactly when the network can't be reached.
- *  2. Watch the browser's online/offline events and swap the route
+ *  2. Warm the browser's HTTP cache with the offline page's
+ *     background image for the same reason — prefetch above only
+ *     covers the route's JS/RSC payload, not a plain <img> src the
+ *     page loads separately.
+ *  3. Watch the browser's online/offline events and swap the route
  *     in both directions.
  */
 export function OfflineWatcher() {
@@ -30,6 +35,10 @@ export function OfflineWatcher() {
 
   useEffect(() => {
     router.prefetch(OFFLINE_PATH);
+    // Plain Image() fetch, not next/image — this just needs the byte
+    // in the browser cache ahead of time, no resizing involved.
+    const img = new window.Image();
+    img.src = OFFLINE_BG_SRC;
   }, [router]);
 
   useEffect(() => {

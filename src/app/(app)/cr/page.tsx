@@ -25,9 +25,13 @@ export default async function CRDashboardPage() {
         </p>
       </div>
 
+      {/* flex-col on phone/tablet — stacked title-then-description with
+          a real gap, so the description wraps naturally instead of
+          being squeezed onto the same line as the title. lg: switches
+          back to the original single-row layout, untouched. */}
       <Link
         href="/cr/upload"
-        className="flex items-center justify-between rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary active:border-primary"
+        className="flex flex-col items-start gap-1 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary active:border-primary lg:flex-row lg:items-center lg:justify-between lg:gap-4"
       >
         <span className="text-foreground">Upload directly</span>
         <span className="text-sm text-muted-foreground">Published immediately</span>
@@ -35,7 +39,7 @@ export default async function CRDashboardPage() {
 
       <Link
         href="/cr/manage"
-        className="flex items-center justify-between rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary active:border-primary"
+        className="flex flex-col items-start gap-1 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary active:border-primary lg:flex-row lg:items-center lg:justify-between lg:gap-4"
       >
         <span className="text-foreground">Manage</span>
         <span className="text-sm text-muted-foreground">Remove published items</span>

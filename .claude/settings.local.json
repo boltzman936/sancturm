@@ -109,7 +109,13 @@
       "Bash(git fetch *)",
       "Bash(git merge *)",
       "Bash(grep -n 'key={\\\\`\\\\${resourceType}-\\\\${branchId}\\\\`}' /Users/anuragkumar/Downloads/sancturm/src/features/resources/components/CRUploadForm.tsx)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(vercel --prod --yes --no-wait)",
+      "Bash(curl -s -o /dev/null -w \"sancturm.vercel.app/notes: %{http_code}\\\\n\" https://sancturm.vercel.app/notes)",
+      "Bash(curl -s -o /dev/null -w \"sancturm.vercel.app/offline: %{http_code}\\\\n\" https://sancturm.vercel.app/offline)",
+      "Bash(sips -g pixelWidth -g pixelHeight -g formatOptions /Users/anuragkumar/Downloads/sancturm/public/images/no-internet-bg.png)",
+      "Bash(cwebp -q 78 -resize 1600 0 no-internet-bg.png -o no-internet-bg.webp)",
+      "Bash(xargs ls -la)"
     ]
   }
 }

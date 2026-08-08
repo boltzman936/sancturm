@@ -37,11 +37,18 @@ function handleRetry() {
 export default function OfflinePage() {
   return (
     <main className="fixed inset-0 overflow-hidden bg-background">
+      {/* unoptimized: this page's whole point is to render with no
+          network available — going through Next's /_next/image
+          resizing endpoint would need a live server round-trip it
+          can't make. The source is pre-compressed to a ~100KB WebP
+          (see OfflineWatcher's preload) so there's nothing left for
+          the optimizer to usefully do anyway. */}
       <Image
-        src="/images/no-internet-bg.png"
+        src="/images/no-internet-bg.webp"
         alt=""
         fill
         priority
+        unoptimized
         className="object-cover"
       />
       {/* Dark overlay for text legibility — deliberately light (30%)
