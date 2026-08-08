@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
+import { useTerm } from "@/hooks/useTerm";
 import { useBranchBySlug } from "@/features/branches/queries";
+import { useTermBySlug } from "@/features/terms/queries";
 import {
   usePyqResources,
   useSubjects,
@@ -53,6 +55,8 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
 export default function PYQsPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
+  const { term: termSlug } = useTerm();
+  const { data: term } = useTermBySlug(termSlug);
 
   const [dateSort, setDateSort] = useState<DateSort>("newest");
   // Subject filter is matched by NAME, not id — PYQs span every
@@ -65,8 +69,8 @@ export default function PYQsPage() {
   const [dateFilter, setDateFilter] = useState("");
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
-  const { data: subjectOptions } = useSubjects(branch?.id ?? null);
-  const { data: resources, isLoading, isError } = usePyqResources();
+  const { data: subjectOptions } = useSubjects(branch?.id ?? null, term?.id ?? null);
+  const { data: resources, isLoading, isError } = usePyqResources(term?.id ?? null);
 
   const filtered = useMemo(() => {
     const base = resources ?? [];
@@ -88,11 +92,15 @@ export default function PYQsPage() {
       <div>
         <h1 className="text-2xl font-medium text-foreground">PYQs</h1>
         <p className="text-muted-foreground">
-          Previous year questions — shared across every CSE branch this term.
+          Previous year questions — shared across every CSE branch
+          {term ? ` in ${term.label.split(" - ")[0]}` : " this term"}.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Desktop (lg+) — exact original layout, untouched. Duplicated
+          rather than reflowed with responsive classes so the mobile/
+          tablet redesign below can't accidentally affect it. */}
+      <div className="hidden lg:flex lg:flex-wrap lg:items-center lg:justify-between lg:gap-3">
         <div className="flex gap-1 rounded-md border border-border bg-card p-1">
           {(["newest", "oldest"] as const).map((option) => (
             <button
@@ -127,7 +135,7 @@ export default function PYQsPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="hidden lg:flex lg:flex-wrap lg:items-center lg:gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
           <input
@@ -149,6 +157,70 @@ export default function PYQsPage() {
           </button>
         )}
       </div>
+
+      {/* Mobile/tablet (below lg) — grouped into one visually distinct
+          "Filters" card, same pattern as the Notes & Lab page. */}
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card/40 p-3 lg:hidden">
+        <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">Filters</h2>
+
+        <div className="flex gap-1 rounded-md border border-border bg-card p-1">
+          {(["newest", "oldest"] as const).map((option) => (
+            <button
+              key={option}
+              onClick={() => setDateSort(option)}
+              className={cn(
+                "flex-1 rounded px-2 py-1.5 text-sm capitalize transition-colors",
+                dateSort === option
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground active:text-foreground"
+              )}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <select
+            value={subjectFilter}
+            onChange={(event) => setSubjectFilter(event.target.value)}
+            className="min-w-0 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value={ALL_SUBJECTS}>All subjects</option>
+            {subjectOptions?.map((subject) => (
+              <option key={subject.id} value={subject.name}>
+                {subject.name}
+              </option>
+            ))}
+            <option value={EXTRA_SUBJECT}>Extra</option>
+          </select>
+
+          <DateFilterInput value={dateFilter} onChange={setDateFilter} />
+        </div>
+
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search title, subject, date…"
+            className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+
+        {dateFilter && (
+          <button
+            onClick={() => setDateFilter("")}
+            className="self-start font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
+          >
+            Clear date
+          </button>
+        )}
+      </div>
+
+      <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground lg:hidden">
+        PYQs
+      </h2>
 
       {isLoading && (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">

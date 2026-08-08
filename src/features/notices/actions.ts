@@ -19,6 +19,7 @@ export async function createNotice(formData: FormData) {
   if (!user) throw new Error("Not signed in.");
 
   const branchId = formData.get("branchId") as string;
+  const termId = formData.get("termId") as string;
   const title = formData.get("title") as string;
   // Uploaded straight to R2 from the browser already — see resources/
   // actions.ts's uploadResourceDirect for the full reasoning.
@@ -26,6 +27,7 @@ export async function createNotice(formData: FormData) {
 
   const { error: insertError } = await supabase.from("notices").insert({
     branch_id: branchId,
+    term_id: termId,
     title,
     pdf_url: fileUrl,
     important_dates: [],
@@ -45,11 +47,13 @@ export async function createCustomNotice(formData: FormData) {
   if (!user) throw new Error("Not signed in.");
 
   const branchId = formData.get("branchId") as string;
+  const termId = formData.get("termId") as string;
   const title = formData.get("title") as string;
   const body = formData.get("body") as string;
 
   const { error: insertError } = await supabase.from("notices").insert({
     branch_id: branchId,
+    term_id: termId,
     title,
     body,
     pdf_url: null,

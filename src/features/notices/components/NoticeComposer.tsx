@@ -8,15 +8,21 @@ import { titleFromFileName } from "@/features/uploads/titleFromFileName";
 import { cn } from "@/lib/utils";
 
 type BranchOption = { id: string; name: string };
+type TermOption = { id: string; label: string };
 
 export function NoticeComposer({
   branches,
+  terms,
   fixedBranchId,
+  fixedTermId,
 }: {
   branches: BranchOption[];
+  terms: TermOption[];
   fixedBranchId?: string;
+  fixedTermId?: string;
 }) {
   const [branchId, setBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
@@ -26,7 +32,7 @@ export function NoticeComposer({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file || !branchId) return;
+    if (!file || !branchId || !termId) return;
     setSuccess(false);
     setError(null);
 
@@ -43,6 +49,7 @@ export function NoticeComposer({
 
         const formData = new FormData();
         formData.set("branchId", branchId);
+        formData.set("termId", termId);
         formData.set("title", title);
         formData.set("fileUrl", fileUrl);
 
@@ -51,7 +58,7 @@ export function NoticeComposer({
         // pages, but /notices reads through TanStack Query's client
         // cache — that needs its own invalidation to show the new notice
         // without a manual refresh.
-        queryClient.invalidateQueries({ queryKey: ["notices", branchId] });
+        queryClient.invalidateQueries({ queryKey: ["notices", branchId, termId] });
         setSuccess(true);
         formRef.current?.reset();
         setFile(null);
@@ -67,6 +74,26 @@ export function NoticeComposer({
       onSubmit={handleSubmit}
       className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4"
     >
+      {!fixedTermId && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="notice-term" className="font-mono text-xs text-subtle-foreground">
+            Year
+          </label>
+          <select
+            id="notice-term"
+            value={termId}
+            onChange={(event) => setTermId(event.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {terms.map((term) => (
+              <option key={term.id} value={term.id}>
+                {term.label.split(" - ")[0]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {branches.length > 1 && !fixedBranchId && (
         <div className="flex flex-col gap-1">
           <label htmlFor="branch" className="font-mono text-xs text-subtle-foreground">
@@ -115,7 +142,7 @@ export function NoticeComposer({
 
       <button
         type="submit"
-        disabled={isPending || !file || !branchId}
+        disabled={isPending || !file || !branchId || !termId}
         className={cn(
           "self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
         )}

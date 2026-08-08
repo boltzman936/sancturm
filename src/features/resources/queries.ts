@@ -8,21 +8,22 @@ export type ResourceWithSubject = Resource & {
   subject: Pick<Subject, "id" | "name" | "sort_order"> | null;
 };
 
-/** Subjects for one branch, ordered the way the CR arranged them. */
-export function useSubjects(branchId: string | null) {
+/** Subjects for one (branch, term) pair, ordered the way the CR arranged them. */
+export function useSubjects(branchId: string | null, termId: string | null) {
   return useQuery({
-    queryKey: ["subjects", branchId],
+    queryKey: ["subjects", branchId, termId],
     queryFn: async () => {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("subjects")
         .select("*")
         .eq("branch_id", branchId!)
+        .eq("term_id", termId!)
         .order("sort_order", { ascending: true });
       if (error) throw error;
       return data as Subject[];
     },
-    enabled: !!branchId,
+    enabled: !!branchId && !!termId,
     // Subjects only change when a CR restructures the syllabus list —
     // near-static reference data, same reasoning as useBranchBySlug.
     staleTime: 5 * 60_000,
@@ -30,20 +31,25 @@ export function useSubjects(branchId: string | null) {
 }
 
 /**
- * Approved Notes & Lab resources for one branch + type ('notes' or
- * 'lab_manual'). Returned unsorted-by-intent — the page does the
- * subject-vs-time sort client-side over this same fetched set, so
- * toggling the sort control doesn't cost another network round trip.
+ * Approved Notes & Lab resources for one (branch, term) pair + type
+ * ('notes' or 'lab_manual'). Returned unsorted-by-intent — the page
+ * does the subject-vs-time sort client-side over this same fetched
+ * set, so toggling the sort control doesn't cost another round trip.
  */
-export function useNotesAndLabResources(branchId: string | null, resourceType: ResourceType) {
+export function useNotesAndLabResources(
+  branchId: string | null,
+  termId: string | null,
+  resourceType: ResourceType
+) {
   return useQuery({
-    queryKey: ["resources", "notes_lab", branchId, resourceType],
+    queryKey: ["resources", "notes_lab", branchId, termId, resourceType],
     queryFn: async () => {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("resources")
         .select("*, subject:subjects(id, name, sort_order)")
         .eq("branch_id", branchId!)
+        .eq("term_id", termId!)
         .eq("section", "notes_lab")
         .eq("resource_type", resourceType)
         .eq("status", "approved")
@@ -52,25 +58,27 @@ export function useNotesAndLabResources(branchId: string | null, resourceType: R
       if (error) throw error;
       return data as unknown as ResourceWithSubject[];
     },
-    enabled: !!branchId,
+    enabled: !!branchId && !!termId,
     staleTime: 30_000,
   });
 }
 
 /**
- * PYQs are shared across every CSE branch for this term (see
- * supabase/pyq_cross_branch.sql) — deliberately NOT filtered by
- * branch_id, unlike useNotesAndLabResources. A PYQ uploaded by any
- * branch's CR shows up for every branch's students.
+ * PYQs are shared across every CSE branch WITHIN a term (see
+ * supabase/scope_cr_by_term.sql) — deliberately not filtered by
+ * branch_id, unlike useNotesAndLabResources, but IS filtered by term
+ * (a 1st-Year Sem 1 PYQ has nothing to do with a 2nd-Year Sem 3
+ * student, even though a same-term PYQ crosses branches freely).
  */
-export function usePyqResources() {
+export function usePyqResources(termId: string | null) {
   return useQuery({
-    queryKey: ["resources", "pyq"],
+    queryKey: ["resources", "pyq", termId],
     queryFn: async () => {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("resources")
         .select("*, subject:subjects(id, name, sort_order)")
+        .eq("term_id", termId!)
         .eq("section", "pyq")
         .eq("status", "approved")
         .order("is_pinned", { ascending: false })
@@ -78,6 +86,7 @@ export function usePyqResources() {
       if (error) throw error;
       return data as unknown as ResourceWithSubject[];
     },
+    enabled: !!termId,
     staleTime: 30_000,
   });
 }

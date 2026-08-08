@@ -67,6 +67,7 @@ export async function uploadResourceDirect(formData: FormData) {
   const role = await getCurrentRole();
 
   const branchId = formData.get("branchId") as string;
+  const termId = formData.get("termId") as string;
   const subjectId = (formData.get("subjectId") as string) || null;
   const section = formData.get("section") as string;
   const resourceType = formData.get("resourceType") as string;
@@ -80,6 +81,7 @@ export async function uploadResourceDirect(formData: FormData) {
 
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
+    term_id: termId,
     subject_id: subjectId,
     section,
     resource_type: resourceType,
@@ -98,17 +100,20 @@ export async function uploadResourceDirect(formData: FormData) {
 }
 
 /**
- * Admin-only: publishes one Notes/Lab resource to every branch in a
- * single action, instead of repeating the upload per branch. Uploads
- * the file to R2 once, then inserts one `resources` row per branch —
- * each branch has its own `subjects` rows with different UUIDs even
- * for identically-named subjects, so the subject is resolved by NAME
- * within each branch rather than reusing one subject_id everywhere
- * (same cross-branch-name-matching approach already used for PYQ).
- * RLS only lets an admin insert outside their own branch scope at
- * all (see supabase/restrict_uploads_to_cr.sql), so a non-admin
- * calling this just gets a database rejection either way — the
- * explicit role check here is just a faster, clearer failure.
+ * Admin-only: publishes one Notes/Lab resource to every branch WITHIN
+ * ONE TERM in a single action, instead of repeating the upload per
+ * branch — a 1st-Year note has nothing to do with 2nd-Year branches,
+ * so this deliberately doesn't cross terms (confirmed behavior, not
+ * "all 6 branch/term combos"). Uploads the file to R2 once, then
+ * inserts one `resources` row per branch — each branch has its own
+ * `subjects` rows with different UUIDs even for identically-named
+ * subjects, so the subject is resolved by NAME within each branch
+ * rather than reusing one subject_id everywhere (same cross-branch-
+ * name-matching approach already used for PYQ). RLS only lets an
+ * admin insert outside their own branch scope at all (see supabase/
+ * restrict_uploads_to_cr.sql), so a non-admin calling this just gets
+ * a database rejection either way — the explicit role check here is
+ * just a faster, clearer failure.
  */
 export async function uploadResourceDirectAllBranches(formData: FormData) {
   const supabase = await createClient();
@@ -120,6 +125,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
 
+  const termId = formData.get("termId") as string;
   const subjectName = (formData.get("subjectName") as string) || null;
   const section = formData.get("section") as string;
   const resourceType = formData.get("resourceType") as string;
@@ -138,6 +144,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
         .from("subjects")
         .select("id")
         .eq("branch_id", branch.id)
+        .eq("term_id", termId)
         .eq("name", subjectName)
         .maybeSingle();
       subjectId = subject?.id ?? null;
@@ -145,6 +152,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
 
     const { error: insertError } = await supabase.from("resources").insert({
       branch_id: branch.id,
+      term_id: termId,
       subject_id: subjectId,
       section,
       resource_type: resourceType,

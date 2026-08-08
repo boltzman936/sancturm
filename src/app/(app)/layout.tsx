@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Menu } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
+import { useTerm } from "@/hooks/useTerm";
 import { useCommandPaletteShortcut } from "@/hooks/useCommandPaletteShortcut";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { CommandPalette } from "@/components/layout/CommandPalette";
@@ -12,7 +13,9 @@ import { CommandPalette } from "@/components/layout/CommandPalette";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { branch, isLoaded } = useBranch();
+  const { branch, isLoaded: branchLoaded } = useBranch();
+  const { term, isLoaded: termLoaded } = useTerm();
+  const isLoaded = branchLoaded && termLoaded;
 
   // Owned here, not inside CommandPalette — the Ctrl+K shortcut opens
   // this dialog. See useCommandPaletteShortcut.ts for why.
@@ -31,12 +34,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    if (isLoaded && !branch) {
+    if (isLoaded && (!branch || !term)) {
       router.replace("/");
     }
-  }, [isLoaded, branch, router]);
+  }, [isLoaded, branch, term, router]);
 
-  if (!isLoaded || !branch) return null;
+  if (!isLoaded || !branch || !term) return null;
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">

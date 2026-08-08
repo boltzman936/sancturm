@@ -11,7 +11,9 @@ import { deleteSancturmUpdate } from "@/features/sancturmUpdates/actions";
 import { useSubjects } from "@/features/resources/queries";
 import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { useBranch } from "@/hooks/useBranch";
+import { useTerm } from "@/hooks/useTerm";
 import { useBranchBySlug } from "@/features/branches/queries";
+import { useTermBySlug } from "@/features/terms/queries";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
@@ -55,7 +57,14 @@ export type ManageableResource = {
   created_at: string;
   subject: { name: string } | null;
   branch: { name: string } | null;
+  term: { label: string } | null;
 };
+
+// Terms show as just "1st Year" / "2nd Year" everywhere in the UI —
+// see TermSelectCard's identical comment for why.
+function termShortLabel(term: { label: string } | null) {
+  return term?.label.split(" - ")[0] ?? "";
+}
 
 const ALL = "all";
 
@@ -77,6 +86,7 @@ function matchesSearch(resource: ManageableResource, query: string) {
     resource.title,
     resource.subject?.name ?? "",
     resource.branch?.name ?? "",
+    termShortLabel(resource.term),
     uploaderLabel(resource),
     formatTimestamp(resource.created_at),
   ]
@@ -127,8 +137,11 @@ function ResourceRow({
   // Admin sees the branch on every row. A CR only ever manages their
   // own branch's notes_lab items (branch is implied, no need to show
   // it) — but PYQs are shared across branches, so which branch a PYQ
-  // came from is genuinely useful context even for a CR.
+  // came from is genuinely useful context even for a CR. Term is only
+  // ever ambiguous for admin (a CR's own term is implied — even a PYQ
+  // stays within their own term, never shown to them cross-term).
   const showBranch = isAdmin || resource.section === "pyq";
+  const showTerm = isAdmin && resource.term;
   return (
     <li
       className={cn(
@@ -147,6 +160,12 @@ function ResourceRow({
         <div className="min-w-0">
           <p className="truncate text-foreground">{resource.title}</p>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-subtle-foreground">
+            {showTerm && (
+              <>
+                <span>{termShortLabel(resource.term)}</span>
+                <span aria-hidden="true">·</span>
+              </>
+            )}
             {showBranch && (
               <>
                 <span>{resource.branch?.name}</span>
@@ -178,17 +197,22 @@ export function ManageResourceList({
   resources,
   isAdmin,
   branches,
+  terms,
 }: {
   resources: ManageableResource[];
   isAdmin: boolean;
   // Full catalog (every branch, not just ones with a published item
   // right now) — same fixed-list treatment as TYPE_OPTIONS below.
   branches: { name: string }[];
+  // Same idea, for year — lets admin narrow the list to one year
+  // instead of seeing every branch/term combo interleaved.
+  terms: { label: string }[];
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
   const [branchFilter, setBranchFilter] = useState(ALL);
+  const [termFilter, setTermFilter] = useState(ALL);
   const [typeFilter, setTypeFilter] = useState(ALL);
   const [subjectFilter, setSubjectFilter] = useState(ALL);
   const [dateSort, setDateSort] = useState<"newest" | "oldest">("newest");
@@ -199,6 +223,7 @@ export function ManageResourceList({
   // standard branch order (AIML, Core, AIDS) straight from the query,
   // and alphabetizing here would silently undo that.
   const branchOptions = useMemo(() => branches.map((b) => b.name), [branches]);
+  const termOptions = useMemo(() => terms.map((t) => termShortLabel(t)), [terms]);
 
   // Fixed set, not derived — these are the app's upload types
   // regardless of whether one currently has zero items. Sancturm
@@ -212,11 +237,13 @@ export function ManageResourceList({
   // Full subject catalog (not just subjects that happen to have a
   // published item) — same source /notes and /cr/upload use. Subject
   // names are identical across every branch (only the row id differs
-  // per branch), so the viewer's own sidebar branch is a fine stand-in
-  // even when Branch is set to "All branches" above.
+  // per branch), so the viewer's own sidebar branch+year is a fine
+  // stand-in even when Branch/Year is set to "All" above.
   const { branch: branchSlug } = useBranch();
   const { data: currentBranch } = useBranchBySlug(branchSlug);
-  const { data: allSubjects } = useSubjects(currentBranch?.id ?? null);
+  const { term: termSlug } = useTerm();
+  const { data: currentTerm } = useTermBySlug(termSlug);
+  const { data: allSubjects } = useSubjects(currentBranch?.id ?? null, currentTerm?.id ?? null);
 
   // Subjects are scoped to whichever type is picked (a "Lab" subject
   // list is only the subjects with a lab component) — resetting
@@ -237,9 +264,10 @@ export function ManageResourceList({
       .filter((r) => !dateFilter || localDateKey(r.created_at) === dateFilter)
       .filter((r) => matchesSearch(r, searchQuery))
       .filter((r) => branchFilter === ALL || r.branch?.name === branchFilter)
+      .filter((r) => termFilter === ALL || termShortLabel(r.term) === termFilter)
       .filter((r) => typeFilter === ALL || typeGroupLabel(r) === typeFilter)
       .filter((r) => subjectFilter === ALL || (r.subject?.name ?? "Extra") === subjectFilter);
-  }, [resources, dateFilter, searchQuery, branchFilter, typeFilter, subjectFilter]);
+  }, [resources, dateFilter, searchQuery, branchFilter, termFilter, typeFilter, subjectFilter]);
 
   // With no type picked, group into labeled sections (Notes, Lab, PYQ,
   // Notices) so they don't interleave. Once a specific type is chosen
@@ -330,7 +358,7 @@ export function ManageResourceList({
           <input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search title, subject, branch, date…"
+            placeholder="Search title, subject, branch, year, date…"
             className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
@@ -351,6 +379,15 @@ export function ManageResourceList({
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
+        {isAdmin && (
+          <FilterSelect
+            label="Year"
+            value={termFilter}
+            onChange={setTermFilter}
+            options={[{ value: ALL, label: "All years" }, ...termOptions.map((t) => ({ value: t, label: t }))]}
+          />
+        )}
+
         {isAdmin && (
           <FilterSelect
             label="Branch"

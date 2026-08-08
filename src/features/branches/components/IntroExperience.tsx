@@ -6,10 +6,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { useBranch } from "@/hooks/useBranch";
+import { useTerm } from "@/hooks/useTerm";
 import { BranchSelectCard } from "@/features/branches/components/BranchSelectCard";
+import { TermSelectCard } from "@/features/terms/components/TermSelectCard";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Branch } from "@/features/branches/types";
+import type { AcademicTerm } from "@/types/database";
 
 const HEADLINE = "Welcome to Sancturm";
 const TYPING_SPEED_MS = 70;
@@ -76,7 +79,9 @@ function useIsMobileWidth() {
 
 export function IntroExperience() {
   const router = useRouter();
-  const { setBranch, isLoaded } = useBranch();
+  const { setBranch, isLoaded: branchLoaded } = useBranch();
+  const { setTerm, isLoaded: termLoaded } = useTerm();
+  const isLoaded = branchLoaded && termLoaded;
   const queryClient = useQueryClient();
   const prefersReducedMotion = useReducedMotion();
   const isPortrait = usePortraitLayout();
@@ -87,7 +92,11 @@ export function IntroExperience() {
   const [typedText, setTypedText] = useState("");
   const [typingDone, setTypingDone] = useState(false);
   const [cursorVisible, setCursorVisible] = useState(true);
-  const [showBranchCard, setShowBranchCard] = useState(false);
+  const [showSelector, setShowSelector] = useState(false);
+  // Year first, then branch — mirrors the sidebar switcher's two
+  // independent selectors, and keeps each card asking exactly one
+  // question instead of a single crowded picker.
+  const [step, setStep] = useState<"term" | "branch">("term");
   const [exiting, setExiting] = useState(false);
   // Gates the typing sequence so the headline never starts animating
   // over a still-black screen on a slow connection — it used to fire
@@ -134,6 +143,17 @@ export function IntroExperience() {
           queryClient.setQueryData(["branch", branch.slug], branch);
         }
       });
+    supabase
+      .from("academic_terms")
+      .select("*")
+      .order("sort_order")
+      .then(({ data }) => {
+        const terms = (data as AcademicTerm[] | null) ?? [];
+        queryClient.setQueryData(["terms"], terms);
+        for (const term of terms) {
+          queryClient.setQueryData(["term", term.slug], term);
+        }
+      });
   }, [queryClient]);
 
   // The typing sequence: 700ms wait after the video is actually ready,
@@ -169,7 +189,7 @@ export function IntroExperience() {
   }, [isLoaded, videoReady, prefersReducedMotion]);
 
   // Once typing finishes: the cursor keeps blinking a moment longer
-  // then fades away on its own, and the branch card follows shortly
+  // then fades away on its own, and the term card follows shortly
   // after.
   useEffect(() => {
     if (!typingDone) return;
@@ -178,7 +198,7 @@ export function IntroExperience() {
       prefersReducedMotion ? 0 : CURSOR_HOLD_MS
     );
     const cardTimer = setTimeout(
-      () => setShowBranchCard(true),
+      () => setShowSelector(true),
       prefersReducedMotion ? 0 : 600
     );
     return () => {
@@ -186,6 +206,11 @@ export function IntroExperience() {
       clearTimeout(cardTimer);
     };
   }, [typingDone, prefersReducedMotion]);
+
+  function handleTermSelect(slug: string) {
+    setTerm(slug);
+    setStep("branch");
+  }
 
   function handleBranchSelect(slug: string) {
     setBranch(slug);
@@ -279,14 +304,28 @@ export function IntroExperience() {
             </h1>
           )}
 
-          {showBranchCard && (
+          {showSelector && (
             <motion.div
+              key={step}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
-              className="mt-2"
+              className="mt-2 flex flex-col items-center gap-3"
             >
-              <BranchSelectCard onSelect={handleBranchSelect} />
+              {step === "term" ? (
+                <TermSelectCard onSelect={handleTermSelect} />
+              ) : (
+                <>
+                  <BranchSelectCard onSelect={handleBranchSelect} />
+                  <button
+                    type="button"
+                    onClick={() => setStep("term")}
+                    className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
+                  >
+                    ← change year
+                  </button>
+                </>
+              )}
             </motion.div>
           )}
         </div>

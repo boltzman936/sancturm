@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { OfflineWatcher } from "@/components/OfflineWatcher";
 
 // Display + body face. Loaded once here and exposed as a CSS variable —
 // every component gets it "for free" via the --font-sans token in
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        <OfflineWatcher />
         <Providers>{children}</Providers>
       </body>
     </html>

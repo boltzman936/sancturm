@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Download, Eye, Pin, Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
+import { useTerm } from "@/hooks/useTerm";
 import { useBranchBySlug } from "@/features/branches/queries";
+import { useTermBySlug } from "@/features/terms/queries";
 import { useNotices } from "@/features/notices/queries";
 import { toggleNoticePin } from "@/features/notices/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
@@ -36,18 +38,23 @@ function matchesSearch(notice: Notice, query: string) {
 export default function NoticesPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
-  const { data: notices, isLoading, isError } = useNotices(branch?.id ?? null);
+  const { term: termSlug } = useTerm();
+  const { data: term } = useTermBySlug(termSlug);
+  const { data: notices, isLoading, isError } = useNotices(branch?.id ?? null, term?.id ?? null);
   const { data: role } = useCurrentRole();
   const queryClient = useQueryClient();
 
-  // A CR can browse another branch's notices like a normal student
-  // (no manage powers there) — pinning only works on their own branch,
-  // same as everything else in the CR permission model.
-  const canManage = role?.type === "admin" || (role?.type === "cr" && role.branchId === branch?.id);
+  // A CR can browse another (branch, term)'s notices like a normal
+  // student (no manage powers there) — pinning only works on their
+  // own (branch, term), same as everything else in the CR permission
+  // model.
+  const canManage =
+    role?.type === "admin" ||
+    (role?.type === "cr" && role.branchId === branch?.id && role.termId === term?.id);
 
   async function handleTogglePin(notice: Notice) {
     await toggleNoticePin(notice.id, !notice.is_pinned);
-    queryClient.invalidateQueries({ queryKey: ["notices", branch?.id] });
+    queryClient.invalidateQueries({ queryKey: ["notices", branch?.id, term?.id] });
   }
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,7 +74,8 @@ export default function NoticesPage() {
       <div>
         <h1 className="text-2xl font-medium text-foreground">Notices</h1>
         <p className="text-muted-foreground">
-          Official PDFs for {branch?.name ?? "your branch"}.
+          Official PDFs for {branch?.name ?? "your branch"}
+          {term ? ` — ${term.label.split(" - ")[0]}` : ""}.
         </p>
       </div>
 

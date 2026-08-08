@@ -30,6 +30,24 @@ export type Branch = {
   created_at: string;
 };
 
+// A branch (AIML/Core/AIDS) doesn't carry year/semester itself — a
+// term is the (year, sem) pair layered on top, and every branch's
+// content is scoped to a specific (branch, term) pair once one
+// exists. Right now each year maps to exactly one semester (1st Year
+// -> Sem 1, 2nd Year -> Sem 3), so the UI only ever needs to ask
+// "which year", never a separate semester question — but the schema
+// supports adding a second term for the same year later without
+// restructuring anything.
+export type AcademicTerm = {
+  id: string;
+  year_number: number;
+  semester_number: number;
+  label: string;
+  slug: string;
+  sort_order: number;
+  created_at: string;
+};
+
 export type Admin = {
   id: string;
   auth_user_id: string;
@@ -41,6 +59,7 @@ export type CrProfile = {
   id: string;
   auth_user_id: string;
   branch_id: string;
+  term_id: string;
   display_name: string;
   created_at: string;
 };
@@ -72,6 +91,7 @@ export type ResourceStatus = "pending" | "approved" | "rejected";
 export type Resource = {
   id: string;
   branch_id: string;
+  term_id: string;
   subject_id: string | null;
   section: ResourceSection;
   resource_type: ResourceType | null;
@@ -98,6 +118,7 @@ export type ImportantDate = {
 export type Notice = {
   id: string;
   branch_id: string;
+  term_id: string;
   title: string;
   // Exactly one of these is set — pdf_url for an uploaded PDF, body
   // for a notice typed directly in the custom composer.

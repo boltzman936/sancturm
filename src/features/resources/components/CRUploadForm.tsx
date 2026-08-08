@@ -15,17 +15,26 @@ import { cn } from "@/lib/utils";
 type UploadType = "notes" | "lab_manual" | "pyq" | "notice" | "update";
 type PublishMode = "upload" | "custom";
 type BranchOption = { id: string; name: string };
+type TermOption = { id: string; label: string };
 
 export function CRUploadForm({
   branches,
+  terms,
   fixedBranchId,
+  fixedTermId,
   isAdmin,
 }: {
   // Every branch, always fetched now — needed even for a CR when
   // resourceType is "pyq" (any CR can publish a PYQ to any branch;
   // notes_lab stays locked to fixedBranchId).
   branches: BranchOption[];
+  // Every term — only actually pickable for admin (fixedTermId is
+  // undefined for them); a CR's term never changes, even for PYQ —
+  // only the branch unlocks there, since a CR is scoped to their own
+  // (branch, term) and PYQ's cross-branch exception stays within it.
+  terms: TermOption[];
   fixedBranchId?: string;
+  fixedTermId?: string;
   // "Update" is admin-only (Sancturm updates has no CR access at all,
   // see supabase/sancturm_updates_v2.sql) — CRs never see that type.
   isAdmin: boolean;
@@ -35,9 +44,11 @@ export function CRUploadForm({
   // PYQ is cross-branch even for a CR, so it needs its own pickable
   // branch, separate from the notes_lab-locked fixedBranchId.
   const [pyqBranchId, setPyqBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
-  // Admin-only: publish one Notes/Lab resource to every branch at once
-  // instead of repeating the upload per branch. Not offered for PYQ,
-  // which is already inherently shared across every branch in one row.
+  const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
+  // Admin-only: publish one Notes/Lab resource to every branch (within
+  // the picked term) at once instead of repeating the upload per
+  // branch. Not offered for PYQ, which is already inherently shared
+  // across every branch in one row.
   const [allBranches, setAllBranches] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -48,13 +59,14 @@ export function CRUploadForm({
   const canBulkPublish = isAdmin && (resourceType === "notes" || resourceType === "lab_manual");
   const isBulkPublish = canBulkPublish && allBranches;
   const showBranchPicker = !isBulkPublish && (resourceType === "pyq" || !fixedBranchId);
+  const showTermPicker = !fixedTermId;
   const branchId = resourceType === "pyq" ? pyqBranchId : fixedBranchId ?? pyqBranchId;
 
   // Even in bulk mode, subjects are fetched for one reference branch —
   // every branch has its own subjects row (different id) for the same
   // subject name, so this list only supplies which NAMES exist to
   // choose from; the id itself is discarded when submitting in bulk.
-  const { data: allSubjects } = useSubjects(branchId || null);
+  const { data: allSubjects } = useSubjects(branchId || null, termId || null);
   const subjects =
     resourceType === "lab_manual"
       ? allSubjects?.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
@@ -62,7 +74,7 @@ export function CRUploadForm({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file || (!isBulkPublish && !branchId)) return;
+    if (!file || !termId || (!isBulkPublish && !branchId)) return;
     setSuccess(false);
     setError(null);
 
@@ -83,6 +95,7 @@ export function CRUploadForm({
           const fileUrl = await uploadFileToR2(filePath, file);
 
           const formData = new FormData();
+          formData.set("termId", termId);
           formData.set("subjectName", subjectName);
           formData.set("section", "notes_lab");
           formData.set("resourceType", resourceType);
@@ -110,6 +123,7 @@ export function CRUploadForm({
 
         const formData = new FormData();
         formData.set("branchId", branchId);
+        formData.set("termId", termId);
         formData.set("subjectId", subjectValue);
         formData.set("section", section);
         formData.set("resourceType", resourceType === "pyq" ? "pdf" : resourceType);
@@ -197,9 +211,19 @@ export function CRUploadForm({
         {howToggle(publishMode, ["Upload PDF", "Write custom notice"])}
 
         {publishMode === "upload" ? (
-          <NoticeComposer branches={branches} fixedBranchId={fixedBranchId} />
+          <NoticeComposer
+            branches={branches}
+            terms={terms}
+            fixedBranchId={fixedBranchId}
+            fixedTermId={fixedTermId}
+          />
         ) : (
-          <CustomNoticeComposer branches={branches} fixedBranchId={fixedBranchId} />
+          <CustomNoticeComposer
+            branches={branches}
+            terms={terms}
+            fixedBranchId={fixedBranchId}
+            fixedTermId={fixedTermId}
+          />
         )}
       </div>
     );
@@ -243,6 +267,26 @@ export function CRUploadForm({
         </p>
       )}
 
+      {showTermPicker && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="term" className="font-mono text-xs text-subtle-foreground">
+            Year
+          </label>
+          <select
+            id="term"
+            value={termId}
+            onChange={(event) => setTermId(event.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {terms.map((term) => (
+              <option key={term.id} value={term.id}>
+                {term.label.split(" - ")[0]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {showBranchPicker && (
         <div className="flex flex-col gap-1">
           <label htmlFor="branch" className="font-mono text-xs text-subtle-foreground">
@@ -284,7 +328,7 @@ export function CRUploadForm({
           Subject
         </label>
         <select
-          key={`${resourceType}-${branchId}`}
+          key={`${resourceType}-${branchId}-${termId}`}
           id="subject"
           name="subject"
           className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -325,7 +369,7 @@ export function CRUploadForm({
 
       <button
         type="submit"
-        disabled={isPending || !file || (!isBulkPublish && !branchId)}
+        disabled={isPending || !file || !termId || (!isBulkPublish && !branchId)}
         className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
       >
         {isPending ? "Publishing…" : isBulkPublish ? "Publish to all branches" : "Publish now"}

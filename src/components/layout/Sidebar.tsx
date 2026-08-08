@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { FileText, HelpCircle, Megaphone, ShieldCheck, Sparkles, UserRound, X } from "lucide-react";
 
 import { BranchSwitcher } from "@/components/layout/BranchSwitcher";
+import { TermSwitcher } from "@/components/layout/TermSwitcher";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { cn } from "@/lib/utils";
 
@@ -62,7 +63,10 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </button>
         </div>
 
-        <BranchSwitcher />
+        <div className="flex flex-col gap-2">
+          <TermSwitcher />
+          <BranchSwitcher />
+        </div>
 
         <ul className="flex flex-col gap-1">
           {NAV_LINKS.map((link) => {

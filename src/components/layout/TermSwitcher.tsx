@@ -1,0 +1,54 @@
+"use client";
+
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { Check, ChevronsUpDown } from "lucide-react";
+
+import { useTerm } from "@/hooks/useTerm";
+import { useTerms } from "@/features/terms/queries";
+import { cn } from "@/lib/utils";
+
+// Mirrors BranchSwitcher exactly — same dropdown, same DB-driven
+// source, just for the other half of "which cohort's content do I
+// see". Kept as its own separate switcher (not merged into one
+// combined control) so switching term doesn't force re-picking branch
+// and vice versa.
+export function TermSwitcher() {
+  const { term, setTerm } = useTerm();
+  const { data: terms } = useTerms();
+  const current = terms?.find((t) => t.slug === term);
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          className="flex w-full items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="Switch year"
+        >
+          <span>{current ? current.label.split(" - ")[0] : "Select year"}</span>
+          <ChevronsUpDown className="h-4 w-4 text-subtle-foreground" />
+        </button>
+      </DropdownMenu.Trigger>
+
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="start"
+          sideOffset={6}
+          className="z-50 w-[--radix-dropdown-menu-trigger-width] overflow-hidden rounded-md border border-border bg-card p-1 shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+        >
+          {terms?.map((t) => (
+            <DropdownMenu.Item
+              key={t.slug}
+              onSelect={() => setTerm(t.slug)}
+              className={cn(
+                "flex cursor-pointer items-center justify-between rounded-sm px-2 py-2 text-sm text-foreground outline-none data-[highlighted]:bg-background-secondary"
+              )}
+            >
+              {t.label.split(" - ")[0]}
+              {t.slug === term && <Check className="h-4 w-4 text-primary" />}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
