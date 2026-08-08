@@ -91,6 +91,10 @@
    them specifically. */
 html {
   scrollbar-gutter: stable;
+  /* Every Tailwind text-* utility is rem-based off this root size —
+     bumping it 5% scales all text site-wide proportionally, without
+     touching every component's className individually. */
+  font-size: 105%;
 }
 
 body {

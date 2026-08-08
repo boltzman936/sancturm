@@ -24,9 +24,6 @@ export default async function CRUploadPage() {
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-2xl font-medium text-foreground">Upload</h1>
-        <p className="text-muted-foreground">
-          Published immediately — no review queue for {role.type === "admin" ? "admin" : "CR"} uploads.
-        </p>
       </div>
 
       <CRUploadForm
