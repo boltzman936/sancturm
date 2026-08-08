@@ -21,3 +21,13 @@ export const LAB_SUBJECT_SLUGS = new Set([
   "manufacturing",
   "soft-skill",
 ]);
+
+// The reverse case: a handful of LAB_SUBJECT_SLUGS entries are lab-ONLY —
+// there's no corresponding notes/theory component for them at all, so
+// they must never show up as a subject option under the Notes tab.
+// Everything else with a lab component (e.g. DSA, Engineering Mechanics)
+// has both notes and lab, and stays in both lists.
+export const LAB_ONLY_SUBJECT_SLUGS = new Set([
+  "engineering-graphics", // AIML / Core — lab only, no notes
+  "soft-skill", // AIDS — lab only, no notes
+]);

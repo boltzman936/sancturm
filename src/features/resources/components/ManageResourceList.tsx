@@ -9,7 +9,7 @@ import { deleteResource } from "@/features/resources/actions";
 import { deleteNotice } from "@/features/notices/actions";
 import { deleteSancturmUpdate } from "@/features/sancturmUpdates/actions";
 import { useSubjects } from "@/features/resources/queries";
-import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
+import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
 import { useBranchBySlug } from "@/features/branches/queries";
@@ -266,7 +266,7 @@ export function ManageResourceList({
     const subjects =
       typeFilter === "Lab"
         ? allSubjects?.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
-        : allSubjects;
+        : allSubjects?.filter((subject) => !LAB_ONLY_SUBJECT_SLUGS.has(subject.slug));
     return [...(subjects?.map((subject) => subject.name) ?? []).sort(), "Extra"];
   }, [allSubjects, typeFilter]);
 

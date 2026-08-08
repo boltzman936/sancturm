@@ -11,7 +11,7 @@ import {
   useSubjects,
   type ResourceWithSubject,
 } from "@/features/resources/queries";
-import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
+import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
@@ -76,11 +76,13 @@ export default function NotesAndLabPage() {
   const { data: allSubjects } = useSubjects(branch?.id ?? null, term?.id ?? null);
   // The Subject filter's options depend on which tab is active — Lab
   // only ever applies to the subjects that actually have a lab
-  // component, same restriction as the upload form.
+  // component, same restriction as the upload form. Notes excludes
+  // the reverse case: a few subjects (Engineering Graphics, Soft
+  // Skill) are lab-only and have no notes content at all.
   const subjectOptions =
     resourceType === "lab_manual"
       ? allSubjects?.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
-      : allSubjects;
+      : allSubjects?.filter((subject) => !LAB_ONLY_SUBJECT_SLUGS.has(subject.slug));
 
   // A subject valid for "Notes" (e.g. Human Values) isn't a valid
   // filter once you switch to "Lab" — reset it right where resourceType

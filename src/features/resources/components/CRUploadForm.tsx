@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useSubjects } from "@/features/resources/queries";
 import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
-import { LAB_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
+import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { titleFromFileName } from "@/features/uploads/titleFromFileName";
 import { NoticeComposer } from "@/features/notices/components/NoticeComposer";
 import { CustomNoticeComposer } from "@/features/notices/components/CustomNoticeComposer";
@@ -67,10 +67,13 @@ export function CRUploadForm({
   // subject name, so this list only supplies which NAMES exist to
   // choose from; the id itself is discarded when submitting in bulk.
   const { data: allSubjects } = useSubjects(branchId || null, termId || null);
+  // Lab-only subjects (Engineering Graphics, Soft Skill) have no
+  // notes/PYQ content by design, so they're excluded whenever the
+  // upload isn't itself a lab manual.
   const subjects =
     resourceType === "lab_manual"
       ? allSubjects?.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
-      : allSubjects;
+      : allSubjects?.filter((subject) => !LAB_ONLY_SUBJECT_SLUGS.has(subject.slug));
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

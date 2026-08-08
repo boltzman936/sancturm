@@ -7,6 +7,7 @@ import { FileText, HelpCircle, Megaphone, ShieldCheck, Sparkles, UserRound, X } 
 import { BranchSwitcher } from "@/components/layout/BranchSwitcher";
 import { TermSwitcher } from "@/components/layout/TermSwitcher";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
+import { SignOutButton } from "@/lib/auth/SignOutButton";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
@@ -91,7 +92,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           })}
         </ul>
 
-        <div className="mt-auto">
+        <div className="mt-auto flex flex-col gap-1">
           <Link
             href="/cr"
             onClick={onClose}
@@ -105,6 +106,12 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             <ShieldCheck className="h-4 w-4" />
             {dashboardLabel}
           </Link>
+
+          {/* Only shown once someone's actually signed in — a plain
+              student browsing anonymously has no session to end. This
+              is what lets a test login (or the previous CR, handing
+              a branch off) clear the way for the next person. */}
+          {role && <SignOutButton className="px-3 py-1" />}
         </div>
       </nav>
     </>

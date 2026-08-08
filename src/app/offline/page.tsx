@@ -40,16 +40,28 @@ export default function OfflinePage() {
       {/* unoptimized: this page's whole point is to render with no
           network available — going through Next's /_next/image
           resizing endpoint would need a live server round-trip it
-          can't make. The source is pre-compressed to a ~100KB WebP
+          can't make. Both sources are pre-compressed to ~100KB WebPs
           (see OfflineWatcher's preload) so there's nothing left for
-          the optimizer to usefully do anyway. */}
+          the optimizer to usefully do anyway.
+          Two images, not one <Image> with `sizes` — a portrait crop
+          for phones, the original landscape scene for tablet/desktop;
+          `sizes` can pick a resolution but can't swap the actual
+          artwork. sm is the mobile/tablet line here (640px). */}
+      <Image
+        src="/images/no-internet-bg-mobile.webp"
+        alt=""
+        fill
+        priority
+        unoptimized
+        className="object-cover sm:hidden"
+      />
       <Image
         src="/images/no-internet-bg.webp"
         alt=""
         fill
         priority
         unoptimized
-        className="object-cover"
+        className="hidden object-cover sm:block"
       />
       {/* Dark overlay for text legibility — deliberately light (30%)
           so the artwork stays the visual focus, not hidden behind it. */}
