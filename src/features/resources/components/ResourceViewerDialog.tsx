@@ -1,9 +1,13 @@
 "use client";
 
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import type { ResourceWithSubject } from "@/features/resources/queries";
 
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"];
+
+// Structural, not tied to the `resources` table — Notices and
+// Sancturm Updates reuse this same dialog for their own PDFs, and
+// neither has (or needs) the rest of a full ResourceWithSubject row.
+type Viewable = { title: string; file_url: string };
 
 function isImageUrl(url: string) {
   const withoutQuery = url.split("?")[0].toLowerCase();
@@ -23,7 +27,7 @@ export function ResourceViewerDialog({
   open,
   onOpenChange,
 }: {
-  resource: ResourceWithSubject | null;
+  resource: Viewable | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {

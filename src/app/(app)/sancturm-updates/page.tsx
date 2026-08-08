@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download, Pin, Search, Sparkles } from "lucide-react";
+import { Download, Eye, Pin, Search, Sparkles } from "lucide-react";
 import { useSancturmUpdates } from "@/features/sancturmUpdates/queries";
 import { DeleteUpdateButton } from "@/features/sancturmUpdates/components/DeleteUpdateButton";
 import { toggleSancturmUpdatePin } from "@/features/sancturmUpdates/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { SancturmUpdate } from "@/features/sancturmUpdates/types";
 import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ export default function SancturmUpdatesPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("");
+  const [viewingUpdate, setViewingUpdate] = useState<SancturmUpdate | null>(null);
 
   const filtered = useMemo(() => {
     const base = updates ?? [];
@@ -149,15 +151,25 @@ export default function SancturmUpdatesPage() {
                       <PinButton pinned={update.is_pinned} onToggle={() => handleTogglePin(update)} />
                     )}
                     {update.pdf_url && (
-                      <a
-                        href={update.pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label="Download"
-                        className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
-                      >
-                        <Download className="h-4 w-4" />
-                      </a>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setViewingUpdate(update)}
+                          aria-label="View"
+                          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <a
+                          href={update.pdf_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label="Download"
+                          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                      </>
                     )}
                     {canManage && <DeleteUpdateButton updateId={update.id} />}
                   </div>
@@ -173,6 +185,14 @@ export default function SancturmUpdatesPage() {
           ))}
         </ol>
       )}
+
+      <ResourceViewerDialog
+        resource={viewingUpdate?.pdf_url ? { title: viewingUpdate.title, file_url: viewingUpdate.pdf_url } : null}
+        open={viewingUpdate !== null}
+        onOpenChange={(open) => {
+          if (!open) setViewingUpdate(null);
+        }}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download, Pin, Search } from "lucide-react";
+import { Download, Eye, Pin, Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useBranchBySlug } from "@/features/branches/queries";
 import { useNotices } from "@/features/notices/queries";
@@ -10,6 +10,7 @@ import { toggleNoticePin } from "@/features/notices/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { Notice } from "@/features/notices/types";
 import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ export default function NoticesPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("");
+  const [viewingNotice, setViewingNotice] = useState<Notice | null>(null);
 
   const filtered = useMemo(() => {
     const base = notices ?? [];
@@ -137,15 +139,25 @@ export default function NoticesPage() {
                     <PinButton pinned={notice.is_pinned} onToggle={() => handleTogglePin(notice)} />
                   )}
                   {notice.pdf_url && (
-                    <a
-                      href={notice.pdf_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="Download"
-                      className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
-                    >
-                      <Download className="h-4 w-4" />
-                    </a>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setViewingNotice(notice)}
+                        aria-label="View"
+                        className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <a
+                        href={notice.pdf_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Download"
+                        className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
+                      >
+                        <Download className="h-4 w-4" />
+                      </a>
+                    </>
                   )}
                 </div>
               </div>
@@ -159,6 +171,14 @@ export default function NoticesPage() {
           ))}
         </ul>
       )}
+
+      <ResourceViewerDialog
+        resource={viewingNotice?.pdf_url ? { title: viewingNotice.title, file_url: viewingNotice.pdf_url } : null}
+        open={viewingNotice !== null}
+        onOpenChange={(open) => {
+          if (!open) setViewingNotice(null);
+        }}
+      />
     </div>
   );
 }
