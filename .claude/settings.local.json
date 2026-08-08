@@ -121,7 +121,12 @@
       "Bash(curl -sI https://sancturm.vercel.app/images/no-internet-bg.webp)",
       "Bash(sips -g pixelWidth -g pixelHeight -g formatOptions \"/Users/anuragkumar/Downloads/sancturm/public/images/no internet mobile.png\")",
       "Bash(cwebp -q 80 \"no internet mobile.png\" -o no-internet-bg-mobile.webp)",
-      "Bash(curl -s -o /dev/null -w \"mobile offline bg: %{http_code}\\\\n\" https://sancturm.vercel.app/images/no-internet-bg-mobile.webp)"
+      "Bash(curl -s -o /dev/null -w \"mobile offline bg: %{http_code}\\\\n\" https://sancturm.vercel.app/images/no-internet-bg-mobile.webp)",
+      "Bash(curl -s -o /dev/null -w \"notes: %{http_code}\\\\n\" https://sancturm.vercel.app/notes)",
+      "Bash(curl -s -o /dev/null -w \"pyqs: %{http_code}\\\\n\" https://sancturm.vercel.app/pyqs)",
+      "Bash(time curl -s -o /dev/null -w \"cr \\(should redirect to login\\): %{http_code}\\\\n\" https://sancturm.vercel.app/cr)",
+      "Bash(curl -sI https://sancturm.vercel.app/cr)",
+      "Bash(curl -s https://sancturm.vercel.app/cr)"
     ]
   }
 }

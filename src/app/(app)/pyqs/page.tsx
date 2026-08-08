@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useTerm } from "@/hooks/useTerm";
 import { useTermBySlug } from "@/features/terms/queries";
-import { usePyqResources, type ResourceWithSubject } from "@/features/resources/queries";
+import { usePyqResources, useSubjectsForTerm, type ResourceWithSubject } from "@/features/resources/queries";
+import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
@@ -62,20 +63,21 @@ export default function PYQsPage() {
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
   const { data: resources, isLoading, isError } = usePyqResources(term?.id ?? null);
-  // Derived from the actual PYQs, not the viewer's own branch's
-  // subjects table — a branch's subject list (e.g. AIDS's, which is
-  // entirely different from AIML/Core's for 1st Year) doesn't cover
-  // every subject a PYQ might exist under, since PYQs are shared
-  // across every branch in the term. This way the dropdown always
-  // matches what's actually filterable, regardless of which branch
-  // uploaded which PYQ.
+  // Every branch's subjects for this term, not just the viewer's own
+  // branch — a branch's subject list (e.g. AIDS's, which is entirely
+  // different from AIML/Core's for 1st Year) doesn't cover every
+  // subject a PYQ might exist under, since PYQs are shared across
+  // every branch in the term. Deduped by name (same subject exists as
+  // a separate row per branch) and lab-only subjects excluded, same
+  // as Notes — a PYQ is never for a subject with no theory component.
+  const { data: allTermSubjects } = useSubjectsForTerm(term?.id ?? null);
   const subjectOptions = useMemo(() => {
     const names = new Set<string>();
-    for (const resource of resources ?? []) {
-      if (resource.subject?.name) names.add(resource.subject.name);
+    for (const subject of allTermSubjects ?? []) {
+      if (!LAB_ONLY_SUBJECT_SLUGS.has(subject.slug)) names.add(subject.name);
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [resources]);
+  }, [allTermSubjects]);
 
   const filtered = useMemo(() => {
     const base = resources ?? [];

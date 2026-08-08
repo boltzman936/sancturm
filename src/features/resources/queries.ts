@@ -31,6 +31,32 @@ export function useSubjects(branchId: string | null, termId: string | null) {
 }
 
 /**
+ * Every subject across every branch for one term — for PYQs, which
+ * are shared cross-branch. A branch's own subject list isn't a safe
+ * stand-in for "every subject a PYQ could exist under" once branches'
+ * lists diverge (AIDS's 1st-Year list is entirely different from
+ * AIML/Core's), so this exists instead of reusing useSubjects with
+ * just the viewer's own branch.
+ */
+export function useSubjectsForTerm(termId: string | null) {
+  return useQuery({
+    queryKey: ["subjects", "term", termId],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("subjects")
+        .select("*")
+        .eq("term_id", termId!)
+        .order("sort_order", { ascending: true });
+      if (error) throw error;
+      return data as Subject[];
+    },
+    enabled: !!termId,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
  * Approved Notes & Lab resources for one (branch, term) pair + type
  * ('notes' or 'lab_manual'). Returned unsorted-by-intent — the page
  * does the subject-vs-time sort client-side over this same fetched
