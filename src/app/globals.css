@@ -91,10 +91,26 @@
    them specifically. */
 html {
   scrollbar-gutter: stable;
-  /* Every Tailwind text-* utility is rem-based off this root size —
-     bumping it 5% scales all text site-wide proportionally, without
-     touching every component's className individually. */
+  /* Every Tailwind text-*, spacing, sizing, and radius utility is
+     rem-based off this root size — bumping it scales headings, body
+     text, labels, buttons, icons, cards, and spacing all together
+     proportionally, without touching every component's className
+     individually, and without any of them shifting relative to each
+     other (a uniform scale, not a redesign). */
   font-size: 105%;
+}
+
+/* Desktop only (1024px = the `lg` breakpoint already used everywhere
+   else in this app to mean "desktop" vs "mobile/tablet") — an
+   additional ~15% on top of the site-wide 105% above, per an explicit
+   request to make the desktop UI feel larger while leaving
+   mobile/tablet exactly as they already are. calc() keeps the "~15%
+   bigger than the current site-wide size" relationship correct even
+   if that 105% base is ever changed later. */
+@media (min-width: 1024px) {
+  html {
+    font-size: calc(105% * 1.15);
+  }
 }
 
 body {
