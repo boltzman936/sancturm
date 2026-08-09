@@ -4,14 +4,27 @@ import { createClient } from "@/lib/supabase/server";
 import { getPresignedUploadUrl, r2PublicUrl } from "@/lib/r2";
 
 // Every legitimate caller (CRUploadForm, NoticeComposer, UpdateComposer)
-// builds a path as `<known-prefix>/<uuid>-<filename>` — this only needs
-// to reject what those never produce: `..` segments, a leading slash, or
-// characters outside what a filename/UUID/branch-id actually contains.
-// Server Actions are just POST endpoints under the hood — callable
-// directly with any payload, bypassing the file picker and every
-// client-side assumption about what `path` looks like — so this can't
-// rely on the browser having gone through the UI first.
-const SAFE_PATH = /^[a-zA-Z0-9_\-./]+$/;
+// builds a path as `<known-prefix>/<uuid>-<original filename>` — and a
+// real filename routinely has spaces, parentheses, an ampersand, emoji,
+// non-Latin characters. An allowlist narrow enough to exclude all of
+// that (the first version of this check did) rejects completely
+// ordinary uploads — "Complete physics notes.pdf" fails a charset that
+// only permits [a-zA-Z0-9_-./]. The actual threat here is path
+// traversal and control characters, not spaces, so check for those
+// specifically instead of allowlisting a charset. Server Actions are
+// just POST endpoints under the hood — callable directly with any
+// payload, bypassing the file picker and every client-side assumption
+// about what `path` looks like — so this can't rely on the browser
+// having gone through the UI first.
+function isSafeUploadPath(path: string): boolean {
+  if (!path || path.length > 500) return false;
+  if (path.startsWith("/")) return false;
+  if (path.includes("..")) return false;
+  // Null bytes and other control characters — no legitimate filename
+  // needs them, and some storage/CDN layers mishandle them.
+  if (/[\x00-\x1f\x7f]/.test(path)) return false;
+  return true;
+}
 
 // application/pdf and the handful of image types the resource viewer
 // actually knows how to render inline (see ResourceViewerDialog's
@@ -55,13 +68,7 @@ export async function getUploadUrl(path: string, contentType: string) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
 
-  if (
-    !path ||
-    path.length > 500 ||
-    path.startsWith("/") ||
-    path.includes("..") ||
-    !SAFE_PATH.test(path)
-  ) {
+  if (!isSafeUploadPath(path)) {
     throw new Error("Invalid upload path.");
   }
   if (!ALLOWED_CONTENT_TYPES.has(contentType)) {

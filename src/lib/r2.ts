@@ -46,7 +46,11 @@ export async function getPresignedUploadUrl(path: string, contentType: string): 
     Key: path,
     ContentType: contentType || "application/octet-stream",
   });
-  return getSignedUrl(r2Client, command, { expiresIn: 5 * 60 });
+  // 20 minutes, not 5 — a large PDF (tens of MB, which this whole
+  // presigned-URL setup exists to support) on a slow mobile connection
+  // can genuinely take that long to finish PUTting, and an expired URL
+  // fails the upload with the same generic error as any other rejection.
+  return getSignedUrl(r2Client, command, { expiresIn: 20 * 60 });
 }
 
 /**

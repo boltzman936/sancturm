@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { useSubjects } from "@/features/resources/queries";
 import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
@@ -47,11 +49,15 @@ export function CRUploadForm({
   // branch, separate from the notes_lab-locked fixedBranchId.
   const [pyqBranchId, setPyqBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
   const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
-  // Admin-only: publish one Notes/Lab resource to every branch (within
-  // the picked term) at once instead of repeating the upload per
-  // branch. Not offered for PYQ, which is already inherently shared
-  // across every branch in one row.
-  const [allBranches, setAllBranches] = useState(false);
+  // Admin-only: publish one Notes/Lab resource to any combination of
+  // branches (within the picked term) at once instead of repeating the
+  // upload per branch — a multi-select rather than a single branch or
+  // an all-or-nothing checkbox, so publishing to e.g. just AIML + Core
+  // doesn't need two separate uploads. Not offered for PYQ, which is
+  // already inherently shared across every branch in one row.
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>(
+    fixedBranchId ? [fixedBranchId] : branches[0] ? [branches[0].id] : []
+  );
   const [file, setFile] = useState<File | null>(null);
   // yyyy-mm-dd from <input type="date">, or "" to leave it blank —
   // an empty value means the insert omits created_at entirely and the
@@ -62,17 +68,20 @@ export function CRUploadForm({
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
+  // Admin publishing Notes/Lab always goes through the multi-branch
+  // picker/action now — whether that's 1 branch or all 3 is just how
+  // many are selected, not a separate mode/checkbox to toggle first.
   const canBulkPublish = isAdmin && (resourceType === "notes" || resourceType === "lab_manual");
-  const isBulkPublish = canBulkPublish && allBranches;
-  const showBranchPicker = !isBulkPublish && (resourceType === "pyq" || !fixedBranchId);
+  const showSingleBranchPicker = !canBulkPublish && (resourceType === "pyq" || !fixedBranchId);
   const showTermPicker = !fixedTermId;
   const branchId = resourceType === "pyq" ? pyqBranchId : fixedBranchId ?? pyqBranchId;
+  // Whichever branch the Subject list previews against — every branch
+  // has its own subjects row (different id) for the same subject name,
+  // so this only supplies which NAMES exist to choose from; the id
+  // itself is discarded when submitting to multiple branches by name.
+  const subjectReferenceBranchId = canBulkPublish ? selectedBranchIds[0] ?? "" : branchId;
 
-  // Even in bulk mode, subjects are fetched for one reference branch —
-  // every branch has its own subjects row (different id) for the same
-  // subject name, so this list only supplies which NAMES exist to
-  // choose from; the id itself is discarded when submitting in bulk.
-  const { data: allSubjects } = useSubjects(branchId || null, termId || null);
+  const { data: allSubjects } = useSubjects(subjectReferenceBranchId || null, termId || null);
   // Lab-only subjects (Engineering Graphics, Soft Skill) have no
   // notes/PYQ content by design, so they're excluded whenever the
   // upload isn't itself a lab manual.
@@ -83,7 +92,8 @@ export function CRUploadForm({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file || !termId || (!isBulkPublish && !branchId)) return;
+    if (!file || !termId) return;
+    if (canBulkPublish ? selectedBranchIds.length === 0 : !branchId) return;
     setSuccess(false);
     setError(null);
 
@@ -112,18 +122,19 @@ export function CRUploadForm({
       ).toISOString();
     }
 
-    if (isBulkPublish) {
+    if (canBulkPublish) {
       const subjectName = subjects?.find((subject) => subject.id === subjectValue)?.name ?? "";
 
       startTransition(async () => {
         try {
           // Straight to R2 from the browser, bypassing the serverless
           // body-size limit a large PDF would otherwise hit.
-          const filePath = `all-branches/notes_lab/${crypto.randomUUID()}-${file.name}`;
+          const filePath = `multi-branch/notes_lab/${crypto.randomUUID()}-${file.name}`;
           const fileUrl = await uploadFileToR2(filePath, file);
 
           const formData = new FormData();
           formData.set("termId", termId);
+          formData.set("branchIds", JSON.stringify(selectedBranchIds));
           formData.set("subjectName", subjectName);
           formData.set("section", "notes_lab");
           formData.set("resourceType", resourceType);
@@ -280,25 +291,6 @@ export function CRUploadForm({
     >
       {typeToggle}
 
-      {canBulkPublish && (
-        <label className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            checked={allBranches}
-            onChange={(event) => setAllBranches(event.target.checked)}
-            className="h-4 w-4 accent-primary"
-          />
-          Publish to all branches at once
-        </label>
-      )}
-
-      {isBulkPublish && (
-        <p className="rounded-md border border-dashed border-border px-3 py-2 font-mono text-xs text-subtle-foreground">
-          Will publish to every branch ({branches.map((branch) => branch.name).join(", ")}). Subject
-          is matched by name in each branch.
-        </p>
-      )}
-
       {showTermPicker && (
         <div className="flex flex-col gap-1">
           <label htmlFor="term" className="font-mono text-xs text-subtle-foreground">
@@ -319,7 +311,7 @@ export function CRUploadForm({
         </div>
       )}
 
-      {showBranchPicker && (
+      {showSingleBranchPicker && (
         <div className="flex flex-col gap-1">
           <label htmlFor="branch" className="font-mono text-xs text-subtle-foreground">
             Branch
@@ -341,6 +333,83 @@ export function CRUploadForm({
               </option>
             ))}
           </Select>
+        </div>
+      )}
+
+      {/* Admin only, Notes/Lab only — pick any combination of branches
+          in one control instead of a single branch or an all-or-
+          nothing checkbox. Selecting every branch IS "publish to all
+          branches"; there's no separate mode for it. */}
+      {canBulkPublish && (
+        <div className="flex flex-col gap-1">
+          <label className="font-mono text-xs text-subtle-foreground">Branch</label>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors hover:border-primary active:border-primary focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span>
+                  {selectedBranchIds.length === 0
+                    ? "Select branch"
+                    : selectedBranchIds.length === branches.length
+                      ? "All branches"
+                      : selectedBranchIds.length === 1
+                        ? branches.find((b) => b.id === selectedBranchIds[0])?.name
+                        : `${selectedBranchIds.length} branches selected`}
+                </span>
+                <ChevronsUpDown className="h-4 w-4 text-subtle-foreground" />
+              </button>
+            </DropdownMenu.Trigger>
+
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="start"
+                sideOffset={6}
+                onCloseAutoFocus={(event) => event.preventDefault()}
+                className="z-50 w-[--radix-dropdown-menu-trigger-width] overflow-hidden rounded-md border border-border bg-card p-1 shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+              >
+                <DropdownMenu.CheckboxItem
+                  checked={selectedBranchIds.length === branches.length}
+                  onCheckedChange={(checked) =>
+                    setSelectedBranchIds(checked ? branches.map((b) => b.id) : [])
+                  }
+                  onSelect={(event) => event.preventDefault()}
+                  className="flex cursor-pointer items-center justify-between rounded-sm px-2 py-2 text-sm font-medium text-foreground outline-none data-[highlighted]:bg-background-secondary"
+                >
+                  All branches
+                  {selectedBranchIds.length === branches.length && (
+                    <Check className="h-4 w-4 text-primary" />
+                  )}
+                </DropdownMenu.CheckboxItem>
+                <div className="my-1 h-px bg-border" />
+                {branches.map((branch) => {
+                  const checked = selectedBranchIds.includes(branch.id);
+                  return (
+                    <DropdownMenu.CheckboxItem
+                      key={branch.id}
+                      checked={checked}
+                      onCheckedChange={(next) =>
+                        setSelectedBranchIds((prev) =>
+                          next ? [...prev, branch.id] : prev.filter((id) => id !== branch.id)
+                        )
+                      }
+                      onSelect={(event) => event.preventDefault()}
+                      className="flex cursor-pointer items-center justify-between rounded-sm px-2 py-2 text-sm text-foreground outline-none data-[highlighted]:bg-background-secondary"
+                    >
+                      {branch.name}
+                      {checked && <Check className="h-4 w-4 text-primary" />}
+                    </DropdownMenu.CheckboxItem>
+                  );
+                })}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+          {selectedBranchIds.length > 1 && (
+            <p className="mt-1 font-mono text-xs text-subtle-foreground">
+              Subject is matched by name in each branch.
+            </p>
+          )}
         </div>
       )}
 
@@ -413,16 +482,25 @@ export function CRUploadForm({
 
       <button
         type="submit"
-        disabled={isPending || !file || !termId || (!isBulkPublish && !branchId)}
+        disabled={
+          isPending ||
+          !file ||
+          !termId ||
+          (canBulkPublish ? selectedBranchIds.length === 0 : !branchId)
+        }
         className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
       >
-        {isPending ? "Publishing…" : isBulkPublish ? "Publish to all branches" : "Publish now"}
+        {isPending
+          ? "Publishing…"
+          : canBulkPublish && selectedBranchIds.length > 1
+            ? `Publish to ${selectedBranchIds.length} branches`
+            : "Publish now"}
       </button>
 
       {success && (
         <p className="font-mono text-xs text-terminal-blue">
-          {isBulkPublish
-            ? "Published to every branch — already live, no review needed."
+          {canBulkPublish && selectedBranchIds.length > 1
+            ? "Published to every selected branch — already live, no review needed."
             : "Published — it's already live, no review needed."}
         </p>
       )}

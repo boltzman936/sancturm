@@ -139,7 +139,15 @@
       "Bash(curl -s -o /dev/null -w \"start: %{http_code}\\\\n\" http://localhost:3000/notes)",
       "Bash(pkill -f \"next start\")",
       "Bash(curl -s -o /dev/null -w \"notes: %{http_code}\\\\n\" http://localhost:3000/notes)",
-      "Bash(curl -s -o /dev/null -w \"file check: %{http_code}\\\\n\" \"https://pub-1bb4794ee3f648348a4269efeb5b5b41.r2.dev/09b06a94-bcf3-41c2-9858-0ec5cb6b647a/notes_lab/875869d5-b838-4b4d-b9c9-77d89e30834b-Java%20Script%20Notes%20Notion.pdf\")"
+      "Bash(curl -s -o /dev/null -w \"file check: %{http_code}\\\\n\" \"https://pub-1bb4794ee3f648348a4269efeb5b5b41.r2.dev/09b06a94-bcf3-41c2-9858-0ec5cb6b647a/notes_lab/875869d5-b838-4b4d-b9c9-77d89e30834b-Java%20Script%20Notes%20Notion.pdf\")",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"notes: %{http_code}\\\\n\" https://sancturm.vercel.app/notes)",
+      "Bash(/usr/bin/curl -s -D - -o /dev/null https://sancturm.vercel.app/notes)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"resource file \\(public read, unaffected by RLS changes\\): %{http_code}\\\\n\" \"https://pub-1bb4794ee3f648348a4269efeb5b5b41.r2.dev/09b06a94-bcf3-41c2-9858-0ec5cb6b647a/notes_lab/875869d5-b838-4b4d-b9c9-77d89e30834b-Java%20Script%20Notes%20Notion.pdf\")",
+      "Bash(npm -v)",
+      "Read(//Users/anuragkumar/Downloads/**)",
+      "Bash(npx --yes create-next-app@latest anurag-portfolio --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --turbopack --no-git)",
+      "Bash(\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless --disable-gpu --no-pdf-header-footer --print-to-pdf=\"Sancturm-Guide.pdf\" \"file://$\\(pwd\\)/guide.html\")",
+      "Bash(node /private/tmp/claude-501/-Users-anuragkumar-Downloads-sancturm/cddecec7-6e61-44d4-85b3-b2cd8d3bb50a/scratchpad/test-path.js)"
     ]
   }
 }

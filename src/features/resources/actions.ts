@@ -106,20 +106,22 @@ export async function uploadResourceDirect(formData: FormData) {
 }
 
 /**
- * Admin-only: publishes one Notes/Lab resource to every branch WITHIN
- * ONE TERM in a single action, instead of repeating the upload per
- * branch — a 1st-Year note has nothing to do with 2nd-Year branches,
- * so this deliberately doesn't cross terms (confirmed behavior, not
- * "all 6 branch/term combos"). Uploads the file to R2 once, then
- * inserts one `resources` row per branch — each branch has its own
- * `subjects` rows with different UUIDs even for identically-named
- * subjects, so the subject is resolved by NAME within each branch
- * rather than reusing one subject_id everywhere (same cross-branch-
- * name-matching approach already used for PYQ). RLS only lets an
- * admin insert outside their own branch scope at all (see supabase/
- * restrict_uploads_to_cr.sql), so a non-admin calling this just gets
- * a database rejection either way — the explicit role check here is
- * just a faster, clearer failure.
+ * Admin-only: publishes one Notes/Lab resource to any number of
+ * branches WITHIN ONE TERM in a single action, instead of repeating
+ * the upload per branch — a 1st-Year note has nothing to do with
+ * 2nd-Year branches, so this deliberately doesn't cross terms
+ * (confirmed behavior, not "all 6 branch/term combos"). "Every branch"
+ * is just what it does when every branch happens to be selected in the
+ * form's multi-select — not a separate mode. Uploads the file to R2
+ * once, then inserts one `resources` row per selected branch — each
+ * branch has its own `subjects` rows with different UUIDs even for
+ * identically-named subjects, so the subject is resolved by NAME
+ * within each branch rather than reusing one subject_id everywhere
+ * (same cross-branch-name-matching approach already used for PYQ).
+ * RLS only lets an admin insert outside their own branch scope at all
+ * (see supabase/restrict_uploads_to_cr.sql), so a non-admin calling
+ * this just gets a database rejection either way — the explicit role
+ * check here is just a faster, clearer failure.
  */
 export async function uploadResourceDirectAllBranches(formData: FormData) {
   const supabase = await createClient();
@@ -139,17 +141,32 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   const description = (formData.get("description") as string) || null;
   const fileUrl = formData.get("fileUrl") as string;
 
-  const { data: branches, error: branchesError } = await supabase.from("branches").select("id");
-  if (branchesError) throw branchesError;
-  if (!branches?.length) throw new Error("No branches found.");
+  // The form's multi-select sends exactly which branches were checked —
+  // falls back to every branch that exists only if the field is
+  // missing entirely (an older client), never silently on a malformed
+  // value, since that would publish somewhere the admin didn't pick.
+  const branchIdsRaw = formData.get("branchIds") as string | null;
+  let branchIds: string[];
+  if (branchIdsRaw === null) {
+    const { data: allBranches, error: branchesError } = await supabase.from("branches").select("id");
+    if (branchesError) throw branchesError;
+    branchIds = (allBranches ?? []).map((b) => b.id);
+  } else {
+    const parsed: unknown = JSON.parse(branchIdsRaw);
+    if (!Array.isArray(parsed) || !parsed.every((id) => typeof id === "string")) {
+      throw new Error("Invalid branch selection.");
+    }
+    branchIds = parsed;
+  }
+  if (!branchIds.length) throw new Error("No branches found.");
 
-  for (const branch of branches) {
+  for (const branchId of branchIds) {
     let subjectId: string | null = null;
     if (subjectName) {
       const { data: subject } = await supabase
         .from("subjects")
         .select("id")
-        .eq("branch_id", branch.id)
+        .eq("branch_id", branchId)
         .eq("term_id", termId)
         .eq("name", subjectName)
         .maybeSingle();
@@ -157,7 +174,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
     }
 
     const { error: insertError } = await supabase.from("resources").insert({
-      branch_id: branch.id,
+      branch_id: branchId,
       term_id: termId,
       subject_id: subjectId,
       section,
