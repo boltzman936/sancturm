@@ -126,7 +126,12 @@
       "Bash(curl -s -o /dev/null -w \"pyqs: %{http_code}\\\\n\" https://sancturm.vercel.app/pyqs)",
       "Bash(time curl -s -o /dev/null -w \"cr \\(should redirect to login\\): %{http_code}\\\\n\" https://sancturm.vercel.app/cr)",
       "Bash(curl -sI https://sancturm.vercel.app/cr)",
-      "Bash(curl -s https://sancturm.vercel.app/cr)"
+      "Bash(curl -s https://sancturm.vercel.app/cr)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"time_total: %{time_total}s | http_code: %{http_code}\\\\n\" \"https://sancturm.vercel.app/cr\")",
+      "Bash(/usr/bin/curl -s -D - -o /dev/null \"https://sancturm.vercel.app/cr\")",
+      "Bash(/usr/bin/curl -s \"https://sancturm.vercel.app/cr\")",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"cr: %{time_total}s\\\\n\" \"https://sancturm.vercel.app/cr\")",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"notes: %{time_total}s\\\\n\" \"https://sancturm.vercel.app/notes\")"
     ]
   }
 }

@@ -22,14 +22,24 @@ import { cn } from "@/lib/utils";
 //    icon showed up side by side — two calendar glyphs in one field.
 //    Fix: hide the native indicator entirely and make the whole box
 //    open the picker via showPicker(), so there's only ever one icon.
-// 3. Safari-specific: setting text-transparent on the outer
-//    ::-webkit-datetime-edit wrapper (which is all Chrome needs) does
-//    NOT cascade to Safari's inner per-segment pseudo-elements — each
-//    of month/day/year/separator is its own pseudo-element in Safari's
-//    shadow-DOM-like internals, and Safari renders them with its own
-//    color independent of the parent. Result: the year segment stayed
-//    visible and visually collided with our "Any date" overlay text.
-//    Fix: target every sub-part individually, not just the wrapper.
+// 3. Safari-specific: text-transparent on ::-webkit-datetime-edit (and
+//    even its individual sub-parts — ::-webkit-datetime-edit-text,
+//    -month-field, -year-field, etc.) simply doesn't take effect in
+//    Safari at all. Safari's support for styling these internals is
+//    far more restricted than Chrome's — color tricks on the pseudo-
+//    elements are a dead end there, no combination of selectors fixes
+//    it. Fix: stop trying to recolor the native text and hide the
+//    whole input instead (opacity-0, not display:none — it must stay
+//    clickable/focusable for showPicker() and real typing to keep
+//    working). Our own Calendar icon + "Any date" span, both rendered
+//    independently on top, are the entire visual in the empty state;
+//    the invisible input underneath is purely functional. Once
+//    focused or filled, opacity goes back to 1 and the native
+//    rendering (legible via [color-scheme:dark]) takes over normally —
+//    same as before, just without depending on Safari's internals.
+//    The border/background moved from the input to the wrapper div for
+//    this reason too — opacity-0 on the input would otherwise also
+//    erase the box outline itself while it's meant to stay visible.
 export function DateFilterInput({
   value,
   onChange,
@@ -45,7 +55,10 @@ export function DateFilterInput({
 
   return (
     <div
-      className={cn("relative", className)}
+      className={cn(
+        "relative rounded-md border border-border bg-card",
+        className
+      )}
       onClick={() => inputRef.current?.showPicker?.()}
     >
       <Calendar className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
@@ -62,9 +75,8 @@ export function DateFilterInput({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         className={cn(
-          "w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:pointer-events-none [&::-webkit-calendar-picker-indicator]:opacity-0",
-          showOverlay &&
-            "[&::-webkit-datetime-edit]:text-transparent [&::-webkit-datetime-edit-fields-wrapper]:text-transparent [&::-webkit-datetime-edit-text]:text-transparent [&::-webkit-datetime-edit-month-field]:text-transparent [&::-webkit-datetime-edit-day-field]:text-transparent [&::-webkit-datetime-edit-year-field]:text-transparent"
+          "w-full rounded-md bg-transparent py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:pointer-events-none [&::-webkit-calendar-picker-indicator]:opacity-0",
+          showOverlay && "opacity-0"
         )}
       />
     </div>
