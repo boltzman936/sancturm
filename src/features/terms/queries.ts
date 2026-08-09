@@ -28,21 +28,15 @@ export function useTerms() {
  * Resolves the slug stored by useTerm() (e.g. "y2-s3") into the
  * actual term row — every branch/subject/resource query needs the
  * real term_id, not the slug.
+ *
+ * Built on useTerms() rather than its own fetch-by-slug query — same
+ * reasoning as useBranchBySlug: academic_terms is 2 rows, and a
+ * separate per-slug fetch just stacked a second network round trip
+ * after the term switcher's own useTerms() call fetched the identical
+ * data moments earlier. One shared, deduped query instead of two
+ * sequential ones.
  */
 export function useTermBySlug(slug: string | null) {
-  return useQuery({
-    queryKey: ["term", slug],
-    queryFn: async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("academic_terms")
-        .select("*")
-        .eq("slug", slug!)
-        .single();
-      if (error) throw error;
-      return data as AcademicTerm;
-    },
-    enabled: !!slug,
-    staleTime: 5 * 60_000,
-  });
+  const query = useTerms();
+  return { ...query, data: slug ? query.data?.find((t) => t.slug === slug) : undefined };
 }

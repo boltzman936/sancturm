@@ -22,6 +22,14 @@ import { cn } from "@/lib/utils";
 //    icon showed up side by side — two calendar glyphs in one field.
 //    Fix: hide the native indicator entirely and make the whole box
 //    open the picker via showPicker(), so there's only ever one icon.
+// 3. Safari-specific: setting text-transparent on the outer
+//    ::-webkit-datetime-edit wrapper (which is all Chrome needs) does
+//    NOT cascade to Safari's inner per-segment pseudo-elements — each
+//    of month/day/year/separator is its own pseudo-element in Safari's
+//    shadow-DOM-like internals, and Safari renders them with its own
+//    color independent of the parent. Result: the year segment stayed
+//    visible and visually collided with our "Any date" overlay text.
+//    Fix: target every sub-part individually, not just the wrapper.
 export function DateFilterInput({
   value,
   onChange,
@@ -55,7 +63,8 @@ export function DateFilterInput({
         onBlur={() => setFocused(false)}
         className={cn(
           "w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:pointer-events-none [&::-webkit-calendar-picker-indicator]:opacity-0",
-          showOverlay && "[&::-webkit-datetime-edit]:text-transparent"
+          showOverlay &&
+            "[&::-webkit-datetime-edit]:text-transparent [&::-webkit-datetime-edit-fields-wrapper]:text-transparent [&::-webkit-datetime-edit-text]:text-transparent [&::-webkit-datetime-edit-month-field]:text-transparent [&::-webkit-datetime-edit-day-field]:text-transparent [&::-webkit-datetime-edit-year-field]:text-transparent"
         )}
       />
     </div>

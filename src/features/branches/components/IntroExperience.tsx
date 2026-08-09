@@ -120,16 +120,13 @@ export function IntroExperience() {
   }, []);
 
   // Every page after branch selection (Notes, PYQs, Notices, ...)
-  // waits on useBranchBySlug before it can even start its own
-  // resources query — a real network round trip, then a SECOND one
-  // once the branch id comes back, stacked in sequence rather than in
-  // parallel. Warming the cache here, while the person is just
-  // watching the intro type out, means that first hop is already
-  // sitting in cache by the time they land on /notes — one less round
-  // trip on the connection that matters most (a cold cache, right
-  // after picking a branch) instead of on every visit. One fetch
-  // seeds both useBranches() (the list BranchSelectCard renders below)
-  // and every individual useBranchBySlug(slug) a page might ask for.
+  // reads useBranchBySlug/useTermBySlug, both derived from
+  // useBranches()/useTerms() (see those files) — so warming just
+  // these two list queries here, while the person is watching the
+  // intro type out, means every page's branch/term lookup resolves
+  // from cache the moment they land, instead of paying for a fresh
+  // fetch on the connection that matters most (a cold cache, right
+  // after picking a branch).
   useEffect(() => {
     const supabase = createClient();
     supabase
@@ -137,22 +134,14 @@ export function IntroExperience() {
       .select("*")
       .order("sort_order")
       .then(({ data }) => {
-        const branches = (data as Branch[] | null) ?? [];
-        queryClient.setQueryData(["branches"], branches);
-        for (const branch of branches) {
-          queryClient.setQueryData(["branch", branch.slug], branch);
-        }
+        queryClient.setQueryData(["branches"], (data as Branch[] | null) ?? []);
       });
     supabase
       .from("academic_terms")
       .select("*")
       .order("sort_order")
       .then(({ data }) => {
-        const terms = (data as AcademicTerm[] | null) ?? [];
-        queryClient.setQueryData(["terms"], terms);
-        for (const term of terms) {
-          queryClient.setQueryData(["term", term.slug], term);
-        }
+        queryClient.setQueryData(["terms"], (data as AcademicTerm[] | null) ?? []);
       });
   }, [queryClient]);
 

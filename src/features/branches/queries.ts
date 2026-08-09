@@ -31,23 +31,19 @@ export function useBranches() {
  * Resolves the slug stored by useBranch() (e.g. "cse-aiml") into the
  * actual branch row — every other query needs the real branch_id, not
  * the slug, to filter its table.
+ *
+ * Built on useBranches() rather than its own fetch-by-slug query —
+ * branches is 3 rows, so there's never a reason to fetch "just one"
+ * separately. The old version had its own ["branch", slug] query, a
+ * SECOND network round trip stacked after the branch switcher's own
+ * useBranches() call (which fetches this exact data first, to render
+ * its own option list) — every branch switch paid for two sequential
+ * fetches for data the app already had in hand a moment earlier. This
+ * way there's exactly one underlying query (["branches"]), shared and
+ * deduped by every caller, so switching branch resolves from cache
+ * instantly instead of waiting on a fresh network hop.
  */
 export function useBranchBySlug(slug: string | null) {
-  return useQuery({
-    queryKey: ["branch", slug],
-    queryFn: async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("branches")
-        .select("*")
-        .eq("slug", slug!)
-        .single();
-      if (error) throw error;
-      return data as Branch;
-    },
-    enabled: !!slug,
-    // Branches are near-static reference data — no reason to refetch
-    // just because a few minutes passed since the last lookup.
-    staleTime: 5 * 60_000,
-  });
+  const query = useBranches();
+  return { ...query, data: slug ? query.data?.find((b) => b.slug === slug) : undefined };
 }
