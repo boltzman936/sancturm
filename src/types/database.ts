@@ -85,7 +85,11 @@ export type ResourceType =
   | "assignment"
   | "viva"
   | "record_file"
-  | "pdf";
+  | "pdf"
+  // The PYQ equivalent of notes/lab_manual — one section ("pyq"), two
+  // kinds: the question paper itself, and a worked solution to it.
+  | "pyq"
+  | "pyq_solution";
 export type ResourceStatus = "pending" | "approved" | "rejected";
 
 export type Resource = {

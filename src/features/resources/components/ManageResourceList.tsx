@@ -23,6 +23,13 @@ const SECTION_LABEL: Record<string, string> = {
 const RESOURCE_TYPE_LABEL: Record<string, string> = {
   notes: "Notes",
   lab_manual: "Lab",
+  // PYQ's own two-kind split, same idea as notes/lab_manual above —
+  // 'pdf' is the pre-split legacy value (see
+  // supabase/add_pyq_solution_type.sql), grouped with the question
+  // paper since that's what it always meant before the split existed.
+  pyq: "PYQ",
+  pdf: "PYQ",
+  pyq_solution: "PYQ Solution",
 };
 
 function uploaderLabel(resource: { uploaded_by_device: string | null; uploaded_by_name: string | null }) {
@@ -32,8 +39,8 @@ function uploaderLabel(resource: { uploaded_by_device: string | null; uploaded_b
 }
 
 function typeGroupLabel(resource: ManageableResource) {
-  if (resource.section === "notes_lab") {
-    return RESOURCE_TYPE_LABEL[resource.resource_type ?? ""] ?? "Notes & lab";
+  if (resource.section === "notes_lab" || resource.section === "pyq") {
+    return RESOURCE_TYPE_LABEL[resource.resource_type ?? ""] ?? SECTION_LABEL[resource.section];
   }
   return SECTION_LABEL[resource.section] ?? resource.section;
 }
@@ -242,8 +249,8 @@ export function ManageResourceList({
   // the query in cr/manage/page.tsx), so it's only offered as a
   // filter option for admin.
   const TYPE_OPTIONS = isAdmin
-    ? ["Notes", "Lab", "PYQ", "Notices", "Sancturm updates"]
-    : ["Notes", "Lab", "PYQ", "Notices"];
+    ? ["Notes", "Lab", "PYQ", "PYQ Solution", "Notices", "Sancturm updates"]
+    : ["Notes", "Lab", "PYQ", "PYQ Solution", "Notices"];
 
   // Derived from the actual published resources currently in scope
   // (matching Branch/Year/Type, same as `visible` below), not a

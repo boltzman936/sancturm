@@ -12,7 +12,9 @@ import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
 import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
+import type { ResourceType } from "@/features/resources/types";
 
+type PyqKind = Extract<ResourceType, "pyq" | "pyq_solution">;
 type DateSort = "newest" | "oldest";
 const ALL_SUBJECTS = "all";
 const EXTRA_SUBJECT = "extra";
@@ -52,6 +54,11 @@ export default function PYQsPage() {
   const { term: termSlug } = useTerm();
   const { data: term } = useTermBySlug(termSlug);
 
+  // Paper vs. worked solution — the PYQ equivalent of Notes & Lab's
+  // Notes/Lab toggle, same pattern: one section, two resource_type
+  // values, filtered client-side rather than refetched, since PYQs for
+  // a whole term are already fetched in one request either way.
+  const [pyqKind, setPyqKind] = useState<PyqKind>("pyq");
   const [dateSort, setDateSort] = useState<DateSort>("newest");
   // Subject filter is matched by NAME, not id — PYQs span every
   // branch, and each branch has its own subject row (a different id)
@@ -80,8 +87,16 @@ export default function PYQsPage() {
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [allTermSubjects]);
 
+  // Resets subjectFilter same as Notes & Lab's tab switch — a subject
+  // selected while looking at solutions shouldn't silently carry over
+  // and look like it's still filtering once back on papers.
+  function handlePyqKindChange(kind: PyqKind) {
+    setPyqKind(kind);
+    setSubjectFilter(ALL_SUBJECTS);
+  }
+
   const filtered = useMemo(() => {
-    const base = resources ?? [];
+    const base = (resources ?? []).filter((resource) => resource.resource_type === pyqKind);
     const bySubject =
       subjectFilter === ALL_SUBJECTS
         ? base
@@ -93,7 +108,7 @@ export default function PYQsPage() {
       : bySubject;
     const bySearch = byDate.filter((resource) => matchesSearch(resource, searchQuery));
     return sortByDate(bySearch, dateSort);
-  }, [resources, subjectFilter, dateFilter, searchQuery, dateSort]);
+  }, [resources, pyqKind, subjectFilter, dateFilter, searchQuery, dateSort]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -109,21 +124,40 @@ export default function PYQsPage() {
           rather than reflowed with responsive classes so the mobile/
           tablet redesign below can't accidentally affect it. */}
       <div className="hidden lg:flex lg:flex-wrap lg:items-center lg:justify-between lg:gap-3">
-        <div className="flex gap-1 rounded-md border border-border bg-card p-1">
-          {(["newest", "oldest"] as const).map((option) => (
-            <button
-              key={option}
-              onClick={() => setDateSort(option)}
-              className={cn(
-                "rounded px-3 py-1.5 text-sm capitalize transition-colors",
-                dateSort === option
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground active:text-foreground"
-              )}
-            >
-              {option}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-1 rounded-md border border-border bg-card p-1">
+            {(["pyq", "pyq_solution"] as const).map((kind) => (
+              <button
+                key={kind}
+                onClick={() => handlePyqKindChange(kind)}
+                className={cn(
+                  "rounded px-3 py-1.5 text-sm transition-colors",
+                  pyqKind === kind
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground active:text-foreground"
+                )}
+              >
+                {kind === "pyq" ? "PYQ" : "Solution"}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-1 rounded-md border border-border bg-card p-1">
+            {(["newest", "oldest"] as const).map((option) => (
+              <button
+                key={option}
+                onClick={() => setDateSort(option)}
+                className={cn(
+                  "rounded px-3 py-1.5 text-sm capitalize transition-colors",
+                  dateSort === option
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground active:text-foreground"
+                )}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -171,21 +205,40 @@ export default function PYQsPage() {
       <div className="flex flex-col gap-3 rounded-lg border border-border bg-card/40 p-3 lg:hidden">
         <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">Filters</h2>
 
-        <div className="flex gap-1 rounded-md border border-border bg-card p-1">
-          {(["newest", "oldest"] as const).map((option) => (
-            <button
-              key={option}
-              onClick={() => setDateSort(option)}
-              className={cn(
-                "flex-1 rounded px-2 py-1.5 text-sm capitalize transition-colors",
-                dateSort === option
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground active:text-foreground"
-              )}
-            >
-              {option}
-            </button>
-          ))}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex gap-1 rounded-md border border-border bg-card p-1">
+            {(["pyq", "pyq_solution"] as const).map((kind) => (
+              <button
+                key={kind}
+                onClick={() => handlePyqKindChange(kind)}
+                className={cn(
+                  "flex-1 rounded px-2 py-1.5 text-sm transition-colors",
+                  pyqKind === kind
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground active:text-foreground"
+                )}
+              >
+                {kind === "pyq" ? "PYQ" : "Solution"}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-1 rounded-md border border-border bg-card p-1">
+            {(["newest", "oldest"] as const).map((option) => (
+              <button
+                key={option}
+                onClick={() => setDateSort(option)}
+                className={cn(
+                  "flex-1 rounded px-2 py-1.5 text-sm capitalize transition-colors",
+                  dateSort === option
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground active:text-foreground"
+                )}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -227,7 +280,7 @@ export default function PYQsPage() {
       </div>
 
       <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground lg:hidden">
-        PYQs
+        {pyqKind === "pyq" ? "PYQs" : "Solutions"}
       </h2>
 
       {isLoading && (

@@ -48,6 +48,10 @@ export function CRUploadForm({
   // PYQ is cross-branch even for a CR, so it needs its own pickable
   // branch, separate from the notes_lab-locked fixedBranchId.
   const [pyqBranchId, setPyqBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  // Paper vs. worked solution — the PYQ equivalent of the Notes/Lab
+  // split above, just picked with its own toggle instead of being a
+  // separate top-level Type button (that'd make the Type row 6-wide).
+  const [pyqKind, setPyqKind] = useState<"pyq" | "pyq_solution">("pyq");
   const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
   // Admin-only: publish one Notes/Lab resource to any combination of
   // branches (within the picked term) at once instead of repeating the
@@ -167,7 +171,7 @@ export function CRUploadForm({
         formData.set("termId", termId);
         formData.set("subjectId", subjectValue);
         formData.set("section", section);
-        formData.set("resourceType", resourceType === "pyq" ? "pdf" : resourceType);
+        formData.set("resourceType", resourceType === "pyq" ? pyqKind : resourceType);
         formData.set("title", title);
         formData.set("description", description);
         formData.set("fileUrl", fileUrl);
@@ -290,6 +294,29 @@ export function CRUploadForm({
       className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
     >
       {typeToggle}
+
+      {resourceType === "pyq" && (
+        <div className="flex flex-col gap-1">
+          <label className="font-mono text-xs text-subtle-foreground">Kind</label>
+          <div className="flex flex-wrap gap-1 rounded-md border border-border bg-background p-1">
+            {(["pyq", "pyq_solution"] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setPyqKind(kind)}
+                className={cn(
+                  "min-w-[8rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
+                  pyqKind === kind
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground active:text-foreground"
+                )}
+              >
+                {kind === "pyq" ? "Question paper" : "Solution"}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showTermPicker && (
         <div className="flex flex-col gap-1">
