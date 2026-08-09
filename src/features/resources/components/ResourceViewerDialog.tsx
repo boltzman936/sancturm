@@ -47,19 +47,28 @@ export function ResourceViewerDialog({
                 className="h-full w-full rounded-md object-contain"
               />
             ) : (
-              // sandbox with no allow-scripts/allow-top-navigation/
-              // allow-popups: the browser's native PDF renderer needs
-              // no script execution to work, so this costs nothing for
-              // the legitimate case, while making sure that whatever
-              // ends up at file_url — regardless of what upload
-              // validation allows today or might miss tomorrow — can
-              // never run script, redirect the tab, or pop a window.
-              // allow-same-origin is what lets the native PDF viewer
-              // render at all in a sandboxed frame.
+              // allow-scripts is required — Chrome's own built-in PDF
+              // renderer is itself script-driven, and without this
+              // flag Chrome refuses to render inside the sandbox at
+              // all ("This page has been blocked by Chrome"), not just
+              // degrade gracefully. This is still safe: allow-scripts
+              // + allow-same-origin together only lets framed content
+              // escape sandbox restrictions when that content is
+              // SAME-origin as the parent page — file_url is always a
+              // different origin (the R2 bucket's domain, never
+              // sancturm.vercel.app), so the framed PDF still can't
+              // reach this page's DOM, cookies, or storage. No
+              // allow-top-navigation/allow-popups, so it still can't
+              // redirect the tab or pop a window. And ALLOWED_CONTENT_
+              // TYPES (uploads/actions.ts) already restricts what can
+              // ever land at file_url to application/pdf or a handful
+              // of image types — R2 serves it back with that exact
+              // Content-Type, so the browser renders it as a PDF/image
+              // via its native viewer, never as executable HTML.
               <iframe
                 src={resource.file_url}
                 title={resource.title}
-                sandbox="allow-same-origin"
+                sandbox="allow-scripts allow-same-origin"
                 className="h-full w-full rounded-md border border-border bg-background"
               />
             ))}
