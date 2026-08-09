@@ -30,6 +30,15 @@ export function BranchSwitcher() {
         <DropdownMenu.Content
           align="start"
           sideOffset={6}
+          // Radix returns focus to the trigger button when the menu
+          // closes (its own default, for keyboard users) — but that's
+          // a programmatic focus() call, not a real keystroke, and
+          // Safari and Chrome disagree on whether a focus-visible ring
+          // should show for it. Chrome mostly doesn't; Safari does,
+          // and leaves it sitting there after every selection. Since
+          // the trigger's current value is already visible as its own
+          // label, there's nothing lost by not re-focusing it.
+          onCloseAutoFocus={(event) => event.preventDefault()}
           className="z-50 w-[--radix-dropdown-menu-trigger-width] overflow-hidden rounded-md border border-border bg-card p-1 shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
         >
           {branches?.map((b) => (

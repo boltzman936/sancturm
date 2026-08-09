@@ -51,7 +51,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <Link
             href="/"
             onClick={onClose}
-            className="px-1 font-mono text-base font-medium text-terminal-blue transition-opacity hover:opacity-80 active:opacity-80"
+            className="rounded-sm px-1 font-mono text-base font-medium text-terminal-blue outline-none transition-opacity hover:opacity-80 active:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
           >
             sancturm
           </Link>
@@ -78,7 +78,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                   href={link.href}
                   onClick={onClose}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
@@ -97,7 +97,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             href="/cr"
             onClick={onClose}
             className={cn(
-              "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+              "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
               pathname.startsWith("/cr")
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
