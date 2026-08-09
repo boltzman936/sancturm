@@ -133,7 +133,8 @@
       "Bash(/usr/bin/curl -s -o /dev/null -w \"cr: %{time_total}s\\\\n\" \"https://sancturm.vercel.app/cr\")",
       "Bash(/usr/bin/curl -s -o /dev/null -w \"notes: %{time_total}s\\\\n\" \"https://sancturm.vercel.app/notes\")",
       "Bash(/usr/bin/curl -s -o /dev/null -w \"homepage: %{http_code}\\\\n\" https://sancturm.vercel.app/)",
-      "Bash(/usr/bin/curl -s -o /dev/null -w \"cr/upload: %{http_code}\\\\n\" https://sancturm.vercel.app/cr/upload)"
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"cr/upload: %{http_code}\\\\n\" https://sancturm.vercel.app/cr/upload)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"offline page: %{http_code}\\\\n\" https://sancturm.vercel.app/offline)"
     ]
   }
 }
