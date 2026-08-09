@@ -16,6 +16,16 @@ const r2Client = new S3Client({
     accessKeyId: process.env.R2_ACCESS_KEY_ID!,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
   },
+  // Without this, the SDK defaults to virtual-hosted-style URLs —
+  // `https://<bucket>.<account>.r2.cloudflarestorage.com/<key>` — which
+  // silently broke every upload: the CSP's connect-src (next.config.ts)
+  // only allows `https://<account>.r2.cloudflarestorage.com` (the host
+  // built from R2_ACCOUNT_ID alone, no bucket subdomain), so the
+  // browser blocked the presigned PUT as a CSP violation before it
+  // ever left the page — no server log, just a generic client-side
+  // "Upload to storage failed." Path-style keeps the bucket in the
+  // URL's path instead of the host, matching the CSP exactly.
+  forcePathStyle: true,
 });
 
 /**
