@@ -88,10 +88,21 @@ export function ResourceCard({
         resource.is_pinned ? "border-primary/40" : "border-border"
       )}
     >
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
-          {resource.is_pinned && <Pin className="h-3.5 w-3.5 shrink-0 fill-current text-primary" />}
-          <p className="truncate text-foreground">{resource.title}</p>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start gap-1.5">
+          {resource.is_pinned && (
+            <Pin className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-current text-primary" />
+          )}
+          {/* Mobile/tablet: up to 2 lines, wrapping instead of an
+              aggressive 1-line ellipsis — the icon row already claims a
+              fixed chunk of a narrow card, so a long title needs the
+              vertical room more than it needs to stay on one line.
+              Desktop has enough width that this basically never
+              triggers, so it reverts to the original 1-line behavior
+              rather than changing how it already looks there. */}
+          <p className="break-words text-foreground line-clamp-2 lg:line-clamp-1">
+            {resource.title}
+          </p>
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-subtle-foreground">
           <span>{resource.subject?.name ?? "Extra"}</span>
