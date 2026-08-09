@@ -45,6 +45,19 @@ function typeGroupLabel(resource: ManageableResource) {
   return SECTION_LABEL[resource.section] ?? resource.section;
 }
 
+// The "PYQ" filter is the one exception to exact-label matching: a
+// question paper and its solution are two resource_type values under
+// the same section, and unlike Notes/Lab (which stay deliberately
+// separate filters), a solution is only ever useful alongside its
+// paper — so picking "PYQ" here means "everything in the pyq section",
+// not just the question-paper half. "PYQ Solution" stays available as
+// its own option for narrowing down to just solutions when wanted.
+function matchesTypeFilter(resource: ManageableResource, typeFilter: string) {
+  if (typeFilter === ALL) return true;
+  if (typeFilter === "PYQ") return resource.section === "pyq";
+  return typeGroupLabel(resource) === typeFilter;
+}
+
 export type ManageableResource = {
   id: string;
   // "resource" rows delete through deleteResource, "notice" rows
@@ -270,7 +283,7 @@ export function ManageResourceList({
       if (r.section !== "notes_lab" && r.section !== "pyq") continue;
       if (branchFilter !== ALL && r.branch?.name !== branchFilter) continue;
       if (termFilter !== ALL && termShortLabel(r.term) !== termFilter) continue;
-      if (typeFilter !== ALL && typeGroupLabel(r) !== typeFilter) continue;
+      if (!matchesTypeFilter(r, typeFilter)) continue;
       if (r.subject?.name) names.add(r.subject.name);
     }
     return [...Array.from(names).sort(), "Extra"];
@@ -282,7 +295,7 @@ export function ManageResourceList({
       .filter((r) => matchesSearch(r, searchQuery))
       .filter((r) => branchFilter === ALL || r.branch?.name === branchFilter)
       .filter((r) => termFilter === ALL || termShortLabel(r.term) === termFilter)
-      .filter((r) => typeFilter === ALL || typeGroupLabel(r) === typeFilter)
+      .filter((r) => matchesTypeFilter(r, typeFilter))
       .filter((r) => subjectFilter === ALL || (r.subject?.name ?? "Extra") === subjectFilter);
   }, [resources, dateFilter, searchQuery, branchFilter, termFilter, typeFilter, subjectFilter]);
 
