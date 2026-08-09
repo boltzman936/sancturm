@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createNotice } from "@/features/notices/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { titleFromFileName } from "@/features/uploads/titleFromFileName";
+import { Select } from "@/components/shared/Select";
 import { cn } from "@/lib/utils";
 
 type BranchOption = { id: string; name: string };
@@ -79,18 +80,18 @@ export function NoticeComposer({
           <label htmlFor="notice-term" className="font-mono text-xs text-subtle-foreground">
             Year
           </label>
-          <select
+          <Select
             id="notice-term"
             value={termId}
             onChange={(event) => setTermId(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="bg-background"
           >
             {terms.map((term) => (
               <option key={term.id} value={term.id}>
                 {term.label.split(" - ")[0]}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
 
@@ -99,18 +100,18 @@ export function NoticeComposer({
           <label htmlFor="branch" className="font-mono text-xs text-subtle-foreground">
             Branch
           </label>
-          <select
+          <Select
             id="branch"
             value={branchId}
             onChange={(event) => setBranchId(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="bg-background"
           >
             {branches.map((branch) => (
               <option key={branch.id} value={branch.id}>
                 {branch.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
 

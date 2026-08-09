@@ -78,6 +78,11 @@ export async function uploadResourceDirect(formData: FormData) {
   // resulting URL, never the file itself, so there's no serverless
   // body-size limit to hit regardless of how large the PDF is.
   const fileUrl = formData.get("fileUrl") as string;
+  // Optional — a full ISO timestamp already built client-side (see
+  // CRUploadForm), not just a date, so it sorts correctly against
+  // same-day uploads. Omitted entirely when blank, letting the
+  // database's own now() default apply exactly as before.
+  const customCreatedAt = (formData.get("customCreatedAt") as string) || null;
 
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
@@ -91,6 +96,7 @@ export async function uploadResourceDirect(formData: FormData) {
     status: "approved",
     uploaded_by_device: null,
     uploaded_by_name: role?.displayName ?? null,
+    ...(customCreatedAt ? { created_at: customCreatedAt } : {}),
   });
   if (insertError) throw insertError;
 

@@ -9,6 +9,7 @@ import { deleteResource } from "@/features/resources/actions";
 import { deleteNotice } from "@/features/notices/actions";
 import { deleteSancturmUpdate } from "@/features/sancturmUpdates/actions";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { Select } from "@/components/shared/Select";
 import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
@@ -89,9 +90,6 @@ function matchesSearch(resource: ManageableResource, query: string) {
   return haystack.includes(query.trim().toLowerCase());
 }
 
-const selectClass =
-  "rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
 function FilterSelect({
   label,
   value,
@@ -121,17 +119,17 @@ function FilterSelect({
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <label className="font-mono text-xs text-subtle-foreground">{label}</label>
-      <select
+      <Select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={cn(selectClass, fullWidth && "w-full min-w-0", fixedWidth && "w-[190px] shrink-0")}
+        className={cn(fullWidth && "w-full min-w-0", fixedWidth && "w-[190px] shrink-0")}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }

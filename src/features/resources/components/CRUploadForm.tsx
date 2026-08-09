@@ -6,6 +6,8 @@ import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/feature
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { titleFromFileName } from "@/features/uploads/titleFromFileName";
+import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { Select } from "@/components/shared/Select";
 import { NoticeComposer } from "@/features/notices/components/NoticeComposer";
 import { CustomNoticeComposer } from "@/features/notices/components/CustomNoticeComposer";
 import { UpdateComposer } from "@/features/sancturmUpdates/components/UpdateComposer";
@@ -51,6 +53,10 @@ export function CRUploadForm({
   // across every branch in one row.
   const [allBranches, setAllBranches] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  // yyyy-mm-dd from <input type="date">, or "" to leave it blank —
+  // an empty value means the insert omits created_at entirely and the
+  // database's own now() default applies, exactly today's behavior.
+  const [customDate, setCustomDate] = useState("");
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +92,25 @@ export function CRUploadForm({
     const title = titleInput || titleFromFileName(file.name);
     const subjectValue = (form.elements.namedItem("subject") as HTMLSelectElement).value || "";
     const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value;
+    // Combined with the CURRENT time-of-day (not midnight) so it sorts
+    // sensibly against same-day uploads, and built with the local Date
+    // constructor (not new Date("yyyy-mm-dd"), which parses as UTC
+    // midnight) so the calendar day landed on matches what the CR
+    // actually picked regardless of timezone — the exact bug class the
+    // date filter itself was fixed for earlier.
+    let customCreatedAt = "";
+    if (customDate) {
+      const [year, month, day] = customDate.split("-").map(Number);
+      const now = new Date();
+      customCreatedAt = new Date(
+        year,
+        month - 1,
+        day,
+        now.getHours(),
+        now.getMinutes(),
+        now.getSeconds()
+      ).toISOString();
+    }
 
     if (isBulkPublish) {
       const subjectName = subjects?.find((subject) => subject.id === subjectValue)?.name ?? "";
@@ -105,11 +130,13 @@ export function CRUploadForm({
           formData.set("title", title);
           formData.set("description", description);
           formData.set("fileUrl", fileUrl);
+          if (customCreatedAt) formData.set("customCreatedAt", customCreatedAt);
 
           await uploadResourceDirectAllBranches(formData);
           setSuccess(true);
           formRef.current?.reset();
           setFile(null);
+          setCustomDate("");
         } catch {
           setError("Something went wrong. Try again.");
         }
@@ -133,11 +160,13 @@ export function CRUploadForm({
         formData.set("title", title);
         formData.set("description", description);
         formData.set("fileUrl", fileUrl);
+        if (customCreatedAt) formData.set("customCreatedAt", customCreatedAt);
 
         await uploadResourceDirect(formData);
         setSuccess(true);
         formRef.current?.reset();
         setFile(null);
+        setCustomDate("");
       } catch {
         setError("Something went wrong. Try again.");
       }
@@ -275,18 +304,18 @@ export function CRUploadForm({
           <label htmlFor="term" className="font-mono text-xs text-subtle-foreground">
             Year
           </label>
-          <select
+          <Select
             id="term"
             value={termId}
             onChange={(event) => setTermId(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="bg-background"
           >
             {terms.map((term) => (
               <option key={term.id} value={term.id}>
                 {term.label.split(" - ")[0]}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
 
@@ -300,18 +329,18 @@ export function CRUploadForm({
               </span>
             )}
           </label>
-          <select
+          <Select
             id="branch"
             value={branchId}
             onChange={(event) => setPyqBranchId(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="bg-background"
           >
             {branches.map((branch) => (
               <option key={branch.id} value={branch.id}>
                 {branch.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
 
@@ -330,11 +359,11 @@ export function CRUploadForm({
         <label htmlFor="subject" className="font-mono text-xs text-subtle-foreground">
           Subject
         </label>
-        <select
+        <Select
           key={`${resourceType}-${branchId}-${termId}`}
           id="subject"
           name="subject"
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="bg-background"
         >
           <option value="">Extra</option>
           {subjects?.map((subject) => (
@@ -342,7 +371,7 @@ export function CRUploadForm({
               {subject.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="flex flex-col gap-1">
@@ -354,6 +383,18 @@ export function CRUploadForm({
           name="description"
           rows={2}
           className="resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="font-mono text-xs text-subtle-foreground">
+          Date <span className="normal-case text-subtle-foreground/70">(optional — defaults to today)</span>
+        </label>
+        <DateFilterInput
+          value={customDate}
+          onChange={setCustomDate}
+          placeholder="Today"
+          className="bg-background"
         />
       </div>
 

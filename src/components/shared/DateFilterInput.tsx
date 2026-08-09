@@ -44,10 +44,16 @@ export function DateFilterInput({
   value,
   onChange,
   className,
+  placeholder = "Any date",
 }: {
   value: string;
   onChange: (value: string) => void;
   className?: string;
+  // "Any date" reads right for a filter (this component's original
+  // and still primary use); a field that SETS a date instead of
+  // filtering by one — the CR upload form's optional custom date —
+  // needs its own wording, so this is overridable rather than hardcoded.
+  placeholder?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
@@ -64,7 +70,7 @@ export function DateFilterInput({
       <Calendar className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
       {showOverlay && (
         <span className="pointer-events-none absolute left-9 top-1/2 -translate-y-1/2 text-sm text-subtle-foreground">
-          Any date
+          {placeholder}
         </span>
       )}
       <input

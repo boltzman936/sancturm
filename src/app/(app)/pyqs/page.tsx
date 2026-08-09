@@ -9,6 +9,7 @@ import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { Select } from "@/components/shared/Select";
 import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
@@ -126,10 +127,10 @@ export default function PYQsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <select
+          <Select
             value={subjectFilter}
             onChange={(event) => setSubjectFilter(event.target.value)}
-            className="w-[190px] shrink-0 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-[190px] shrink-0"
           >
             <option value={ALL_SUBJECTS}>All subjects</option>
             {subjectOptions.map((name) => (
@@ -138,7 +139,7 @@ export default function PYQsPage() {
               </option>
             ))}
             <option value={EXTRA_SUBJECT}>Extra</option>
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -188,10 +189,10 @@ export default function PYQsPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <select
+          <Select
             value={subjectFilter}
             onChange={(event) => setSubjectFilter(event.target.value)}
-            className="min-w-0 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-0"
           >
             <option value={ALL_SUBJECTS}>All subjects</option>
             {subjectOptions.map((name) => (
@@ -200,7 +201,7 @@ export default function PYQsPage() {
               </option>
             ))}
             <option value={EXTRA_SUBJECT}>Extra</option>
-          </select>
+          </Select>
 
           <DateFilterInput value={dateFilter} onChange={setDateFilter} />
         </div>
