@@ -16,7 +16,7 @@ import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
-import { localDateKey } from "@/lib/date";
+import { localDateKey, formatShortDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import type { ResourceType } from "@/features/resources/types";
 
@@ -35,14 +35,6 @@ function sortByDate(resources: ResourceWithSubject[], order: DateSort) {
   return sorted;
 }
 
-function formatSearchableDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 // One search box, matched against title, description, and the date as
 // displayed (so typing "Aug" or "2026" works the same as a title
 // keyword) — a CR looking something up shouldn't need to know which
@@ -53,7 +45,7 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
     resource.title,
     resource.description ?? "",
     resource.subject?.name ?? "",
-    formatSearchableDate(resource.created_at),
+    formatShortDate(resource.created_at),
   ]
     .join(" ")
     .toLowerCase();

@@ -11,18 +11,10 @@ import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { SancturmUpdate } from "@/features/sancturmUpdates/types";
-import { localDateKey } from "@/lib/date";
+import { localDateKey, formatShortDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-
-function formatTimestamp(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function isRecent(iso: string) {
   return Date.now() - new Date(iso).getTime() < NEW_WINDOW_MS;
@@ -30,7 +22,7 @@ function isRecent(iso: string) {
 
 function matchesSearch(update: SancturmUpdate, query: string) {
   if (!query.trim()) return true;
-  const haystack = [update.title, update.body ?? "", formatTimestamp(update.created_at)]
+  const haystack = [update.title, update.body ?? "", formatShortDate(update.created_at)]
     .join(" ")
     .toLowerCase();
   return haystack.includes(query.trim().toLowerCase());
@@ -142,7 +134,7 @@ export default function SancturmUpdatesPage() {
                       )}
                     </div>
                     <p className="mt-1 font-mono text-xs text-subtle-foreground">
-                      {formatTimestamp(update.created_at)}
+                      {formatShortDate(update.created_at)}
                     </p>
                   </div>
 

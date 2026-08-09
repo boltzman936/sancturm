@@ -14,20 +14,12 @@ import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { Notice } from "@/features/notices/types";
-import { localDateKey } from "@/lib/date";
+import { localDateKey, formatShortDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
-
-function formatTimestamp(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function matchesSearch(notice: Notice, query: string) {
   if (!query.trim()) return true;
-  const haystack = [notice.title, notice.body ?? "", formatTimestamp(notice.created_at)]
+  const haystack = [notice.title, notice.body ?? "", formatShortDate(notice.created_at)]
     .join(" ")
     .toLowerCase();
   return haystack.includes(query.trim().toLowerCase());
@@ -139,7 +131,7 @@ export default function NoticesPage() {
                     <p className="text-foreground">{notice.title}</p>
                   </div>
                   <p className="mt-1 font-mono text-xs text-subtle-foreground">
-                    {formatTimestamp(notice.created_at)}
+                    {formatShortDate(notice.created_at)}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">

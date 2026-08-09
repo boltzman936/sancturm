@@ -10,7 +10,7 @@ import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
-import { localDateKey } from "@/lib/date";
+import { localDateKey, formatShortDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import type { ResourceType } from "@/features/resources/types";
 
@@ -29,21 +29,13 @@ function sortByDate(resources: ResourceWithSubject[], order: DateSort) {
   return sorted;
 }
 
-function formatSearchableDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 function matchesSearch(resource: ResourceWithSubject, query: string) {
   if (!query.trim()) return true;
   const haystack = [
     resource.title,
     resource.description ?? "",
     resource.subject?.name ?? "",
-    formatSearchableDate(resource.created_at),
+    formatShortDate(resource.created_at),
   ]
     .join(" ")
     .toLowerCase();

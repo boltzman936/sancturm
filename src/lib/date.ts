@@ -20,3 +20,17 @@ export function localDateKey(iso: string): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+/**
+ * "Aug 9, 2026" — the display/search format used everywhere a
+ * timestamp is shown as a short date (resource cards, notices,
+ * Sancturm updates, Manage, the PYQs/Notes search-by-date match).
+ * Previously copy-pasted verbatim into six different files.
+ */
+export function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}

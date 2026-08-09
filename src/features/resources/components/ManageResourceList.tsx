@@ -10,7 +10,7 @@ import { deleteNotice } from "@/features/notices/actions";
 import { deleteSancturmUpdate } from "@/features/sancturmUpdates/actions";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
-import { localDateKey } from "@/lib/date";
+import { localDateKey, formatShortDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 const SECTION_LABEL: Record<string, string> = {
@@ -87,14 +87,6 @@ function bySubject(a: ManageableResource, b: ManageableResource) {
   return (a.subject?.name ?? "").localeCompare(b.subject?.name ?? "");
 }
 
-function formatTimestamp(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 function matchesSearch(resource: ManageableResource, query: string) {
   if (!query.trim()) return true;
   const haystack = [
@@ -103,7 +95,7 @@ function matchesSearch(resource: ManageableResource, query: string) {
     resource.branch?.name ?? "",
     termShortLabel(resource.term),
     uploaderLabel(resource),
-    formatTimestamp(resource.created_at),
+    formatShortDate(resource.created_at),
   ]
     .join(" ")
     .toLowerCase();
@@ -207,7 +199,7 @@ function ResourceRow({
             <span aria-hidden="true">·</span>
             <span>{resource.subject?.name ?? "Extra"}</span>
             <span aria-hidden="true">·</span>
-            <span>{formatTimestamp(resource.created_at)}</span>
+            <span>{formatShortDate(resource.created_at)}</span>
             <span aria-hidden="true">·</span>
             <span>{uploaderLabel(resource)}</span>
           </p>

@@ -7,15 +7,8 @@ import { useIncrementResourceCounter, type ResourceWithSubject } from "@/feature
 import { toggleResourcePin } from "@/features/resources/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
+import { formatShortDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
-
-function formatTimestamp(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 // Students never log in, so there's no real name to show for them —
 // "Student submission" is the honest ceiling there. A CR/admin direct
@@ -105,7 +98,7 @@ export function ResourceCard({
           <span aria-hidden="true">·</span>
           <span>{uploaderLabel(resource)}</span>
           <span aria-hidden="true">·</span>
-          <span>{formatTimestamp(resource.created_at)}</span>
+          <span>{formatShortDate(resource.created_at)}</span>
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">
