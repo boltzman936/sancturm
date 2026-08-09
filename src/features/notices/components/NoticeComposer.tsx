@@ -2,10 +2,12 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { createNotice } from "@/features/notices/actions";
+import { createNotice, createNoticeAllBranches } from "@/features/notices/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { titleFromFileName } from "@/features/uploads/titleFromFileName";
 import { Select } from "@/components/shared/Select";
+import { BranchMultiSelect } from "@/components/shared/BranchMultiSelect";
+import { UploadProgress } from "@/components/shared/UploadProgress";
 import { cn } from "@/lib/utils";
 
 type BranchOption = { id: string; name: string };
@@ -16,15 +18,24 @@ export function NoticeComposer({
   terms,
   fixedBranchId,
   fixedTermId,
+  isAdmin,
 }: {
   branches: BranchOption[];
   terms: TermOption[];
   fixedBranchId?: string;
   fixedTermId?: string;
+  // Only an admin gets to pick more than one branch — a CR is always
+  // scoped to their own single branch (fixedBranchId), same rule as
+  // CRUploadForm's canBulkPublish.
+  isAdmin: boolean;
 }) {
   const [branchId, setBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>(
+    fixedBranchId ? [fixedBranchId] : branches[0] ? [branches[0].id] : []
+  );
   const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
   const [file, setFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +44,8 @@ export function NoticeComposer({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file || !branchId || !termId) return;
+    if (!file || !termId) return;
+    if (isAdmin ? selectedBranchIds.length === 0 : !branchId) return;
     setSuccess(false);
     setError(null);
 
@@ -42,29 +54,37 @@ export function NoticeComposer({
     const title = titleInput || titleFromFileName(file.name);
 
     startTransition(async () => {
+      setUploadProgress(0);
       try {
         // Straight to R2 from the browser — bypasses the serverless
         // body-size limit a large PDF would otherwise hit.
-        const filePath = `notices/${branchId}/${crypto.randomUUID()}-${file.name}`;
-        const fileUrl = await uploadFileToR2(filePath, file);
+        const filePath = `notices/${isAdmin ? "multi-branch" : branchId}/${crypto.randomUUID()}-${file.name}`;
+        const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress);
 
         const formData = new FormData();
-        formData.set("branchId", branchId);
         formData.set("termId", termId);
         formData.set("title", title);
         formData.set("fileUrl", fileUrl);
 
-        await createNotice(formData);
+        if (isAdmin) {
+          formData.set("branchIds", JSON.stringify(selectedBranchIds));
+          await createNoticeAllBranches(formData);
+        } else {
+          formData.set("branchId", branchId);
+          await createNotice(formData);
+        }
         // revalidatePath (in the server action) refreshes server-rendered
         // pages, but /notices reads through TanStack Query's client
         // cache — that needs its own invalidation to show the new notice
         // without a manual refresh.
-        queryClient.invalidateQueries({ queryKey: ["notices", branchId, termId] });
+        queryClient.invalidateQueries({ queryKey: ["notices"] });
         setSuccess(true);
         formRef.current?.reset();
         setFile(null);
       } catch {
         setError("Something went wrong. Try again.");
+      } finally {
+        setUploadProgress(null);
       }
     });
   }
@@ -95,7 +115,17 @@ export function NoticeComposer({
         </div>
       )}
 
-      {branches.length > 1 && !fixedBranchId && (
+      {isAdmin && (
+        <div className="flex flex-col gap-1">
+          <label className="font-mono text-xs text-subtle-foreground">Branch</label>
+          <BranchMultiSelect
+            branches={branches}
+            selectedBranchIds={selectedBranchIds}
+            onChange={setSelectedBranchIds}
+          />
+        </div>
+      )}
+      {!isAdmin && branches.length > 1 && !fixedBranchId && (
         <div className="flex flex-col gap-1">
           <label htmlFor="branch" className="font-mono text-xs text-subtle-foreground">
             Branch
@@ -141,19 +171,29 @@ export function NoticeComposer({
         />
       </div>
 
+      {uploadProgress !== null && <UploadProgress fraction={uploadProgress} />}
+
       <button
         type="submit"
-        disabled={isPending || !file || !branchId || !termId}
+        disabled={
+          isPending || !file || !termId || (isAdmin ? selectedBranchIds.length === 0 : !branchId)
+        }
         className={cn(
           "self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
         )}
       >
-        {isPending ? "Publishing…" : "Publish notice"}
+        {isPending
+          ? "Publishing…"
+          : isAdmin && selectedBranchIds.length > 1
+            ? `Publish to ${selectedBranchIds.length} branches`
+            : "Publish notice"}
       </button>
 
       {success && (
         <p className="font-mono text-xs text-terminal-blue">
-          Published — it&apos;s already live, no review needed.
+          {isAdmin && selectedBranchIds.length > 1
+            ? "Published to every selected branch — already live, no review needed."
+            : "Published — it's already live, no review needed."}
         </p>
       )}
       {error && <p className="font-mono text-xs text-destructive">{error}</p>}

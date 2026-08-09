@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
 
 /**
@@ -32,6 +33,83 @@ export async function createNotice(formData: FormData) {
     pdf_url: fileUrl,
     important_dates: [],
   });
+  if (insertError) throw insertError;
+
+  revalidatePath("/notices");
+  revalidatePath("/cr/manage");
+}
+
+/**
+ * Admin-only: publishes one notice to any number of branches within
+ * one term at once — same reasoning and shape as resources.ts's
+ * uploadResourceDirectAllBranches. RLS ("CR or admin manages") only
+ * lets an admin insert outside their own branch scope in the first
+ * place, so a non-admin calling this just gets a database rejection
+ * either way — the explicit role check here is just a faster, clearer
+ * failure.
+ */
+export async function createNoticeAllBranches(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const role = await getCurrentRole();
+  if (role?.type !== "admin") throw new Error("Admin only.");
+
+  const termId = formData.get("termId") as string;
+  const title = formData.get("title") as string;
+  const fileUrl = formData.get("fileUrl") as string;
+  const branchIds = JSON.parse(formData.get("branchIds") as string) as string[];
+  if (!Array.isArray(branchIds) || !branchIds.every((id) => typeof id === "string") || !branchIds.length) {
+    throw new Error("Invalid branch selection.");
+  }
+
+  const { error: insertError } = await supabase.from("notices").insert(
+    branchIds.map((branchId) => ({
+      branch_id: branchId,
+      term_id: termId,
+      title,
+      pdf_url: fileUrl,
+      important_dates: [],
+    }))
+  );
+  if (insertError) throw insertError;
+
+  revalidatePath("/notices");
+  revalidatePath("/cr/manage");
+}
+
+/** The admin-only, multi-branch equivalent of createCustomNotice — see createNoticeAllBranches. */
+export async function createCustomNoticeAllBranches(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const role = await getCurrentRole();
+  if (role?.type !== "admin") throw new Error("Admin only.");
+
+  const termId = formData.get("termId") as string;
+  const title = formData.get("title") as string;
+  const body = formData.get("body") as string;
+  const branchIds = JSON.parse(formData.get("branchIds") as string) as string[];
+  if (!Array.isArray(branchIds) || !branchIds.every((id) => typeof id === "string") || !branchIds.length) {
+    throw new Error("Invalid branch selection.");
+  }
+
+  const { error: insertError } = await supabase.from("notices").insert(
+    branchIds.map((branchId) => ({
+      branch_id: branchId,
+      term_id: termId,
+      title,
+      body,
+      pdf_url: null,
+      important_dates: [],
+    }))
+  );
   if (insertError) throw insertError;
 
   revalidatePath("/notices");

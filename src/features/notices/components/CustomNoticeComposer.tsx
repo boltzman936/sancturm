@@ -2,8 +2,9 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { createCustomNotice } from "@/features/notices/actions";
+import { createCustomNotice, createCustomNoticeAllBranches } from "@/features/notices/actions";
 import { Select } from "@/components/shared/Select";
+import { BranchMultiSelect } from "@/components/shared/BranchMultiSelect";
 import { cn } from "@/lib/utils";
 
 type BranchOption = { id: string; name: string };
@@ -15,13 +16,20 @@ export function CustomNoticeComposer({
   terms,
   fixedBranchId,
   fixedTermId,
+  isAdmin,
 }: {
   branches: BranchOption[];
   terms: TermOption[];
   fixedBranchId?: string;
   fixedTermId?: string;
+  // Same rule as NoticeComposer: only an admin can pick more than one
+  // branch — a CR is always scoped to their own (fixedBranchId).
+  isAdmin: boolean;
 }) {
   const [branchId, setBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>(
+    fixedBranchId ? [fixedBranchId] : branches[0] ? [branches[0].id] : []
+  );
   const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
@@ -31,7 +39,8 @@ export function CustomNoticeComposer({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!branchId || !termId) return;
+    if (!termId) return;
+    if (isAdmin ? selectedBranchIds.length === 0 : !branchId) return;
     setSuccess(false);
     setError(null);
 
@@ -41,15 +50,20 @@ export function CustomNoticeComposer({
     if (!title || !body) return;
 
     const formData = new FormData();
-    formData.set("branchId", branchId);
     formData.set("termId", termId);
     formData.set("title", title);
     formData.set("body", body);
 
     startTransition(async () => {
       try {
-        await createCustomNotice(formData);
-        queryClient.invalidateQueries({ queryKey: ["notices", branchId, termId] });
+        if (isAdmin) {
+          formData.set("branchIds", JSON.stringify(selectedBranchIds));
+          await createCustomNoticeAllBranches(formData);
+        } else {
+          formData.set("branchId", branchId);
+          await createCustomNotice(formData);
+        }
+        queryClient.invalidateQueries({ queryKey: ["notices"] });
         setSuccess(true);
         formRef.current?.reset();
       } catch {
@@ -84,7 +98,17 @@ export function CustomNoticeComposer({
         </div>
       )}
 
-      {branches.length > 1 && !fixedBranchId && (
+      {isAdmin && (
+        <div className="flex flex-col gap-1">
+          <label className="font-mono text-xs text-subtle-foreground">Branch</label>
+          <BranchMultiSelect
+            branches={branches}
+            selectedBranchIds={selectedBranchIds}
+            onChange={setSelectedBranchIds}
+          />
+        </div>
+      )}
+      {!isAdmin && branches.length > 1 && !fixedBranchId && (
         <div className="flex flex-col gap-1">
           <label htmlFor="custom-branch" className="font-mono text-xs text-subtle-foreground">
             Branch
@@ -133,17 +157,25 @@ export function CustomNoticeComposer({
 
       <button
         type="submit"
-        disabled={isPending || !branchId || !termId}
+        disabled={
+          isPending || !termId || (isAdmin ? selectedBranchIds.length === 0 : !branchId)
+        }
         className={cn(
           "self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
         )}
       >
-        {isPending ? "Publishing…" : "Publish notice"}
+        {isPending
+          ? "Publishing…"
+          : isAdmin && selectedBranchIds.length > 1
+            ? `Publish to ${selectedBranchIds.length} branches`
+            : "Publish notice"}
       </button>
 
       {success && (
         <p className="font-mono text-xs text-terminal-blue">
-          Published — it&apos;s already live, no review needed.
+          {isAdmin && selectedBranchIds.length > 1
+            ? "Published to every selected branch — already live, no review needed."
+            : "Published — it's already live, no review needed."}
         </p>
       )}
       {error && <p className="font-mono text-xs text-destructive">{error}</p>}

@@ -5,10 +5,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createSancturmUpdate } from "@/features/sancturmUpdates/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { titleFromFileName } from "@/features/uploads/titleFromFileName";
+import { UploadProgress } from "@/components/shared/UploadProgress";
 import { cn } from "@/lib/utils";
 
 export function UpdateComposer() {
   const [file, setFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,9 +28,10 @@ export function UpdateComposer() {
     const title = titleInput || titleFromFileName(file.name);
 
     startTransition(async () => {
+      setUploadProgress(0);
       try {
         const filePath = `sancturm-updates/${crypto.randomUUID()}-${file.name}`;
-        const fileUrl = await uploadFileToR2(filePath, file);
+        const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress);
 
         const formData = new FormData();
         formData.set("title", title);
@@ -41,6 +44,8 @@ export function UpdateComposer() {
         setFile(null);
       } catch {
         setError("Something went wrong. Try again.");
+      } finally {
+        setUploadProgress(null);
       }
     });
   }
@@ -76,6 +81,8 @@ export function UpdateComposer() {
           className="text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background-secondary file:px-3 file:py-1.5 file:text-sm file:text-foreground"
         />
       </div>
+
+      {uploadProgress !== null && <UploadProgress fraction={uploadProgress} />}
 
       <button
         type="submit"

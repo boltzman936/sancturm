@@ -1,8 +1,6 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, ChevronsUpDown } from "lucide-react";
 import { useSubjects } from "@/features/resources/queries";
 import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
@@ -10,6 +8,8 @@ import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/
 import { titleFromFileName } from "@/features/uploads/titleFromFileName";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
+import { BranchMultiSelect } from "@/components/shared/BranchMultiSelect";
+import { UploadProgress } from "@/components/shared/UploadProgress";
 import { NoticeComposer } from "@/features/notices/components/NoticeComposer";
 import { CustomNoticeComposer } from "@/features/notices/components/CustomNoticeComposer";
 import { UpdateComposer } from "@/features/sancturmUpdates/components/UpdateComposer";
@@ -53,12 +53,15 @@ export function CRUploadForm({
   // separate top-level Type button (that'd make the Type row 6-wide).
   const [pyqKind, setPyqKind] = useState<"pyq" | "pyq_solution">("pyq");
   const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
-  // Admin-only: publish one Notes/Lab resource to any combination of
-  // branches (within the picked term) at once instead of repeating the
-  // upload per branch — a multi-select rather than a single branch or
-  // an all-or-nothing checkbox, so publishing to e.g. just AIML + Core
-  // doesn't need two separate uploads. Not offered for PYQ, which is
-  // already inherently shared across every branch in one row.
+  // Admin-only: publish one upload to any combination of branches
+  // (within the picked term) at once instead of repeating it per
+  // branch — a multi-select rather than a single branch or an
+  // all-or-nothing checkbox, so publishing to e.g. just AIML + Core
+  // doesn't need two separate uploads. Covers PYQ too now, even though
+  // PYQ visibility doesn't depend on branch_id (usePyqResources matches
+  // on term alone) — this only controls which branch(es) get "on
+  // record" as the source, same purpose the single-branch PYQ picker
+  // already served for a CR.
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>(
     fixedBranchId ? [fixedBranchId] : branches[0] ? [branches[0].id] : []
   );
@@ -67,15 +70,19 @@ export function CRUploadForm({
   // an empty value means the insert omits created_at entirely and the
   // database's own now() default applies, exactly today's behavior.
   const [customDate, setCustomDate] = useState("");
+  // Fraction 0-1 while a file is actively PUTting to R2, null the rest
+  // of the time — null (not 0) is what keeps the progress bar hidden
+  // before a submit and after one finishes, instead of flashing at 0%.
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Admin publishing Notes/Lab always goes through the multi-branch
+  // Admin publishing Notes/Lab/PYQ always goes through the multi-branch
   // picker/action now — whether that's 1 branch or all 3 is just how
   // many are selected, not a separate mode/checkbox to toggle first.
-  const canBulkPublish = isAdmin && (resourceType === "notes" || resourceType === "lab_manual");
+  const canBulkPublish = isAdmin && (resourceType === "notes" || resourceType === "lab_manual" || resourceType === "pyq");
   const showSingleBranchPicker = !canBulkPublish && (resourceType === "pyq" || !fixedBranchId);
   const showTermPicker = !fixedTermId;
   const branchId = resourceType === "pyq" ? pyqBranchId : fixedBranchId ?? pyqBranchId;
@@ -127,21 +134,24 @@ export function CRUploadForm({
     }
 
     if (canBulkPublish) {
+      const section = resourceType === "pyq" ? "pyq" : "notes_lab";
+      const bulkResourceType = resourceType === "pyq" ? pyqKind : resourceType;
       const subjectName = subjects?.find((subject) => subject.id === subjectValue)?.name ?? "";
 
       startTransition(async () => {
+        setUploadProgress(0);
         try {
           // Straight to R2 from the browser, bypassing the serverless
           // body-size limit a large PDF would otherwise hit.
-          const filePath = `multi-branch/notes_lab/${crypto.randomUUID()}-${file.name}`;
-          const fileUrl = await uploadFileToR2(filePath, file);
+          const filePath = `multi-branch/${section}/${crypto.randomUUID()}-${file.name}`;
+          const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress);
 
           const formData = new FormData();
           formData.set("termId", termId);
           formData.set("branchIds", JSON.stringify(selectedBranchIds));
           formData.set("subjectName", subjectName);
-          formData.set("section", "notes_lab");
-          formData.set("resourceType", resourceType);
+          formData.set("section", section);
+          formData.set("resourceType", bulkResourceType);
           formData.set("title", title);
           formData.set("description", description);
           formData.set("fileUrl", fileUrl);
@@ -154,6 +164,8 @@ export function CRUploadForm({
           setCustomDate("");
         } catch {
           setError("Something went wrong. Try again.");
+        } finally {
+          setUploadProgress(null);
         }
       });
       return;
@@ -162,9 +174,10 @@ export function CRUploadForm({
     const section = resourceType === "pyq" ? "pyq" : "notes_lab";
 
     startTransition(async () => {
+      setUploadProgress(0);
       try {
         const filePath = `${branchId}/${section}/${crypto.randomUUID()}-${file.name}`;
-        const fileUrl = await uploadFileToR2(filePath, file);
+        const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress);
 
         const formData = new FormData();
         formData.set("branchId", branchId);
@@ -184,6 +197,8 @@ export function CRUploadForm({
         setCustomDate("");
       } catch {
         setError("Something went wrong. Try again.");
+      } finally {
+        setUploadProgress(null);
       }
     });
   }
@@ -263,6 +278,7 @@ export function CRUploadForm({
             terms={terms}
             fixedBranchId={fixedBranchId}
             fixedTermId={fixedTermId}
+            isAdmin={isAdmin}
           />
         ) : (
           <CustomNoticeComposer
@@ -270,6 +286,7 @@ export function CRUploadForm({
             terms={terms}
             fixedBranchId={fixedBranchId}
             fixedTermId={fixedTermId}
+            isAdmin={isAdmin}
           />
         )}
       </div>
@@ -363,75 +380,18 @@ export function CRUploadForm({
         </div>
       )}
 
-      {/* Admin only, Notes/Lab only — pick any combination of branches
-          in one control instead of a single branch or an all-or-
-          nothing checkbox. Selecting every branch IS "publish to all
-          branches"; there's no separate mode for it. */}
+      {/* Admin only — pick any combination of branches in one control
+          instead of a single branch or an all-or-nothing checkbox.
+          Selecting every branch IS "publish to all branches"; there's
+          no separate mode for it. */}
       {canBulkPublish && (
         <div className="flex flex-col gap-1">
           <label className="font-mono text-xs text-subtle-foreground">Branch</label>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors hover:border-primary active:border-primary focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span>
-                  {selectedBranchIds.length === 0
-                    ? "Select branch"
-                    : selectedBranchIds.length === branches.length
-                      ? "All branches"
-                      : selectedBranchIds.length === 1
-                        ? branches.find((b) => b.id === selectedBranchIds[0])?.name
-                        : `${selectedBranchIds.length} branches selected`}
-                </span>
-                <ChevronsUpDown className="h-4 w-4 text-subtle-foreground" />
-              </button>
-            </DropdownMenu.Trigger>
-
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                align="start"
-                sideOffset={6}
-                onCloseAutoFocus={(event) => event.preventDefault()}
-                className="z-50 w-[--radix-dropdown-menu-trigger-width] overflow-hidden rounded-md border border-border bg-card p-1 shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-              >
-                <DropdownMenu.CheckboxItem
-                  checked={selectedBranchIds.length === branches.length}
-                  onCheckedChange={(checked) =>
-                    setSelectedBranchIds(checked ? branches.map((b) => b.id) : [])
-                  }
-                  onSelect={(event) => event.preventDefault()}
-                  className="flex cursor-pointer items-center justify-between rounded-sm px-2 py-2 text-sm font-medium text-foreground outline-none data-[highlighted]:bg-background-secondary"
-                >
-                  All branches
-                  {selectedBranchIds.length === branches.length && (
-                    <Check className="h-4 w-4 text-primary" />
-                  )}
-                </DropdownMenu.CheckboxItem>
-                <div className="my-1 h-px bg-border" />
-                {branches.map((branch) => {
-                  const checked = selectedBranchIds.includes(branch.id);
-                  return (
-                    <DropdownMenu.CheckboxItem
-                      key={branch.id}
-                      checked={checked}
-                      onCheckedChange={(next) =>
-                        setSelectedBranchIds((prev) =>
-                          next ? [...prev, branch.id] : prev.filter((id) => id !== branch.id)
-                        )
-                      }
-                      onSelect={(event) => event.preventDefault()}
-                      className="flex cursor-pointer items-center justify-between rounded-sm px-2 py-2 text-sm text-foreground outline-none data-[highlighted]:bg-background-secondary"
-                    >
-                      {branch.name}
-                      {checked && <Check className="h-4 w-4 text-primary" />}
-                    </DropdownMenu.CheckboxItem>
-                  );
-                })}
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
+          <BranchMultiSelect
+            branches={branches}
+            selectedBranchIds={selectedBranchIds}
+            onChange={setSelectedBranchIds}
+          />
           {selectedBranchIds.length > 1 && (
             <p className="mt-1 font-mono text-xs text-subtle-foreground">
               Subject is matched by name in each branch.
@@ -506,6 +466,8 @@ export function CRUploadForm({
           className="text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background-secondary file:px-3 file:py-1.5 file:text-sm file:text-foreground"
         />
       </div>
+
+      {uploadProgress !== null && <UploadProgress fraction={uploadProgress} />}
 
       <button
         type="submit"
