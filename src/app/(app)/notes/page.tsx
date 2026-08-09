@@ -166,7 +166,7 @@ export default function NotesAndLabPage() {
           <select
             value={subjectFilter}
             onChange={(event) => setSubjectFilter(event.target.value)}
-            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-[190px] shrink-0 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value={ALL_SUBJECTS}>All subjects</option>
             {subjectOptions?.map((subject) => (

@@ -98,6 +98,7 @@ function FilterSelect({
   onChange,
   options,
   fullWidth = false,
+  fixedWidth = false,
 }: {
   label: string;
   value: string;
@@ -109,6 +110,13 @@ function FilterSelect({
   // misaligned against its neighbor — fullWidth makes it fill the
   // grid cell so every control in a row lines up.
   fullWidth?: boolean;
+  // Subject is the one filter whose content-driven width would
+  // actually change from term to term (short 2nd-Year subject names
+  // vs. AIDS's much longer 1st-Year ones like "Professional
+  // Communication") — same box, different years, different width.
+  // fixedWidth pins it so the control is byte-identical everywhere
+  // regardless of which term's subjects are loaded.
+  fixedWidth?: boolean;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -116,7 +124,7 @@ function FilterSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={cn(selectClass, fullWidth && "w-full min-w-0")}
+        className={cn(selectClass, fullWidth && "w-full min-w-0", fixedWidth && "w-[190px] shrink-0")}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -420,6 +428,7 @@ export function ManageResourceList({
             value={subjectFilter}
             onChange={setSubjectFilter}
             options={[{ value: ALL, label: "All subjects" }, ...subjectOptions.map((s) => ({ value: s, label: s }))]}
+            fixedWidth
           />
         )}
 
