@@ -15,6 +15,34 @@ const OFFLINE_BG_SRCS = ["/images/no-internet-bg.webp", "/images/no-internet-bg-
 const RETURN_PATH_KEY = "sancturm:pre-offline-path";
 
 /**
+ * navigator.onLine (and the offline/online events derived from it)
+ * only reflects whether the network INTERFACE thinks it's connected —
+ * not whether the internet is actually reachable. It's well known to
+ * report stale/wrong values after sleep/wake, a Wi-Fi handoff, or VPN
+ * state changes, especially on Safari/macOS. Trusting it blindly was
+ * a real bug: a false "offline" reading redirected here, and because
+ * the same flag gets re-checked on every mount, hitting Retry (a full
+ * reload) just re-triggered the exact same wrong reading — a loop the
+ * student could never escape even with working internet. A real fetch
+ * is the only way to know for sure.
+ */
+async function checkRealConnectivity(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    await fetch("/favicon.ico", {
+      method: "HEAD",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Mounted once in the root layout. Three jobs:
  *  1. Prefetch /offline while still online, so the moment the
  *     connection actually drops, router.push() can resolve it from
@@ -48,6 +76,8 @@ export function OfflineWatcher() {
   }, [router]);
 
   useEffect(() => {
+    let cancelled = false;
+
     function goOffline() {
       if (pathnameRef.current === OFFLINE_PATH) return;
       window.sessionStorage.setItem(RETURN_PATH_KEY, pathnameRef.current);
@@ -61,15 +91,44 @@ export function OfflineWatcher() {
       router.replace(returnPath);
     }
 
-    // Covers the page loading while already offline (e.g. a stale tab
-    // resumed with no connection) — not just connectivity dropping
-    // mid-session.
-    if (!navigator.onLine) goOffline();
+    // navigator.onLine's own "offline" signal (both the property, read
+    // here, and the browser's offline event below) is only a hint —
+    // verified with a real fetch before ever acting on it, so a stale
+    // or wrong reading can't trap anyone on the offline page. Going
+    // online doesn't need the same verification: trusting a false
+    // "online" signal just means a normal page load that fails the
+    // usual way if it's actually still offline, not a stuck loop.
+    if (!navigator.onLine) {
+      checkRealConnectivity().then((isReallyOnline) => {
+        if (!cancelled && !isReallyOnline) goOffline();
+      });
+    }
 
-    window.addEventListener("offline", goOffline);
+    // Hitting Retry on the offline page is a full window.location.reload()
+    // (see offline/page.tsx) — a fresh mount of this whole component, on
+    // the SAME /offline URL. If the connection is actually back by then,
+    // navigator.onLine may already correctly say "online" (no state
+    // transition happened, so the 'online' event below never fires) —
+    // without this, nothing would ever navigate away from /offline again,
+    // even once real connectivity returns. Checked unconditionally,
+    // independent of what navigator.onLine claims.
+    if (pathnameRef.current === OFFLINE_PATH) {
+      checkRealConnectivity().then((isReallyOnline) => {
+        if (!cancelled && isReallyOnline) goOnline();
+      });
+    }
+
+    function handleOfflineEvent() {
+      checkRealConnectivity().then((isReallyOnline) => {
+        if (!cancelled && !isReallyOnline) goOffline();
+      });
+    }
+
+    window.addEventListener("offline", handleOfflineEvent);
     window.addEventListener("online", goOnline);
     return () => {
-      window.removeEventListener("offline", goOffline);
+      cancelled = true;
+      window.removeEventListener("offline", handleOfflineEvent);
       window.removeEventListener("online", goOnline);
     };
   }, [router]);
