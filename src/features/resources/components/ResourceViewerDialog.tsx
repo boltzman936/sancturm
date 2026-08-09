@@ -47,9 +47,19 @@ export function ResourceViewerDialog({
                 className="h-full w-full rounded-md object-contain"
               />
             ) : (
+              // sandbox with no allow-scripts/allow-top-navigation/
+              // allow-popups: the browser's native PDF renderer needs
+              // no script execution to work, so this costs nothing for
+              // the legitimate case, while making sure that whatever
+              // ends up at file_url — regardless of what upload
+              // validation allows today or might miss tomorrow — can
+              // never run script, redirect the tab, or pop a window.
+              // allow-same-origin is what lets the native PDF viewer
+              // render at all in a sandboxed frame.
               <iframe
                 src={resource.file_url}
                 title={resource.title}
+                sandbox="allow-same-origin"
                 className="h-full w-full rounded-md border border-border bg-background"
               />
             ))}
