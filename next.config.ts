@@ -44,8 +44,20 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: ${r2PublicUrl} ${supabaseUrl}`.trim(),
   `font-src 'self'`,
+  // The R2 domains here are for the PDF viewer's own fetch() (pdf.js
+  // reads the file's bytes directly, not through an <iframe>) — see
+  // ResourceViewerDialog/PdfViewer.
   `connect-src 'self' ${supabaseUrl} ${r2UploadHost} ${r2PublicUrl}`.trim(),
-  `frame-src ${r2PublicUrl}`.trim(),
+  // pdf.js's worker is loaded from /pdf.worker.min.mjs (same-origin —
+  // see the postinstall script in package.json), which 'self' already
+  // covers; stated explicitly so it can't silently start depending on
+  // default-src's fallback chain instead.
+  "worker-src 'self'",
+  // Nothing gets framed anymore — the PDF viewer used to be an
+  // <iframe src={file_url}>, which is exactly what broke inconsistently
+  // across browsers (see PdfViewer's own comment). Rendering pages to
+  // canvas via fetch() removed the need for frame-src entirely.
+  "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

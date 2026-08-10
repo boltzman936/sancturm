@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs && cp -R node_modules/pdfjs-dist/cmaps public/pdf-cmaps && cp -R node_modules/pdfjs-dist/standard_fonts public/pdf-standard-fonts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1105.0",
@@ -26,6 +27,7 @@
     "framer-motion": "^13.0.0",
     "lucide-react": "^1.28.0",
     "next": "^15.5.22",
+    "pdfjs-dist": "^6.2.108",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",

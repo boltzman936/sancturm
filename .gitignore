@@ -41,5 +41,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Local Netlify folder
+# Local Netlify CLI state — unrelated to whether netlify.toml exists
 .netlify
+
+# Copied from node_modules/pdfjs-dist by the postinstall script (see
+# package.json) — always derived from whatever version is installed,
+# never hand-edited, so it doesn't belong in source control.
+/public/pdf.worker.min.mjs
+/public/pdf-cmaps
+/public/pdf-standard-fonts
