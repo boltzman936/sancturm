@@ -42,21 +42,35 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!isLoaded || !branch || !term) return null;
 
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
-      <header className="flex items-center justify-between border-b border-border bg-background-secondary p-4 md:hidden">
+    // min-h-dvh, not min-h-screen (static 100vh) — Android Chrome
+    // recalculates 100vh as its URL bar hides/shows mid-scroll, which
+    // reflows this whole flex-col column while the gesture is still
+    // happening. That transient reflow was reaching the header's flex
+    // row and, for a frame or two, visibly compressing the hamburger
+    // button below its intended box — an SVG icon scales non-uniformly
+    // when its container is squeezed even slightly, which is what
+    // read as "shrinking/distorting". dvh tracks the real, current
+    // viewport instead of recalculating against a moving target.
+    <div className="flex min-h-dvh flex-col md:flex-row">
+      <header className="flex shrink-0 items-center justify-between border-b border-border bg-background-secondary p-4 md:hidden">
         <button
           onClick={() => setNavOpen(true)}
           aria-label="Open menu"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
+          // Fixed h-9 w-9 box (not padding-driven sizing) plus shrink-0
+          // on every flex child in this row — belt-and-suspenders on
+          // top of the dvh fix above, so this button's box can never
+          // be squeezed by anything upstream, ever, regardless of
+          // cause.
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
         >
-          <Menu className="h-5 w-5" />
+          <Menu className="h-5 w-5 shrink-0" />
         </button>
-        <Link href="/" className="font-mono text-lg font-medium text-terminal-blue transition-opacity hover:opacity-80 active:opacity-80">
+        <Link href="/" className="shrink-0 font-mono text-lg font-medium text-terminal-blue transition-opacity hover:opacity-80 active:opacity-80">
           sancturm
         </Link>
         {/* Spacer matching the button's width so the wordmark stays
             visually centered instead of drifting toward the button. */}
-        <span className="w-9" aria-hidden="true" />
+        <span className="h-9 w-9 shrink-0" aria-hidden="true" />
       </header>
 
       <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
