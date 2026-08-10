@@ -61,7 +61,9 @@ function PdfViewer({ url }: { url: string }) {
     if (!container) return;
 
     async function run() {
+      console.log("[pdfdebug] importing pdfjs-dist");
       const pdfjsLib = await import("pdfjs-dist");
+      console.log("[pdfdebug] imported, version", pdfjsLib.version);
       // Served from public/ (copied from node_modules by the
       // postinstall script — see package.json) specifically so this
       // is same-origin: the CSP's script-src is 'self', and a worker
@@ -83,6 +85,7 @@ function PdfViewer({ url }: { url: string }) {
         // actually needs one. Only fetched on demand per-file, not
         // upfront, so this costs nothing for the scanned/image-only
         // PDFs most uploads here actually are.
+        console.log("[pdfdebug] calling getDocument", url);
         const task = pdfjsLib.getDocument({
           url,
           cMapUrl: "/pdf-cmaps/",
@@ -90,7 +93,9 @@ function PdfViewer({ url }: { url: string }) {
           standardFontDataUrl: "/pdf-standard-fonts/",
         });
         loadingTask = task;
+        console.log("[pdfdebug] awaiting task.promise");
         const doc = await task.promise;
+        console.log("[pdfdebug] got doc, numPages", doc.numPages);
         if (cancelled) {
           await task.destroy();
           return;
@@ -137,7 +142,8 @@ function PdfViewer({ url }: { url: string }) {
         }
 
         if (!cancelled) setStatus("ready");
-      } catch {
+      } catch (err) {
+        console.error("[pdfdebug] error", err);
         if (!cancelled) setStatus("error");
       }
     }
