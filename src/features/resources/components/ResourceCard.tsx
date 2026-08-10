@@ -84,7 +84,11 @@ export function ResourceCard({
   return (
     <li
       className={cn(
-        "flex items-center justify-between gap-4 rounded-lg border bg-card p-4",
+        // Tighter gap on mobile/tablet — the icon column already eats
+        // into a narrow card's width, so the space between it and the
+        // title shouldn't compete with the title for room too. Desktop
+        // has plenty of width for the original gap.
+        "flex items-center justify-between gap-2 rounded-lg border bg-card p-4 lg:gap-4",
         resource.is_pinned ? "border-primary/40" : "border-border"
       )}
     >
@@ -112,26 +116,32 @@ export function ResourceCard({
           <span>{formatShortDate(resource.created_at)}</span>
         </p>
       </div>
+      {/* Fixed-width column, never grows — the title above is what
+          should absorb any extra space (flex-1 on its own container).
+          Slightly tighter padding on mobile/tablet than desktop for
+          the same reason as the card's gap above: reclaiming width for
+          the title on a narrow screen where every icon-button's
+          padding counts. */}
       <div className="flex shrink-0 items-center gap-1">
         {canManage && <PinButton pinned={resource.is_pinned} onToggle={handleTogglePin} />}
         <button
           onClick={handleView}
           aria-label="View"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:p-2"
         >
           <Eye className="h-4 w-4" />
         </button>
         <button
           onClick={handleShare}
           aria-label="Share"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:p-2"
         >
           {copied ? <Check className="h-4 w-4 text-primary" /> : <Share2 className="h-4 w-4" />}
         </button>
         <button
           onClick={handleDownload}
           aria-label="Download"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:p-2"
         >
           <Download className="h-4 w-4" />
         </button>

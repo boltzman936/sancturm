@@ -36,14 +36,20 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         <div
           onClick={onClose}
           aria-hidden="true"
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          // h-dvh, not inset-0's implicit height-via-top/bottom-0 —
+          // Android Chrome's URL bar collapsing on scroll grows the
+          // visual viewport, and fixed elements sized off top-0/
+          // bottom-0 don't reliably track that resize, leaving a gap
+          // at the bottom where the page shows through undimmed. dvh
+          // (dynamic viewport height) is the unit built for this.
+          className="fixed inset-x-0 top-0 z-40 h-dvh bg-black/60 md:hidden"
         />
       )}
 
       <nav
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] shrink-0 flex-col gap-6 border-r border-border bg-background-secondary p-4 transition-transform duration-200 ease-out",
-          "md:static md:z-auto md:w-60 md:max-w-none md:translate-x-0 md:transition-none",
+          "fixed left-0 top-0 z-50 flex h-dvh w-72 max-w-[85vw] shrink-0 flex-col gap-6 border-r border-border bg-background-secondary p-4 transition-transform duration-200 ease-out",
+          "md:static md:z-auto md:h-auto md:w-60 md:max-w-none md:translate-x-0 md:transition-none",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >

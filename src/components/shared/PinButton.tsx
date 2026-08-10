@@ -24,7 +24,7 @@ export function PinButton({
       aria-label={pinned ? "Unpin" : "Pin to top"}
       title={pinned ? "Unpin" : "Pin to top"}
       className={cn(
-        "rounded-md p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+        "rounded-md p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 lg:p-2",
         pinned
           ? "text-primary"
           : "text-muted-foreground hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
