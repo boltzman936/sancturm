@@ -20,6 +20,11 @@ function uploaderLabel(resource: { uploaded_by_device: string | null; uploaded_b
   return "Posted by CR";
 }
 
+// Shared by View/Share/Download below — identical styling, only the
+// icon and handler differ.
+const ICON_BUTTON_CLASS =
+  "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:p-2";
+
 export function ResourceCard({
   resource,
   onView,
@@ -124,25 +129,13 @@ export function ResourceCard({
           padding counts. */}
       <div className="flex shrink-0 items-center gap-1">
         {canManage && <PinButton pinned={resource.is_pinned} onToggle={handleTogglePin} />}
-        <button
-          onClick={handleView}
-          aria-label="View"
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:p-2"
-        >
+        <button onClick={handleView} aria-label="View" className={ICON_BUTTON_CLASS}>
           <Eye className="h-4 w-4" />
         </button>
-        <button
-          onClick={handleShare}
-          aria-label="Share"
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:p-2"
-        >
+        <button onClick={handleShare} aria-label="Share" className={ICON_BUTTON_CLASS}>
           {copied ? <Check className="h-4 w-4 text-primary" /> : <Share2 className="h-4 w-4" />}
         </button>
-        <button
-          onClick={handleDownload}
-          aria-label="Download"
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:p-2"
-        >
+        <button onClick={handleDownload} aria-label="Download" className={ICON_BUTTON_CLASS}>
           <Download className="h-4 w-4" />
         </button>
       </div>
