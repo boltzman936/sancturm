@@ -56,6 +56,13 @@ const MAX_RENDER_DPR = 2;
  * viewers use for exactly this reason.
  */
 function PdfViewer({ url }: { url: string }) {
+  // Two refs, not one: containerRef (the canvas host) is hidden via
+  // `hidden` (display:none) while loading, so a display:none element's
+  // clientWidth is always 0 — reading page-render width off it produced
+  // 0×0 canvases that "rendered" successfully but painted nothing
+  // visible. wrapperRef is the outer scroll area, which is never
+  // hidden, so it always reports the real width.
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
@@ -74,7 +81,8 @@ function PdfViewer({ url }: { url: string }) {
     // point elsewhere (or nowhere), but this element is still the one
     // whose children this effect actually appended.
     const container = containerRef.current;
-    if (!container) return;
+    const wrapper = wrapperRef.current;
+    if (!container || !wrapper) return;
 
     async function run() {
       const pdfjsLib = await import("pdfjs-dist");
@@ -87,7 +95,7 @@ function PdfViewer({ url }: { url: string }) {
       // Re-checked, not just relying on the guard above — TS can't
       // carry that narrowing into this async closure, since in
       // principle it could run after the ref changes.
-      if (!container) return;
+      if (!container || !wrapper) return;
       container.replaceChildren();
 
       try {
@@ -118,7 +126,7 @@ function PdfViewer({ url }: { url: string }) {
         // mobile/tablet/desktop is what pages render to fill, with no
         // horizontal overflow and no separate per-breakpoint logic
         // needed here.
-        const containerWidth = container.clientWidth;
+        const containerWidth = wrapper.clientWidth;
         const dpr = Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR);
 
         async function renderPage(pageNumber: number, page: PDFPageProxy, placeholder: HTMLDivElement) {
@@ -224,7 +232,7 @@ function PdfViewer({ url }: { url: string }) {
   }, [url]);
 
   return (
-    <div className="relative h-full w-full overflow-y-auto">
+    <div ref={wrapperRef} className="relative h-full w-full overflow-y-auto">
       {status === "loading" && (
         <div className="flex h-full items-center justify-center font-mono text-xs text-subtle-foreground">
           Loading…
