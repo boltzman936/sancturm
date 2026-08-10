@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,10 +28,76 @@ function toDateKey(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+// T00:00:00 (not a bare yyyy-mm-dd) so this parses as local midnight,
+// not UTC midnight — a date key built from and parsed back through
+// this pair never drifts a day in either direction regardless of the
+// viewer's timezone.
+function parseDateKey(key: string): Date {
+  return new Date(key + "T00:00:00");
+}
+
 function todayKey() {
   const now = new Date();
   return toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
 }
+
+// Everything below operates on real Date arithmetic (setDate/setMonth
+// rolling over naturally into the next/previous month or year), never
+// on hardcoded day-count tables — that's what makes leap years,
+// December → January, and every other month-length edge case correct
+// for free instead of needing special-cased handling.
+function addDays(key: string, delta: number): string {
+  const d = parseDateKey(key);
+  d.setDate(d.getDate() + delta);
+  return toDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function addMonths(key: string, delta: number): string {
+  const d = parseDateKey(key);
+  const day = d.getDate();
+  // Pinned to the 1st before adding months — adding a month directly
+  // to e.g. Jan 31 would otherwise overflow into March (Feb has no
+  // 31st), which setDate silently "corrects" by rolling forward
+  // instead of clamping. Re-applying the original day afterward,
+  // clamped to whatever the new month actually has, is what keeps
+  // "one month from Jan 31" landing on Feb 28/29 instead of Mar 2/3.
+  d.setDate(1);
+  d.setMonth(d.getMonth() + delta);
+  const daysInNewMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, daysInNewMonth));
+  return toDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function addYears(key: string, delta: number): string {
+  return addMonths(key, delta * 12);
+}
+
+function startOfWeek(key: string): string {
+  const d = parseDateKey(key);
+  d.setDate(d.getDate() - d.getDay());
+  return toDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function endOfWeek(key: string): string {
+  const d = parseDateKey(key);
+  d.setDate(d.getDate() + (6 - d.getDay()));
+  return toDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function formatFullDate(key: string): string {
+  return parseDateKey(key).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+// Shared by every nav arrow (prev/next month, prev/next year, prev/
+// next year-range) — one 36px (touch-friendly) icon button style
+// instead of three near-identical class strings.
+const NAV_BUTTON_CLASS =
+  "flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * A hand-built month grid — not a wrapper around <input type="date">'s
@@ -41,12 +107,19 @@ function todayKey() {
  * native widgets. Owning every pixel here is the only way for the
  * calendar to look identical everywhere.
  *
- * Three views, not just the day grid: tapping the month or year in the
- * header jumps to a picker for that instead — reaching a date years
- * back used to mean clicking the prev-month arrow dozens of times,
- * which is exactly the complaint that prompted this. Every modern
- * calendar (Google Calendar, native pickers, ...) offers this same
- * shortcut for the same reason.
+ * Three views: tapping "August 2026" in the day view's header jumps
+ * to a month grid for the year; tapping the year there jumps to a
+ * compact year-range grid. Selecting a year lands back on the month
+ * grid for it, selecting a month lands back on the day grid for it —
+ * reaching a date years back is three taps, never dozens of prev-
+ * month clicks.
+ *
+ * Full roving-tabindex keyboard support in the day grid: arrow keys
+ * move by day/week, Home/End jump to the start/end of the focused
+ * week, PageUp/PageDown step a month, Shift+PageUp/PageDown step a
+ * year, Enter/Space selects. Escape and outside clicks are handled by
+ * the Radix Popover this renders inside (see DateFilterInput), not
+ * here.
  *
  * value/onChange both work in yyyy-mm-dd (or "" for none) — the exact
  * same contract <input type="date"> already had, so nothing calling
@@ -59,16 +132,29 @@ export function Calendar({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const selected = value ? new Date(value + "T00:00:00") : null;
+  const selected = value ? parseDateKey(value) : null;
+  const today = todayKey();
   const [viewYear, setViewYear] = useState(selected?.getFullYear() ?? new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(selected?.getMonth() ?? new Date().getMonth());
   const [view, setView] = useState<"days" | "months" | "years">("days");
   // The first year shown in the year grid — independent of viewYear so
-  // paging the grid by a decade at a time doesn't itself change what
-  // month/year is actually selected until a year is tapped.
+  // paging the grid by a dozen years at a time doesn't itself change
+  // what month/year is actually selected until a year is tapped.
   const [yearRangeStart, setYearRangeStart] = useState(
     () => viewYear - Math.floor(YEAR_GRID_SIZE / 2)
   );
+  // Roving keyboard focus within the day grid — independent of `value`
+  // (the actual selection) so arrow-key browsing doesn't select
+  // anything until Enter/Space, exactly like a native picker.
+  const [focusedKey, setFocusedKey] = useState(() => value || today);
+  const dayButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const shouldMoveFocusRef = useRef(false);
+
+  useEffect(() => {
+    if (!shouldMoveFocusRef.current) return;
+    shouldMoveFocusRef.current = false;
+    dayButtonRefs.current.get(focusedKey)?.focus();
+  }, [focusedKey, viewMonth, viewYear, view]);
 
   function goToPrevMonth() {
     if (viewMonth === 0) {
@@ -88,30 +174,89 @@ export function Calendar({
     }
   }
 
+  function openMonthPicker() {
+    setView("months");
+  }
+
   function openYearPicker() {
     setYearRangeStart(viewYear - Math.floor(YEAR_GRID_SIZE / 2));
     setView("years");
   }
 
-  const today = todayKey();
+  function moveFocus(nextKey: string) {
+    const d = parseDateKey(nextKey);
+    setFocusedKey(nextKey);
+    if (d.getMonth() !== viewMonth || d.getFullYear() !== viewYear) {
+      setViewMonth(d.getMonth());
+      setViewYear(d.getFullYear());
+    }
+    shouldMoveFocusRef.current = true;
+  }
+
+  function handleGridKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    switch (event.key) {
+      case "ArrowLeft":
+        event.preventDefault();
+        moveFocus(addDays(focusedKey, -1));
+        return;
+      case "ArrowRight":
+        event.preventDefault();
+        moveFocus(addDays(focusedKey, 1));
+        return;
+      case "ArrowUp":
+        event.preventDefault();
+        moveFocus(addDays(focusedKey, -7));
+        return;
+      case "ArrowDown":
+        event.preventDefault();
+        moveFocus(addDays(focusedKey, 7));
+        return;
+      case "Home":
+        event.preventDefault();
+        moveFocus(startOfWeek(focusedKey));
+        return;
+      case "End":
+        event.preventDefault();
+        moveFocus(endOfWeek(focusedKey));
+        return;
+      case "PageUp":
+        event.preventDefault();
+        moveFocus(event.shiftKey ? addYears(focusedKey, -1) : addMonths(focusedKey, -1));
+        return;
+      case "PageDown":
+        event.preventDefault();
+        moveFocus(event.shiftKey ? addYears(focusedKey, 1) : addMonths(focusedKey, 1));
+        return;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        onChange(focusedKey);
+        return;
+      default:
+        // Escape (closes the popover) and Tab both fall through
+        // untouched — handled by Radix Popover, not this grid.
+        return;
+    }
+  }
 
   // ---- Month picker: tap a month, land back on the day grid ----
   if (view === "months") {
+    const isCurrentYear = viewYear === new Date().getFullYear();
     return (
-      <div className="w-[280px] p-3">
-        <div className="flex items-center justify-between pb-2">
+      <div className="w-[320px] p-4">
+        <div className="flex items-center justify-between pb-3">
           <button
             type="button"
             onClick={() => setViewYear((y) => y - 1)}
             aria-label="Previous year"
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground"
+            className={NAV_BUTTON_CLASS}
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
           <button
             type="button"
             onClick={openYearPicker}
-            className="rounded-md px-2 py-1 font-mono text-sm text-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary"
+            className="rounded-md px-3 py-1.5 font-mono text-sm text-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {viewYear}
           </button>
@@ -119,16 +264,16 @@ export function Calendar({
             type="button"
             onClick={() => setViewYear((y) => y + 1)}
             aria-label="Next year"
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground"
+            className={NAV_BUTTON_CLASS}
           >
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-3 gap-2">
           {MONTH_SHORT_LABELS.map((label, index) => {
             const isSelected = index === viewMonth;
-            const isCurrentMonth = viewYear === new Date().getFullYear() && index === new Date().getMonth();
+            const isCurrentMonth = isCurrentYear && index === new Date().getMonth();
             return (
               <button
                 key={label}
@@ -136,12 +281,15 @@ export function Calendar({
                 onClick={() => {
                   setViewMonth(index);
                   setView("days");
+                  shouldMoveFocusRef.current = true;
                 }}
+                aria-label={`${MONTH_LABELS[index]} ${viewYear}`}
+                aria-pressed={isSelected}
                 className={cn(
-                  "rounded-md py-2.5 text-sm transition-colors",
+                  "rounded-md py-2.5 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   !isSelected && "text-foreground hover:bg-background-secondary active:bg-background-secondary",
                   isSelected && "bg-primary text-primary-foreground",
-                  isCurrentMonth && !isSelected && "text-primary"
+                  isCurrentMonth && !isSelected && "font-medium text-primary"
                 )}
               >
                 {label}
@@ -153,18 +301,18 @@ export function Calendar({
     );
   }
 
-  // ---- Year picker: tap a year, land back on the day grid ----
+  // ---- Year picker: tap a year, land back on the month grid ----
   if (view === "years") {
     const years = Array.from({ length: YEAR_GRID_SIZE }, (_, i) => yearRangeStart + i);
     const thisYear = new Date().getFullYear();
     return (
-      <div className="w-[280px] p-3">
-        <div className="flex items-center justify-between pb-2">
+      <div className="w-[320px] p-4">
+        <div className="flex items-center justify-between pb-3">
           <button
             type="button"
             onClick={() => setYearRangeStart((y) => y - YEAR_GRID_SIZE)}
             aria-label="Previous years"
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground"
+            className={NAV_BUTTON_CLASS}
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -175,13 +323,13 @@ export function Calendar({
             type="button"
             onClick={() => setYearRangeStart((y) => y + YEAR_GRID_SIZE)}
             aria-label="Next years"
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground"
+            className={NAV_BUTTON_CLASS}
           >
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-3 gap-2">
           {years.map((year) => {
             const isSelected = year === viewYear;
             return (
@@ -192,11 +340,13 @@ export function Calendar({
                   setViewYear(year);
                   setView("months");
                 }}
+                aria-label={String(year)}
+                aria-pressed={isSelected}
                 className={cn(
-                  "rounded-md py-2.5 text-sm transition-colors",
+                  "rounded-md py-2.5 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   !isSelected && "text-foreground hover:bg-background-secondary active:bg-background-secondary",
                   isSelected && "bg-primary text-primary-foreground",
-                  year === thisYear && !isSelected && "text-primary"
+                  year === thisYear && !isSelected && "font-medium text-primary"
                 )}
               >
                 {year}
@@ -211,6 +361,10 @@ export function Calendar({
   // ---- Day grid (default view) ----
   const firstOfMonth = new Date(viewYear, viewMonth, 1);
   const startOffset = firstOfMonth.getDay();
+  // Native Date arithmetic, not a hardcoded days-per-month table —
+  // day 0 of the FOLLOWING month is the last day of THIS one, and
+  // Date itself already knows February has 28 or 29 depending on the
+  // year, so leap years fall out for free.
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const daysInPrevMonth = new Date(viewYear, viewMonth, 0).getDate();
 
@@ -235,47 +389,39 @@ export function Calendar({
   }
 
   return (
-    <div className="w-[280px] p-3">
-      <div className="flex items-center justify-between pb-2">
+    <div className="w-[320px] p-4">
+      <div className="flex items-center justify-between pb-3">
         <button
           type="button"
           onClick={goToPrevMonth}
           aria-label="Previous month"
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground"
+          className={NAV_BUTTON_CLASS}
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setView("months")}
-            className="rounded-md px-2 py-1 font-mono text-sm text-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary"
-          >
-            {MONTH_LABELS[viewMonth]}
-          </button>
-          <button
-            type="button"
-            onClick={openYearPicker}
-            className="rounded-md px-2 py-1 font-mono text-sm text-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary"
-          >
-            {viewYear}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={openMonthPicker}
+          className="rounded-md px-3 py-1.5 font-mono text-sm font-medium text-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {MONTH_LABELS[viewMonth]} {viewYear}
+        </button>
         <button
           type="button"
           onClick={goToNextMonth}
           aria-label="Next month"
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground"
+          className={NAV_BUTTON_CLASS}
         >
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-y-1">
+      <div className="grid grid-cols-7 gap-y-1" role="grid" onKeyDown={handleGridKeyDown}>
         {WEEKDAY_LABELS.map((label) => (
           <div
             key={label}
-            className="flex h-8 items-center justify-center font-mono text-xs text-subtle-foreground"
+            className="flex h-8 items-center justify-center font-mono text-[11px] tracking-wide text-subtle-foreground"
+            aria-hidden="true"
           >
             {label}
           </div>
@@ -284,37 +430,59 @@ export function Calendar({
         {cells.map((cell) => {
           const isSelected = cell.key === value;
           const isToday = cell.key === today;
+          const isFocusable = cell.key === focusedKey;
           return (
             <button
               key={cell.key}
+              ref={(el) => {
+                if (el) dayButtonRefs.current.set(cell.key, el);
+                else dayButtonRefs.current.delete(cell.key);
+              }}
               type="button"
-              onClick={() => onChange(cell.key)}
+              tabIndex={isFocusable ? 0 : -1}
+              data-focused={isFocusable ? "true" : undefined}
+              onClick={() => {
+                setFocusedKey(cell.key);
+                onChange(cell.key);
+              }}
+              onFocus={() => setFocusedKey(cell.key)}
+              aria-label={formatFullDate(cell.key)}
+              aria-pressed={isSelected}
+              aria-current={isToday ? "date" : undefined}
               className={cn(
-                "flex h-8 w-8 items-center justify-center justify-self-center rounded-md text-sm transition-colors",
-                !cell.inMonth && "text-subtle-foreground/40",
+                "relative flex h-9 w-9 items-center justify-center justify-self-center rounded-full text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                !cell.inMonth && "text-subtle-foreground/30",
                 cell.inMonth && !isSelected && "text-foreground hover:bg-background-secondary active:bg-background-secondary",
-                isSelected && "bg-primary text-primary-foreground",
-                isToday && !isSelected && "text-primary"
+                isSelected && "bg-primary font-medium text-primary-foreground",
+                isToday && !isSelected && "font-medium text-primary"
               )}
             >
               {cell.day}
+              {isToday && !isSelected && (
+                <span
+                  aria-hidden="true"
+                  className="absolute bottom-1 h-1 w-1 rounded-full bg-primary"
+                />
+              )}
             </button>
           );
         })}
       </div>
 
-      <div className="flex items-center justify-between border-t border-border pt-2">
+      <div className="mt-1 flex items-center justify-between border-t border-border pt-3">
         <button
           type="button"
           onClick={() => onChange("")}
-          className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
+          aria-label="Clear selected date"
+          className="rounded-md px-2 py-1.5 font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           Clear
         </button>
         <button
           type="button"
           onClick={() => onChange(today)}
-          className="font-mono text-xs text-primary transition-colors hover:text-primary/80 active:text-primary/80"
+          aria-label="Select today"
+          className="rounded-md px-2 py-1.5 font-mono text-xs text-primary transition-colors hover:text-primary/80 active:text-primary/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           Today
         </button>

@@ -53,12 +53,17 @@ export function DateFilterInput({
         <button
           type="button"
           className={cn(
-            "relative flex w-full items-center gap-2 rounded-md border border-border bg-card py-2 pl-9 pr-3 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "relative flex w-full items-center gap-2 rounded-md border border-border bg-card py-2 pl-9 pr-3 text-left text-sm outline-none transition-colors hover:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring",
             value ? "text-foreground" : "text-subtle-foreground",
             className
           )}
         >
-          <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
+          <CalendarIcon
+            className={cn(
+              "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2",
+              value ? "text-primary" : "text-subtle-foreground"
+            )}
+          />
           {value ? formatDisplayDate(value) : placeholder}
         </button>
       </Popover.Trigger>
@@ -66,8 +71,24 @@ export function DateFilterInput({
       <Popover.Portal>
         <Popover.Content
           align="start"
-          sideOffset={6}
-          className="z-50 rounded-md border border-border bg-card shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+          sideOffset={8}
+          // Radix's own collision detection (on by default) is what
+          // keeps this from ever overflowing the viewport or requiring
+          // horizontal page scroll — it flips above the trigger, or
+          // shifts sideways, whenever the default placement wouldn't
+          // fit.
+          collisionPadding={12}
+          // The day grid focuses its own initial cell on open (see
+          // Calendar's data-focused marker below) instead of Radix's
+          // default of focusing the content wrapper itself — that's
+          // what "focus should move appropriately into the calendar"
+          // means here, not just focus landing somewhere inert.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            const content = event.currentTarget as HTMLElement;
+            content.querySelector<HTMLElement>('[data-focused="true"]')?.focus();
+          }}
+          className="z-50 rounded-lg border border-border bg-card shadow-lg motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=closed]:fade-out-0 motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=closed]:zoom-out-95 motion-safe:data-[state=open]:zoom-in-95"
         >
           <Calendar value={value} onChange={handleChange} />
         </Popover.Content>
