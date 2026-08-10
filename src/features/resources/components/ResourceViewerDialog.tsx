@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { PDFDocumentLoadingTask, RenderTask } from "pdfjs-dist";
+import type { PDFDocumentLoadingTask, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
@@ -23,8 +23,8 @@ function isImageUrl(url: string) {
 const MAX_RENDER_DPR = 2;
 
 /**
- * Fetches the PDF and renders every page onto its own <canvas>, page
- * by page, top to bottom in a normal scrolling column — not a native
+ * Fetches the PDF and renders pages onto <canvas> elements, top to
+ * bottom in a normal scrolling column — not a native
  * <iframe>/<embed>/<object> pointed at the file.
  *
  * That native-viewer approach is what this replaces, and the reason
@@ -40,6 +40,20 @@ const MAX_RENDER_DPR = 2;
  * ourselves, with one library, removes every one of those engines
  * from the equation — this component's output looks and behaves
  * identically everywhere.
+ *
+ * Pages render lazily, not all up front: this app's real content is
+ * dominated by scanned-notes PDFs running 50-150+ pages, and eagerly
+ * rendering every single one before showing anything reproduced the
+ * exact "just sits there" complaint this was built to fix, just for a
+ * different reason (CPU-bound sequential rendering instead of a
+ * blocked viewer) — a 48-page file alone took over two minutes render
+ * fully before the old version marked itself "ready". Page 1 renders
+ * eagerly so there's something to look at immediately; every other
+ * page gets a correctly-sized placeholder up front (so scrolling and
+ * the scrollbar are stable) and only actually renders once it
+ * scrolls near the viewport, via IntersectionObserver — the same
+ * approach PDF.js's own reference viewer and most production PDF
+ * viewers use for exactly this reason.
  */
 function PdfViewer({ url }: { url: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -52,7 +66,9 @@ function PdfViewer({ url }: { url: string }) {
     // regardless of whether the load ever actually resolved, which is
     // exactly what's needed if the dialog closes mid-fetch.
     let loadingTask: PDFDocumentLoadingTask | null = null;
-    let currentRenderTask: RenderTask | null = null;
+    let observer: IntersectionObserver | null = null;
+    const activeRenderTasks = new Map<number, RenderTask>();
+    const renderedPages = new Set<number>();
     // Captured once, not re-read as containerRef.current inside the
     // cleanup below — by the time cleanup runs the ref may already
     // point elsewhere (or nowhere), but this element is still the one
@@ -61,9 +77,7 @@ function PdfViewer({ url }: { url: string }) {
     if (!container) return;
 
     async function run() {
-      console.log("[pdfdebug] importing pdfjs-dist");
       const pdfjsLib = await import("pdfjs-dist");
-      console.log("[pdfdebug] imported, version", pdfjsLib.version);
       // Served from public/ (copied from node_modules by the
       // postinstall script — see package.json) specifically so this
       // is same-origin: the CSP's script-src is 'self', and a worker
@@ -85,7 +99,6 @@ function PdfViewer({ url }: { url: string }) {
         // actually needs one. Only fetched on demand per-file, not
         // upfront, so this costs nothing for the scanned/image-only
         // PDFs most uploads here actually are.
-        console.log("[pdfdebug] calling getDocument", url);
         const task = pdfjsLib.getDocument({
           url,
           cMapUrl: "/pdf-cmaps/",
@@ -93,9 +106,7 @@ function PdfViewer({ url }: { url: string }) {
           standardFontDataUrl: "/pdf-standard-fonts/",
         });
         loadingTask = task;
-        console.log("[pdfdebug] awaiting task.promise");
         const doc = await task.promise;
-        console.log("[pdfdebug] got doc, numPages", doc.numPages);
         if (cancelled) {
           await task.destroy();
           return;
@@ -110,10 +121,10 @@ function PdfViewer({ url }: { url: string }) {
         const containerWidth = container.clientWidth;
         const dpr = Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR);
 
-        for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
-          if (cancelled) break;
+        async function renderPage(pageNumber: number, page: PDFPageProxy, placeholder: HTMLDivElement) {
+          if (renderedPages.has(pageNumber) || cancelled) return;
+          renderedPages.add(pageNumber);
 
-          const page = await doc.getPage(pageNumber);
           const unscaledViewport = page.getViewport({ scale: 1 });
           const scale = (containerWidth / unscaledViewport.width) * dpr;
           const viewport = page.getViewport({ scale });
@@ -122,28 +133,78 @@ function PdfViewer({ url }: { url: string }) {
           canvas.width = Math.round(viewport.width);
           canvas.height = Math.round(viewport.height);
           // The canvas's actual pixel buffer is dpr-scaled for
-          // sharpness; its CSS size is the un-scaled display size, so
-          // it still occupies exactly containerWidth on screen.
-          canvas.style.width = `${Math.round(viewport.width / dpr)}px`;
-          canvas.style.height = `${Math.round(viewport.height / dpr)}px`;
-          canvas.className = "mx-auto mb-3 block rounded-md bg-white shadow-md last:mb-0";
-          container.appendChild(canvas);
+          // sharpness; its CSS size fills the placeholder (which is
+          // already sized to the display dimensions), so it still
+          // occupies exactly containerWidth on screen.
+          canvas.className = "block h-full w-full rounded-md bg-white shadow-md";
+          placeholder.replaceChildren(canvas);
 
-          if (cancelled) break;
+          if (cancelled) return;
           const renderTask = page.render({ canvas, viewport });
-          currentRenderTask = renderTask;
-          await renderTask.promise;
-          currentRenderTask = null;
-          // Frees this page's parsed-content cache — with a
-          // 50-100+ page scanned notes PDF, keeping every page's
-          // intermediate render data alive after it's already
-          // painted is the actual memory leak this guards against.
-          page.cleanup();
+          activeRenderTasks.set(pageNumber, renderTask);
+          try {
+            await renderTask.promise;
+          } catch {
+            // A cancelled render task rejects — expected when the
+            // dialog closes or this resource is switched away from
+            // mid-render, not a real failure to surface.
+          } finally {
+            activeRenderTasks.delete(pageNumber);
+            // Frees this page's parsed-content cache — with a
+            // 50-150+ page scanned notes PDF, keeping every visited
+            // page's intermediate render data alive after it's
+            // already painted is the actual memory leak this guards
+            // against.
+            page.cleanup();
+          }
         }
 
-        if (!cancelled) setStatus("ready");
-      } catch (err) {
-        console.error("[pdfdebug] error", err);
+        const firstPage = await doc.getPage(1);
+        if (cancelled) return;
+        const firstUnscaled = firstPage.getViewport({ scale: 1 });
+        // Every subsequent page's placeholder is pre-sized off page
+        // 1's aspect ratio — true for the overwhelming majority of
+        // real documents (uniform page size throughout), and even
+        // when a later page's actual size differs slightly, it's a
+        // one-time layout nudge when that page renders rather than
+        // something that blocks anything up front.
+        const pageAspectRatio = firstUnscaled.height / firstUnscaled.width;
+        const placeholderHeight = Math.round(containerWidth * pageAspectRatio);
+
+        const placeholders: HTMLDivElement[] = [];
+        for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
+          const placeholder = document.createElement("div");
+          placeholder.style.height = `${placeholderHeight}px`;
+          placeholder.className = "mx-auto mb-3 last:mb-0";
+          placeholder.dataset.pageNumber = String(pageNumber);
+          container.appendChild(placeholder);
+          placeholders.push(placeholder);
+        }
+
+        await renderPage(1, firstPage, placeholders[0]);
+        if (cancelled) return;
+        // First page is visible — no reason to keep the rest of the
+        // document behind a spinner while they render lazily below.
+        setStatus("ready");
+
+        observer = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (!entry.isIntersecting) continue;
+              const pageNumber = Number((entry.target as HTMLElement).dataset.pageNumber);
+              if (renderedPages.has(pageNumber)) continue;
+              doc
+                .getPage(pageNumber)
+                .then((page) => renderPage(pageNumber, page, placeholders[pageNumber - 1]));
+            }
+          },
+          // Starts rendering a page slightly before it's actually
+          // scrolled into view, so it's already painted by the time
+          // it reaches the visible area instead of popping in.
+          { root: container, rootMargin: "600px 0px" }
+        );
+        for (const placeholder of placeholders) observer.observe(placeholder);
+      } catch {
         if (!cancelled) setStatus("error");
       }
     }
@@ -152,7 +213,8 @@ function PdfViewer({ url }: { url: string }) {
 
     return () => {
       cancelled = true;
-      currentRenderTask?.cancel();
+      observer?.disconnect();
+      for (const task of activeRenderTasks.values()) task.cancel();
       loadingTask?.destroy();
       container.replaceChildren();
     };
