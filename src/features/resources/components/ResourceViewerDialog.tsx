@@ -165,8 +165,9 @@ function PdfViewer({ url }: { url: string }) {
             await renderTask.promise;
           } catch {
             // A cancelled render task rejects — expected when the
-            // dialog closes or this resource is switched away from
-            // mid-render, not a real failure to surface.
+            // dialog closes, this resource is switched away from, or
+            // this exact page is evicted mid-render (see evictPage
+            // below) — not a real failure to surface.
           } finally {
             activeRenderTasks.delete(pageNumber);
             // Frees this page's parsed-content cache — with a
@@ -176,6 +177,27 @@ function PdfViewer({ url }: { url: string }) {
             // against.
             page.cleanup();
           }
+        }
+
+        // The canvas itself — not just pdf.js's own per-page cache
+        // (page.cleanup() above) — is a real, uncollected cost: every
+        // rendered page stays a live, full-resolution GPU-backed
+        // surface the compositor has to account for on every scroll
+        // frame. On a real phone, a 40-50 page document with every
+        // visited page still "alive" is exactly what turned scrolling
+        // heavy and made taps (e.g. the dialog's own close button)
+        // feel unresponsive — the render/compositing work was
+        // crowding out input handling on the main thread. Evicting a
+        // page once it's scrolled well past the keep-alive margin
+        // below turns this into real virtualization: only pages near
+        // the viewport are ever live at once, matching what the
+        // reference PDF.js viewer does for the same documents.
+        function evictPage(pageNumber: number, placeholder: HTMLDivElement) {
+          if (!renderedPages.has(pageNumber)) return;
+          renderedPages.delete(pageNumber);
+          activeRenderTasks.get(pageNumber)?.cancel();
+          activeRenderTasks.delete(pageNumber);
+          placeholder.replaceChildren();
         }
 
         const firstPage = await doc.getPage(1);
@@ -209,18 +231,30 @@ function PdfViewer({ url }: { url: string }) {
         observer = new IntersectionObserver(
           (entries) => {
             for (const entry of entries) {
-              if (!entry.isIntersecting) continue;
               const pageNumber = Number((entry.target as HTMLElement).dataset.pageNumber);
-              if (renderedPages.has(pageNumber)) continue;
-              doc
-                .getPage(pageNumber)
-                .then((page) => renderPage(pageNumber, page, placeholders[pageNumber - 1]));
+              const placeholder = placeholders[pageNumber - 1];
+              if (entry.isIntersecting) {
+                if (renderedPages.has(pageNumber)) continue;
+                doc.getPage(pageNumber).then((page) => renderPage(pageNumber, page, placeholder));
+              } else {
+                evictPage(pageNumber, placeholder);
+              }
             }
           },
-          // Starts rendering a page slightly before it's actually
-          // scrolled into view, so it's already painted by the time
-          // it reaches the visible area instead of popping in.
-          { root: container, rootMargin: "600px 0px" }
+          // root is the actual scrolling element (wrapper has the
+          // overflow-y-auto, container is just its full-height content)
+          // — using the non-scrolling container here happened to mostly
+          // work by coincidence, but wasn't the real viewport
+          // IntersectionObserver needs to measure against.
+          //
+          // 400px, not the 600px this started at: that margin is how
+          // far past the visible area a page stays rendered before
+          // being evicted, in BOTH directions — 600px kept roughly two
+          // extra screens' worth of full-resolution canvases alive at
+          // once on a phone, which is exactly the compositing cost
+          // that made scrolling (and, since it was busy, even the
+          // dialog's own close button) feel unresponsive.
+          { root: wrapper, rootMargin: "400px 0px" }
         );
         for (const placeholder of placeholders) observer.observe(placeholder);
       } catch {
