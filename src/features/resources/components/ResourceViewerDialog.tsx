@@ -80,7 +80,8 @@ function PdfViewer({ url }: { url: string }) {
     // regardless of whether the load ever actually resolved, which is
     // exactly what's needed if the dialog closes mid-fetch.
     let loadingTask: PDFDocumentLoadingTask | null = null;
-    let observer: IntersectionObserver | null = null;
+    let rafId: number | null = null;
+    let scrollHandler: (() => void) | null = null;
     const activeRenderTasks = new Map<number, RenderTask>();
     const renderedPages = new Set<number>();
     // Captured once, not re-read as containerRef.current inside the
@@ -228,35 +229,52 @@ function PdfViewer({ url }: { url: string }) {
         // document behind a spinner while they render lazily below.
         setStatus("ready");
 
-        observer = new IntersectionObserver(
-          (entries) => {
-            for (const entry of entries) {
-              const pageNumber = Number((entry.target as HTMLElement).dataset.pageNumber);
-              const placeholder = placeholders[pageNumber - 1];
-              if (entry.isIntersecting) {
-                if (renderedPages.has(pageNumber)) continue;
-                doc.getPage(pageNumber).then((page) => renderPage(pageNumber, page, placeholder));
-              } else {
-                evictPage(pageNumber, placeholder);
-              }
+        // Plain scroll-position math, not IntersectionObserver: this
+        // component's first cut used IntersectionObserver with
+        // root: wrapper, and it silently never fired for pages that
+        // scrolled into view after the initial batch — page 1 stayed
+        // rendered but nothing further down ever did, no error, no
+        // hang, just permanently blank placeholders past whatever was
+        // visible on open. Rather than chase exactly which observer
+        // edge case caused that, offsetTop vs. scrollTop is simple
+        // enough to reason about directly and doesn't depend on any
+        // browser's IntersectionObserver timing/batching behavior.
+        const KEEP_ALIVE_MARGIN_PX = 500;
+
+        function updateVisiblePages() {
+          if (cancelled || !wrapper) return;
+          const top = wrapper.scrollTop - KEEP_ALIVE_MARGIN_PX;
+          const bottom = wrapper.scrollTop + wrapper.clientHeight + KEEP_ALIVE_MARGIN_PX;
+          for (let i = 0; i < placeholders.length; i++) {
+            const pageNumber = i + 1;
+            const placeholder = placeholders[i];
+            const placeholderTop = placeholder.offsetTop;
+            const placeholderBottom = placeholderTop + placeholder.offsetHeight;
+            const nearViewport = placeholderBottom > top && placeholderTop < bottom;
+            if (nearViewport) {
+              if (renderedPages.has(pageNumber)) continue;
+              doc.getPage(pageNumber).then((page) => renderPage(pageNumber, page, placeholder));
+            } else {
+              evictPage(pageNumber, placeholder);
             }
-          },
-          // root is the actual scrolling element (wrapper has the
-          // overflow-y-auto, container is just its full-height content)
-          // — using the non-scrolling container here happened to mostly
-          // work by coincidence, but wasn't the real viewport
-          // IntersectionObserver needs to measure against.
-          //
-          // 400px, not the 600px this started at: that margin is how
-          // far past the visible area a page stays rendered before
-          // being evicted, in BOTH directions — 600px kept roughly two
-          // extra screens' worth of full-resolution canvases alive at
-          // once on a phone, which is exactly the compositing cost
-          // that made scrolling (and, since it was busy, even the
-          // dialog's own close button) feel unresponsive.
-          { root: wrapper, rootMargin: "400px 0px" }
-        );
-        for (const placeholder of placeholders) observer.observe(placeholder);
+          }
+        }
+
+        function onScroll() {
+          // Coalesces to at most one recheck per animation frame,
+          // regardless of how many scroll events fire in between —
+          // scroll fires far more often than the page actually needs
+          // to be re-evaluated.
+          if (rafId !== null) return;
+          rafId = requestAnimationFrame(() => {
+            rafId = null;
+            updateVisiblePages();
+          });
+        }
+
+        scrollHandler = onScroll;
+        wrapper.addEventListener("scroll", onScroll, { passive: true });
+        updateVisiblePages();
       } catch {
         if (!cancelled) setStatus("error");
       }
@@ -266,7 +284,8 @@ function PdfViewer({ url }: { url: string }) {
 
     return () => {
       cancelled = true;
-      observer?.disconnect();
+      if (scrollHandler) wrapper.removeEventListener("scroll", scrollHandler);
+      if (rafId !== null) cancelAnimationFrame(rafId);
       for (const task of activeRenderTasks.values()) task.cancel();
       loadingTask?.destroy();
       container.replaceChildren();
