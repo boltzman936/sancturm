@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentLoadingTask, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { UploadProgress } from "@/components/shared/UploadProgress";
 import { cn } from "@/lib/utils";
 
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"];
@@ -65,6 +66,12 @@ function PdfViewer({ url }: { url: string }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  // Fraction 0-1 of the initial document fetch (the bytes needed to
+  // open the file and read page 1) — null until pdf.js reports a
+  // known total, which large scanned PDFs on a slow connection can
+  // take a moment to do, and again null once loading finishes so a
+  // stale bar can't linger.
+  const [progress, setProgress] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,11 +121,15 @@ function PdfViewer({ url }: { url: string }) {
           standardFontDataUrl: "/pdf-standard-fonts/",
         });
         loadingTask = task;
+        task.onProgress = ({ loaded, total }: { loaded: number; total: number }) => {
+          if (!cancelled && total) setProgress(loaded / total);
+        };
         const doc = await task.promise;
         if (cancelled) {
           await task.destroy();
           return;
         }
+        setProgress(null);
 
         // Sized once against the modal's current width — the modal
         // itself is already responsive (see ResourceViewerDialog's
@@ -234,8 +245,14 @@ function PdfViewer({ url }: { url: string }) {
   return (
     <div ref={wrapperRef} className="relative h-full w-full overflow-y-auto">
       {status === "loading" && (
-        <div className="flex h-full items-center justify-center font-mono text-xs text-subtle-foreground">
-          Loading…
+        <div className="flex h-full items-center justify-center px-10">
+          {progress === null ? (
+            <p className="font-mono text-xs text-subtle-foreground">Loading…</p>
+          ) : (
+            <div className="w-full max-w-xs">
+              <UploadProgress fraction={progress} label="Loading" />
+            </div>
+          )}
         </div>
       )}
       {status === "error" && (

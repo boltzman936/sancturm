@@ -1,4 +1,13 @@
-export function UploadProgress({ fraction }: { fraction: number }) {
+export function UploadProgress({
+  fraction,
+  label = "Uploading",
+}: {
+  fraction: number;
+  // Same bar, different caller — the PDF viewer's download progress
+  // (ResourceViewerDialog) isn't an upload, so it passes "Loading"
+  // instead of leaving this hardcoded to the upload-only wording.
+  label?: string;
+}) {
   const percent = Math.round(fraction * 100);
   return (
     <div className="flex flex-col gap-1">
@@ -8,7 +17,9 @@ export function UploadProgress({ fraction }: { fraction: number }) {
           style={{ width: `${percent}%` }}
         />
       </div>
-      <p className="font-mono text-xs text-subtle-foreground">Uploading… {percent}%</p>
+      <p className="font-mono text-xs text-subtle-foreground">
+        {label}… {percent}%
+      </p>
     </div>
   );
 }
