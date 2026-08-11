@@ -172,6 +172,7 @@ function EditDateButton({
   createdAt: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -195,10 +196,20 @@ function EditDateButton({
 
   function handleChange(dateKey: string) {
     setOpen(false);
+    setError(null);
     startTransition(async () => {
-      if (kind === "notice") await updateNoticeDate(id, dateKey);
-      else if (kind === "update") await updateSancturmUpdateDate(id, dateKey);
-      else await updateResourceDate(id, dateKey);
+      try {
+        if (kind === "notice") await updateNoticeDate(id, dateKey);
+        else if (kind === "update") await updateSancturmUpdateDate(id, dateKey);
+        else await updateResourceDate(id, dateKey);
+      } catch (err) {
+        // A Server Action rejecting inside startTransition with nothing
+        // catching it takes down the ENTIRE page to Next's generic
+        // error screen, not just this row — surfacing it inline here
+        // instead is what keeps one bad edit from crashing Manage.
+        console.error(err);
+        setError("Couldn't update the date. Try again.");
+      }
     });
   }
 
@@ -215,9 +226,21 @@ function EditDateButton({
         <CalendarIcon className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+        // No max-height/scroll here on purpose — this is position:
+        // absolute (not Radix's position:fixed), so it's already part
+        // of the page's own normal scroll flow. Capping its height and
+        // scrolling it internally, tried in the previous fix, just
+        // added an extra scrollbar inside an already-scrollable page
+        // for no benefit — rendering at its natural size and letting
+        // the page scroll if it needs to is simpler and one thing.
+        <div className="absolute right-0 top-full z-50 mt-2 rounded-lg border border-border bg-card shadow-lg">
           <Calendar value={localDateKey(createdAt)} onChange={handleChange} hideClear />
         </div>
+      )}
+      {error && (
+        <p className="absolute right-0 top-full z-50 mt-2 w-40 rounded-md border border-destructive/40 bg-card px-2 py-1.5 font-mono text-xs text-destructive shadow-lg">
+          {error}
+        </p>
       )}
     </div>
   );
