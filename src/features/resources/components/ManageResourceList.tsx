@@ -1,14 +1,16 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Search } from "lucide-react";
+import { Search, Calendar as CalendarIcon } from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
 import { DeleteResourceButton } from "@/features/resources/components/DeleteResourceButton";
 import { DeleteNoticeButton } from "@/features/notices/components/DeleteNoticeButton";
 import { DeleteSancturmUpdateButton } from "@/features/sancturmUpdates/components/DeleteSancturmUpdateButton";
-import { deleteResource } from "@/features/resources/actions";
-import { deleteNotice } from "@/features/notices/actions";
-import { deleteSancturmUpdate } from "@/features/sancturmUpdates/actions";
+import { deleteResource, updateResourceDate } from "@/features/resources/actions";
+import { deleteNotice, updateNoticeDate } from "@/features/notices/actions";
+import { deleteSancturmUpdate, updateSancturmUpdateDate } from "@/features/sancturmUpdates/actions";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { Calendar } from "@/components/shared/Calendar";
 import { Select } from "@/components/shared/Select";
 import { localDateKey, formatShortDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
@@ -146,6 +148,62 @@ function FilterSelect({
   );
 }
 
+// Admin-only — lets Anurag retroactively fix a published item's date
+// straight from Manage, instead of that only being settable at upload
+// time. Reuses the same Calendar redesigned for DateFilterInput, just
+// behind a small icon trigger rather than a full date field.
+function EditDateButton({
+  kind,
+  id,
+  createdAt,
+}: {
+  kind: ManageableResource["kind"];
+  id: string;
+  createdAt: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function handleChange(dateKey: string) {
+    setOpen(false);
+    startTransition(async () => {
+      if (kind === "notice") await updateNoticeDate(id, dateKey);
+      else if (kind === "update") await updateSancturmUpdateDate(id, dateKey);
+      else await updateResourceDate(id, dateKey);
+    });
+  }
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          disabled={isPending}
+          aria-label="Change date"
+          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground disabled:pointer-events-none disabled:opacity-50"
+        >
+          <CalendarIcon className="h-4 w-4" />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="end"
+          sideOffset={8}
+          collisionPadding={12}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            const content = event.currentTarget as HTMLElement;
+            content.querySelector<HTMLElement>('[data-focused="true"]')?.focus();
+          }}
+          className="z-50 rounded-lg border border-border bg-card shadow-lg motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=closed]:fade-out-0 motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=closed]:zoom-out-95 motion-safe:data-[state=open]:zoom-in-95"
+        >
+          <Calendar value={localDateKey(createdAt)} onChange={handleChange} />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
 function ResourceRow({
   resource,
   isAdmin,
@@ -205,13 +263,18 @@ function ResourceRow({
           </p>
         </div>
       </div>
-      {resource.kind === "notice" ? (
-        <DeleteNoticeButton noticeId={resource.id} />
-      ) : resource.kind === "update" ? (
-        <DeleteSancturmUpdateButton updateId={resource.id} />
-      ) : (
-        <DeleteResourceButton resourceId={resource.id} />
-      )}
+      <div className="flex shrink-0 items-center gap-1">
+        {isAdmin && (
+          <EditDateButton kind={resource.kind} id={resource.id} createdAt={resource.created_at} />
+        )}
+        {resource.kind === "notice" ? (
+          <DeleteNoticeButton noticeId={resource.id} />
+        ) : resource.kind === "update" ? (
+          <DeleteSancturmUpdateButton updateId={resource.id} />
+        ) : (
+          <DeleteResourceButton resourceId={resource.id} />
+        )}
+      </div>
     </li>
   );
 }

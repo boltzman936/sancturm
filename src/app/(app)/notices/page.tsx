@@ -15,7 +15,7 @@ import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { Notice } from "@/features/notices/types";
 import { localDateKey, formatShortDate } from "@/lib/date";
-import { cn } from "@/lib/utils";
+import { cn, downloadFile } from "@/lib/utils";
 
 function matchesSearch(notice: Notice, query: string) {
   if (!query.trim()) return true;
@@ -148,15 +148,21 @@ export default function NoticesPage() {
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                      <a
-                        href={notice.pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!notice.pdf_url) return;
+                          const withoutQuery = notice.pdf_url.split("?")[0];
+                          const ext = withoutQuery.includes(".")
+                            ? withoutQuery.slice(withoutQuery.lastIndexOf("."))
+                            : "";
+                          downloadFile(notice.pdf_url, `${notice.title}${ext}`);
+                        }}
                         aria-label="Download"
                         className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
                       >
                         <Download className="h-4 w-4" />
-                      </a>
+                      </button>
                     </>
                   )}
                 </div>

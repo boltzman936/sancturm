@@ -34,3 +34,25 @@ export function formatShortDate(iso: string): string {
     year: "numeric",
   });
 }
+
+/**
+ * Swaps just the calendar day of an existing ISO timestamp onto a new
+ * yyyy-mm-dd, keeping the original time-of-day — used when an admin
+ * retroactively edits an already-published item's date from Manage, so
+ * the edit doesn't also bump it to "now" and disturb its ordering
+ * against same-day items. Built with the local Date constructor (not
+ * new Date("yyyy-mm-dd"), which parses as UTC midnight) for the same
+ * timezone-safety reason as CRUploadForm's customCreatedAt.
+ */
+export function withDateKey(iso: string, dateKey: string): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const original = new Date(iso);
+  return new Date(
+    year,
+    month - 1,
+    day,
+    original.getHours(),
+    original.getMinutes(),
+    original.getSeconds()
+  ).toISOString();
+}

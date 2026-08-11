@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { deleteFromR2 } from "@/lib/r2";
+import { withDateKey } from "@/lib/date";
 
 /**
  * Admin-only, full stop — RLS ("Admin only manages", supabase/
@@ -68,6 +69,30 @@ export async function deleteSancturmUpdate(updateId: string) {
   }
 
   revalidatePath("/sancturm-updates");
+}
+
+/**
+ * Retroactively changes an already-published update's date from the
+ * Manage list — admin-only, same as everything else on this table
+ * (RLS alone already covers it, see toggleSancturmUpdatePin below).
+ */
+export async function updateSancturmUpdateDate(updateId: string, dateKey: string) {
+  const supabase = await createClient();
+  const { data: existing, error: fetchError } = await supabase
+    .from("sancturm_updates")
+    .select("created_at")
+    .eq("id", updateId)
+    .single();
+  if (fetchError) throw fetchError;
+
+  const { error: updateError } = await supabase
+    .from("sancturm_updates")
+    .update({ created_at: withDateKey(existing.created_at, dateKey) })
+    .eq("id", updateId);
+  if (updateError) throw updateError;
+
+  revalidatePath("/sancturm-updates");
+  revalidatePath("/cr/manage");
 }
 
 /** Pin/unpin — admin-only, same as everything else on this table. */

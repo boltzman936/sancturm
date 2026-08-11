@@ -194,11 +194,44 @@ function PdfViewer({ url }: { url: string }) {
         // the viewport are ever live at once, matching what the
         // reference PDF.js viewer does for the same documents.
         function evictPage(pageNumber: number, placeholder: HTMLDivElement) {
+          const queueIndex = renderQueue.indexOf(pageNumber);
+          if (queueIndex !== -1) renderQueue.splice(queueIndex, 1);
           if (!renderedPages.has(pageNumber)) return;
           renderedPages.delete(pageNumber);
           activeRenderTasks.get(pageNumber)?.cancel();
           activeRenderTasks.delete(pageNumber);
           placeholder.replaceChildren();
+        }
+
+        // Pages render one at a time, not however many the scroll
+        // handler finds near the viewport at once — a fast flick
+        // through a long document could otherwise fire a dozen
+        // simultaneous canvas render tasks, each real main-thread/GPU
+        // work, which is exactly what turned scrolling heavy on lower-
+        // end phones. A small serial queue keeps at most one page
+        // actively rendering, so input handling (including scroll
+        // itself) never has to compete with a pile of render work.
+        const renderQueue: number[] = [];
+        let isDrainingQueue = false;
+
+        function enqueueRender(pageNumber: number) {
+          if (renderedPages.has(pageNumber) || renderQueue.includes(pageNumber)) return;
+          renderQueue.push(pageNumber);
+          void drainQueue();
+        }
+
+        async function drainQueue() {
+          if (isDrainingQueue) return;
+          isDrainingQueue = true;
+          while (renderQueue.length > 0 && !cancelled) {
+            const pageNumber = renderQueue.shift();
+            if (pageNumber === undefined || renderedPages.has(pageNumber)) continue;
+            const placeholder = placeholders[pageNumber - 1];
+            const page = await doc.getPage(pageNumber);
+            if (cancelled) break;
+            await renderPage(pageNumber, page, placeholder);
+          }
+          isDrainingQueue = false;
         }
 
         const firstPage = await doc.getPage(1);
@@ -252,8 +285,7 @@ function PdfViewer({ url }: { url: string }) {
             const placeholderBottom = placeholderTop + placeholder.offsetHeight;
             const nearViewport = placeholderBottom > top && placeholderTop < bottom;
             if (nearViewport) {
-              if (renderedPages.has(pageNumber)) continue;
-              doc.getPage(pageNumber).then((page) => renderPage(pageNumber, page, placeholder));
+              enqueueRender(pageNumber);
             } else {
               evictPage(pageNumber, placeholder);
             }
@@ -296,7 +328,15 @@ function PdfViewer({ url }: { url: string }) {
   }, [url]);
 
   return (
-    <div ref={wrapperRef} className="relative h-full w-full overflow-y-auto">
+    <div
+      ref={wrapperRef}
+      // overscroll-contain: without it, scrolling this inner column
+      // past its own top/bottom "leaks" the gesture into the page
+      // behind the dialog (rubber-banding the whole tab) — the exact
+      // kind of jank that reads as "scrolling is laggy" on a touch
+      // device, even though the PDF itself scrolled fine.
+      className="relative h-full w-full overflow-y-auto overscroll-y-contain"
+    >
       {status === "loading" && (
         <div className="flex h-full items-center justify-center px-10">
           {progress === null ? (
@@ -349,7 +389,15 @@ export function ResourceViewerDialog({
         <div className="flex flex-col gap-3 p-6 pb-0">
           <h2 className="pr-6 text-lg font-medium text-foreground">{resource?.title}</h2>
         </div>
-        <div className="h-[70vh] px-6 pb-6">
+        {/* min-h-0 matters: DialogContent is a CSS grid, and a grid
+            item's default min-height is its content's own min-content
+            size, not the h-[70vh] set here — without it, a large image
+            can force this row (and the whole dialog) taller than
+            max-h-[85vh], pushing the top of the page off-screen with
+            nothing to scroll it back into view. overflow-hidden then
+            guarantees nothing bleeds past the rounded corners even if
+            that were to happen anyway. */}
+        <div className="flex h-[70vh] min-h-0 items-center justify-center overflow-hidden px-6 pb-6">
           {resource &&
             (isImageUrl(resource.file_url) ? (
               // eslint-disable-next-line @next/next/no-img-element

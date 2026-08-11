@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
+import { withDateKey } from "@/lib/date";
 
 /**
  * Takes down an already-published resource — same RLS-enforced
@@ -35,6 +36,44 @@ export async function deleteResource(resourceId: string) {
   revalidatePath("/cr/manage");
   revalidatePath("/notes");
   revalidatePath("/cr");
+}
+
+/**
+ * Admin-only: retroactively changes an already-published resource's
+ * date from the Manage list — the same field a backdated upload writes
+ * (see uploadResourceDirect's customCreatedAt), just editable after the
+ * fact. Explicit role check here, not left to RLS alone — RLS's own
+ * "CR or admin updates" policy would otherwise let a CR reach this too,
+ * defeating the backdating restriction CRUploadForm's minDate already
+ * enforces at upload time.
+ */
+export async function updateResourceDate(resourceId: string, dateKey: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const role = await getCurrentRole();
+  if (role?.type !== "admin") throw new Error("Admin only.");
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("resources")
+    .select("created_at")
+    .eq("id", resourceId)
+    .single();
+  if (fetchError) throw fetchError;
+
+  const { error: updateError } = await supabase
+    .from("resources")
+    .update({ created_at: withDateKey(existing.created_at, dateKey) })
+    .eq("id", resourceId);
+  if (updateError) throw updateError;
+
+  revalidatePath("/notes");
+  revalidatePath("/pyqs");
+  revalidatePath("/cr");
+  revalidatePath("/cr/manage");
 }
 
 /**

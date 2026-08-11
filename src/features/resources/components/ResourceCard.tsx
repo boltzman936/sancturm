@@ -8,7 +8,7 @@ import { toggleResourcePin } from "@/features/resources/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
 import { formatShortDate } from "@/lib/date";
-import { cn } from "@/lib/utils";
+import { cn, downloadFile } from "@/lib/utils";
 
 // Students never log in, so there's no real name to show for them —
 // "Student submission" is the honest ceiling there. A CR/admin direct
@@ -58,7 +58,9 @@ export function ResourceCard({
 
   function handleDownload() {
     incrementDownload.mutate(resource.id);
-    window.open(resource.file_url, "_blank", "noopener,noreferrer");
+    const withoutQuery = resource.file_url.split("?")[0];
+    const ext = withoutQuery.includes(".") ? withoutQuery.slice(withoutQuery.lastIndexOf(".")) : "";
+    downloadFile(resource.file_url, `${resource.title}${ext}`);
   }
 
   async function handleShare() {

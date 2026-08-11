@@ -12,7 +12,7 @@ import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { SancturmUpdate } from "@/features/sancturmUpdates/types";
 import { localDateKey, formatShortDate } from "@/lib/date";
-import { cn } from "@/lib/utils";
+import { cn, downloadFile } from "@/lib/utils";
 
 const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -152,15 +152,21 @@ export default function SancturmUpdatesPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        <a
-                          href={update.pdf_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!update.pdf_url) return;
+                            const withoutQuery = update.pdf_url.split("?")[0];
+                            const ext = withoutQuery.includes(".")
+                              ? withoutQuery.slice(withoutQuery.lastIndexOf("."))
+                              : "";
+                            downloadFile(update.pdf_url, `${update.title}${ext}`);
+                          }}
                           aria-label="Download"
                           className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
                         >
                           <Download className="h-4 w-4" />
-                        </a>
+                        </button>
                       </>
                     )}
                     {canManage && <DeleteUpdateButton updateId={update.id} />}

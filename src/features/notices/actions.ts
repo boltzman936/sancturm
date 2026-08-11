@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
+import { withDateKey } from "@/lib/date";
 
 /**
  * Only a CR (own branch) or admin (any branch) can ever call this
@@ -158,6 +159,39 @@ export async function deleteNotice(noticeId: string) {
   } catch {
     // Best-effort — see deleteResource's identical comment.
   }
+
+  revalidatePath("/notices");
+  revalidatePath("/cr/manage");
+}
+
+/**
+ * Admin-only: retroactively changes an already-published notice's date
+ * from the Manage list — same reasoning as resources' updateResourceDate,
+ * including the explicit role check (RLS alone would let a CR reach
+ * this within their own branch, which isn't the intent here).
+ */
+export async function updateNoticeDate(noticeId: string, dateKey: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const role = await getCurrentRole();
+  if (role?.type !== "admin") throw new Error("Admin only.");
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("notices")
+    .select("created_at")
+    .eq("id", noticeId)
+    .single();
+  if (fetchError) throw fetchError;
+
+  const { error: updateError } = await supabase
+    .from("notices")
+    .update({ created_at: withDateKey(existing.created_at, dateKey) })
+    .eq("id", noticeId);
+  if (updateError) throw updateError;
 
   revalidatePath("/notices");
   revalidatePath("/cr/manage");
