@@ -172,9 +172,31 @@ function EditDateButton({
   createdAt: string;
 }) {
   const [open, setOpen] = useState(false);
+  // Which way the panel opens — measured directly off the actual
+  // button at open time, not guessed. A row near the bottom of a long
+  // list often doesn't have the ~420px below it the calendar needs, so
+  // opening upward there is what keeps the whole thing on-screen
+  // without scrolling — same idea Radix's collision detection was
+  // trying to do, just driven by one real getBoundingClientRect call
+  // instead of a positioning engine that kept getting it wrong.
+  const [placement, setPlacement] = useState<"above" | "below">("below");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // Natural height of the day-grid view (320px wide, 6 week rows, no
+  // Clear button) — close enough to decide above vs. below without
+  // needing to render off-screen first just to measure it.
+  const ESTIMATED_CALENDAR_HEIGHT = 400;
+
+  function handleToggle() {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setPlacement(spaceBelow < ESTIMATED_CALENDAR_HEIGHT ? "above" : "below");
+    }
+    setOpen((value) => !value);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -216,9 +238,10 @@ function EditDateButton({
   return (
     <div ref={containerRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         disabled={isPending}
-        onClick={() => setOpen((value) => !value)}
+        onClick={handleToggle}
         aria-label="Change date"
         aria-expanded={open}
         className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground disabled:pointer-events-none disabled:opacity-50"
@@ -229,11 +252,15 @@ function EditDateButton({
         // No max-height/scroll here on purpose — this is position:
         // absolute (not Radix's position:fixed), so it's already part
         // of the page's own normal scroll flow. Capping its height and
-        // scrolling it internally, tried in the previous fix, just
-        // added an extra scrollbar inside an already-scrollable page
-        // for no benefit — rendering at its natural size and letting
-        // the page scroll if it needs to is simpler and one thing.
-        <div className="absolute right-0 top-full z-50 mt-2 rounded-lg border border-border bg-card shadow-lg">
+        // scrolling it internally, tried in an earlier fix, just added
+        // a redundant scrollbar. placement (measured in handleToggle)
+        // is what actually keeps it on-screen without one.
+        <div
+          className={cn(
+            "absolute right-0 z-50 rounded-lg border border-border bg-card shadow-lg",
+            placement === "below" ? "top-full mt-2" : "bottom-full mb-2"
+          )}
+        >
           <Calendar value={localDateKey(createdAt)} onChange={handleChange} hideClear />
         </div>
       )}
