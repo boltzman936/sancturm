@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Search, Calendar as CalendarIcon } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DeleteResourceButton } from "@/features/resources/components/DeleteResourceButton";
 import { DeleteNoticeButton } from "@/features/notices/components/DeleteNoticeButton";
 import { DeleteSancturmUpdateButton } from "@/features/sancturmUpdates/components/DeleteSancturmUpdateButton";
@@ -152,16 +153,17 @@ function FilterSelect({
 // time. Reuses the same Calendar redesigned for DateFilterInput, just
 // behind a small icon trigger rather than a full date field.
 //
-// Deliberately NOT a Radix Popover, unlike DateFilterInput. Radix's
-// Popper positioning kept anchoring this nowhere near its trigger —
-// rendered top-right of the viewport regardless of which row's button
-// was clicked, capping/scrolling its height changed nothing about
-// that, and nothing here (no transformed ancestor, no clipped
-// overflow container) explains why. Rather than keep chasing an
-// unreproducible Floating-UI measurement bug, this is a plain
-// absolute-positioned panel inside a relative wrapper around just the
-// trigger — anchoring is pure CSS relative to that one element, so it
-// physically cannot end up anywhere else.
+// A centered Dialog, not an anchored dropdown — two rounds of trying
+// to anchor a popover to this specific trigger (first Radix Popover,
+// which anchored the calendar to the top-right of the viewport
+// regardless of which row was clicked; then a hand-rolled absolute/
+// fixed-position panel, which then ran off the left edge on narrow
+// screens) both failed in different ways depending on the trigger's
+// position and the viewport size. A centered modal sidesteps all of
+// that — same fixed/centered/translate approach every OTHER dialog in
+// this app already uses correctly (see ResourceViewerDialog), so
+// there's no anchor-relative-to-a-button math left to get wrong on any
+// screen size.
 function EditDateButton({
   kind,
   id,
@@ -172,49 +174,8 @@ function EditDateButton({
   createdAt: string;
 }) {
   const [open, setOpen] = useState(false);
-  // Which way the panel opens — measured directly off the actual
-  // button at open time, not guessed. A row near the bottom of a long
-  // list often doesn't have the ~420px below it the calendar needs, so
-  // opening upward there is what keeps the whole thing on-screen
-  // without scrolling — same idea Radix's collision detection was
-  // trying to do, just driven by one real getBoundingClientRect call
-  // instead of a positioning engine that kept getting it wrong.
-  const [placement, setPlacement] = useState<"above" | "below">("below");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  // Natural height of the day-grid view (320px wide, 6 week rows, no
-  // Clear button) — close enough to decide above vs. below without
-  // needing to render off-screen first just to measure it.
-  const ESTIMATED_CALENDAR_HEIGHT = 400;
-
-  function handleToggle() {
-    if (!open && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setPlacement(spaceBelow < ESTIMATED_CALENDAR_HEIGHT ? "above" : "below");
-    }
-    setOpen((value) => !value);
-  }
-
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(event: PointerEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
 
   function handleChange(dateKey: string) {
     setOpen(false);
@@ -236,34 +197,26 @@ function EditDateButton({
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    <div className="relative">
       <button
-        ref={triggerRef}
         type="button"
         disabled={isPending}
-        onClick={handleToggle}
+        onClick={() => setOpen(true)}
         aria-label="Change date"
-        aria-expanded={open}
         className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground disabled:pointer-events-none disabled:opacity-50"
       >
         <CalendarIcon className="h-4 w-4" />
       </button>
-      {open && (
-        // No max-height/scroll here on purpose — this is position:
-        // absolute (not Radix's position:fixed), so it's already part
-        // of the page's own normal scroll flow. Capping its height and
-        // scrolling it internally, tried in an earlier fix, just added
-        // a redundant scrollbar. placement (measured in handleToggle)
-        // is what actually keeps it on-screen without one.
-        <div
-          className={cn(
-            "absolute right-0 z-50 rounded-lg border border-border bg-card shadow-lg",
-            placement === "below" ? "top-full mt-2" : "bottom-full mb-2"
-          )}
-        >
+      <Dialog open={open} onOpenChange={setOpen}>
+        {/* hideClose: the dialog's own close button sits top-right,
+            the exact corner the calendar's own "next month" arrow
+            already occupies — Escape/backdrop-click/selecting a date
+            all close this already, so the extra control would only
+            collide with a button that's already there. */}
+        <DialogContent hideClose className="w-auto max-w-none gap-0 p-0">
           <Calendar value={localDateKey(createdAt)} onChange={handleChange} hideClear />
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
       {error && (
         <p className="absolute right-0 top-full z-50 mt-2 w-40 rounded-md border border-destructive/40 bg-card px-2 py-1.5 font-mono text-xs text-destructive shadow-lg">
           {error}
