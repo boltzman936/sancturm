@@ -129,6 +129,7 @@ export function Calendar({
   value,
   onChange,
   minDate,
+  hideClear,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -138,6 +139,13 @@ export function Calendar({
   // the default everywhere else this renders (filters aren't uploads,
   // so browsing/filtering by a past date is always fine).
   minDate?: string;
+  // Hides the Clear button — for callers where value is a required
+  // field (e.g. Manage's edit-date button, changing an already-
+  // published item's date), not an optional filter. onChange("") is
+  // meaningless there — every one of this component's callers used it
+  // as "no filter", so calling it on a required field flows an empty
+  // string straight into date construction downstream and blows up.
+  hideClear?: boolean;
 }) {
   const selected = value ? parseDateKey(value) : null;
   const today = todayKey();
@@ -494,15 +502,22 @@ export function Calendar({
         })}
       </div>
 
-      <div className="mt-1 flex items-center justify-between border-t border-border pt-3">
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          aria-label="Clear selected date"
-          className="rounded-md px-2 py-1.5 font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Clear
-        </button>
+      <div
+        className={cn(
+          "mt-1 flex items-center border-t border-border pt-3",
+          hideClear ? "justify-end" : "justify-between"
+        )}
+      >
+        {!hideClear && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            aria-label="Clear selected date"
+            className="rounded-md px-2 py-1.5 font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Clear
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onChange(today)}

@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Search, Calendar as CalendarIcon } from "lucide-react";
-import * as Popover from "@radix-ui/react-popover";
 import { DeleteResourceButton } from "@/features/resources/components/DeleteResourceButton";
 import { DeleteNoticeButton } from "@/features/notices/components/DeleteNoticeButton";
 import { DeleteSancturmUpdateButton } from "@/features/sancturmUpdates/components/DeleteSancturmUpdateButton";
@@ -152,6 +151,17 @@ function FilterSelect({
 // straight from Manage, instead of that only being settable at upload
 // time. Reuses the same Calendar redesigned for DateFilterInput, just
 // behind a small icon trigger rather than a full date field.
+//
+// Deliberately NOT a Radix Popover, unlike DateFilterInput. Radix's
+// Popper positioning kept anchoring this nowhere near its trigger —
+// rendered top-right of the viewport regardless of which row's button
+// was clicked, capping/scrolling its height changed nothing about
+// that, and nothing here (no transformed ancestor, no clipped
+// overflow container) explains why. Rather than keep chasing an
+// unreproducible Floating-UI measurement bug, this is a plain
+// absolute-positioned panel inside a relative wrapper around just the
+// trigger — anchoring is pure CSS relative to that one element, so it
+// physically cannot end up anywhere else.
 function EditDateButton({
   kind,
   id,
@@ -163,6 +173,25 @@ function EditDateButton({
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
 
   function handleChange(dateKey: string) {
     setOpen(false);
@@ -174,44 +203,23 @@ function EditDateButton({
   }
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          disabled={isPending}
-          aria-label="Change date"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground disabled:pointer-events-none disabled:opacity-50"
-        >
-          <CalendarIcon className="h-4 w-4" />
-        </button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
-          align="end"
-          sideOffset={8}
-          collisionPadding={12}
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            const content = event.currentTarget as HTMLElement;
-            content.querySelector<HTMLElement>('[data-focused="true"]')?.focus();
-          }}
-          // A row's trigger can end up anywhere down a long list,
-          // unlike DateFilterInput's trigger which always lives in the
-          // filter bar near the top of the page with room to spare —
-          // near the bottom of the viewport, Radix correctly flips this
-          // to open upward instead of clipping off-screen, but the full
-          // calendar (header + 6 week rows + footer) doesn't always fit
-          // in whatever room that leaves either, which read as "opens
-          // in a random spot with half of it cut off". Capping to
-          // Radix's own reported available space and scrolling inside
-          // it means it's always fully visible near the trigger,
-          // whichever side it ends up on.
-          className="z-50 max-h-[min(var(--radix-popover-content-available-height),24rem)] overflow-y-auto rounded-lg border border-border bg-card shadow-lg motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=closed]:fade-out-0 motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=closed]:zoom-out-95 motion-safe:data-[state=open]:zoom-in-95"
-        >
-          <Calendar value={localDateKey(createdAt)} onChange={handleChange} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        disabled={isPending}
+        onClick={() => setOpen((value) => !value)}
+        aria-label="Change date"
+        aria-expanded={open}
+        className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      >
+        <CalendarIcon className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-2 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+          <Calendar value={localDateKey(createdAt)} onChange={handleChange} hideClear />
+        </div>
+      )}
+    </div>
   );
 }
 
