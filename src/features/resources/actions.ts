@@ -140,6 +140,11 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   const title = formData.get("title") as string;
   const description = (formData.get("description") as string) || null;
   const fileUrl = formData.get("fileUrl") as string;
+  // Same as uploadResourceDirect — must be read here too, since admin's
+  // Notes/Lab/PYQ uploads always go through this bulk-publish path
+  // (canBulkPublish), not the single-branch action. Omitting this read
+  // was why a backdated admin upload silently landed on today anyway.
+  const customCreatedAt = (formData.get("customCreatedAt") as string) || null;
 
   // The form's multi-select sends exactly which branches were checked —
   // falls back to every branch that exists only if the field is
@@ -185,6 +190,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
       status: "approved",
       uploaded_by_device: null,
       uploaded_by_name: role.displayName,
+      ...(customCreatedAt ? { created_at: customCreatedAt } : {}),
     });
     if (insertError) throw insertError;
   }
