@@ -394,10 +394,15 @@ export function ResourceViewerDialog({
             size, not the h-[70vh] set here — without it, a large image
             can force this row (and the whole dialog) taller than
             max-h-[85vh], pushing the top of the page off-screen with
-            nothing to scroll it back into view. overflow-hidden then
-            guarantees nothing bleeds past the rounded corners even if
-            that were to happen anyway. */}
-        <div className="flex h-[70vh] min-h-0 items-center justify-center overflow-hidden px-6 pb-6">
+            nothing to scroll it back into view. Deliberately NOT a flex
+            container (an earlier version wrapped this in flex/items-
+            center to "help" centering) — that just moves the exact same
+            min-height:auto blowout one level down onto the <img> itself,
+            since flex items get the same content-based auto-minimum
+            grid items do. Plain block layout has no such rule, so
+            height:100% on the img resolves cleanly against this div's
+            now-properly-bounded height with no equivalent trap. */}
+        <div className="h-[70vh] min-h-0 overflow-hidden px-6 pb-6">
           {resource &&
             (isImageUrl(resource.file_url) ? (
               // eslint-disable-next-line @next/next/no-img-element

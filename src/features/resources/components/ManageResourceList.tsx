@@ -195,7 +195,18 @@ function EditDateButton({
             const content = event.currentTarget as HTMLElement;
             content.querySelector<HTMLElement>('[data-focused="true"]')?.focus();
           }}
-          className="z-50 rounded-lg border border-border bg-card shadow-lg motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=closed]:fade-out-0 motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=closed]:zoom-out-95 motion-safe:data-[state=open]:zoom-in-95"
+          // A row's trigger can end up anywhere down a long list,
+          // unlike DateFilterInput's trigger which always lives in the
+          // filter bar near the top of the page with room to spare —
+          // near the bottom of the viewport, Radix correctly flips this
+          // to open upward instead of clipping off-screen, but the full
+          // calendar (header + 6 week rows + footer) doesn't always fit
+          // in whatever room that leaves either, which read as "opens
+          // in a random spot with half of it cut off". Capping to
+          // Radix's own reported available space and scrolling inside
+          // it means it's always fully visible near the trigger,
+          // whichever side it ends up on.
+          className="z-50 max-h-[min(var(--radix-popover-content-available-height),24rem)] overflow-y-auto rounded-lg border border-border bg-card shadow-lg motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=closed]:fade-out-0 motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=closed]:zoom-out-95 motion-safe:data-[state=open]:zoom-in-95"
         >
           <Calendar value={localDateKey(createdAt)} onChange={handleChange} />
         </Popover.Content>
