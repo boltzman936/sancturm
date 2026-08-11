@@ -14,8 +14,12 @@ export function BranchSelectCard({
   // new branch/department is a database INSERT, nothing here needs to
   // change. IntroExperience prefetches this the moment the intro
   // starts, so by the time this card actually appears (after the
-  // typing animation) the data is already sitting in cache.
-  const { data: branches } = useBranches();
+  // typing animation) the data is USUALLY already sitting in cache —
+  // but "usually" isn't "always" (a slow or flaky connection can still
+  // have this in flight), and rendering nothing but the header with no
+  // loading or error state left a real visitor looking at an
+  // apparently-broken, empty card with no way forward.
+  const { data: branches, isLoading, isError, refetch } = useBranches();
 
   return (
     <div
@@ -31,17 +35,38 @@ export function BranchSelectCard({
       <h2 className="mb-4 text-center font-mono text-xs tracking-[0.08em] text-muted-foreground">
         select your branch
       </h2>
-      <div className="flex flex-col gap-2">
-        {branches?.map((branch) => (
+      {isLoading && (
+        <div className="flex flex-col gap-2" aria-live="polite" aria-label="Loading branches">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-[46px] animate-pulse rounded-lg bg-white/5" />
+          ))}
+        </div>
+      )}
+      {isError && (
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <p className="font-mono text-xs text-subtle-foreground">Couldn&apos;t load branches.</p>
           <button
-            key={branch.slug}
-            onClick={() => onSelect(branch.slug)}
-            className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-left text-foreground transition-all duration-200 hover:border-primary active:border-primary hover:bg-white/10 active:bg-white/10 hover:shadow-[0_0_20px_rgba(255,74,45,0.15)] active:shadow-[0_0_20px_rgba(255,74,45,0.15)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            type="button"
+            onClick={() => refetch()}
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-foreground transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {branch.name}
+            Retry
           </button>
-        ))}
-      </div>
+        </div>
+      )}
+      {!isLoading && !isError && (
+        <div className="flex flex-col gap-2">
+          {branches?.map((branch) => (
+            <button
+              key={branch.slug}
+              onClick={() => onSelect(branch.slug)}
+              className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-left text-foreground transition-all duration-200 hover:border-primary active:border-primary hover:bg-white/10 active:bg-white/10 hover:shadow-[0_0_20px_rgba(255,74,45,0.15)] active:shadow-[0_0_20px_rgba(255,74,45,0.15)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {branch.name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

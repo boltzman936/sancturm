@@ -49,7 +49,16 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       <nav
         className={cn(
           "fixed left-0 top-0 z-50 flex h-dvh w-72 max-w-[85vw] shrink-0 flex-col gap-6 border-r border-border bg-background-secondary p-4 transition-transform duration-200 ease-out",
-          "md:static md:z-auto md:h-auto md:w-60 md:max-w-none md:translate-x-0 md:transition-none",
+          // md:sticky (not md:static) — static let the sidebar scroll
+          // away with the page's own scroll, so a long resource list
+          // meant scrolling all the way through it just to reach
+          // "Controller's dashboard" / "Sign out" at the bottom of the
+          // nav. Sticky-to-the-viewport-top plus self-start (so the
+          // flex row doesn't stretch it to match main's full scroll
+          // height) keeps it pinned in place instead. Its own h-dvh +
+          // overflow-y-auto is a fallback for a short viewport where
+          // even the sidebar's own content wouldn't otherwise fit.
+          "md:sticky md:top-0 md:z-auto md:h-dvh md:w-60 md:max-w-none md:translate-x-0 md:self-start md:overflow-y-auto md:transition-none",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >

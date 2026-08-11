@@ -128,12 +128,20 @@ const NAV_BUTTON_CLASS =
 export function Calendar({
   value,
   onChange,
+  minDate,
 }: {
   value: string;
   onChange: (value: string) => void;
+  // yyyy-mm-dd — dates before this are shown but not selectable (see
+  // CRUploadForm: a CR can only backdate an upload to today at the
+  // earliest, admin has no such floor). Undefined means no restriction,
+  // the default everywhere else this renders (filters aren't uploads,
+  // so browsing/filtering by a past date is always fine).
+  minDate?: string;
 }) {
   const selected = value ? parseDateKey(value) : null;
   const today = todayKey();
+  const isDisabled = (key: string) => minDate !== undefined && key < minDate;
   const [viewYear, setViewYear] = useState(selected?.getFullYear() ?? new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(selected?.getMonth() ?? new Date().getMonth());
   const [view, setView] = useState<"days" | "months" | "years">("days");
@@ -184,6 +192,12 @@ export function Calendar({
   }
 
   function moveFocus(nextKey: string) {
+    // Disabled dates aren't focusable (native `disabled` on the
+    // button — see the day grid below), so moving keyboard focus onto
+    // one would silently fail and leave `focusedKey` state pointing at
+    // a cell that doesn't actually have real DOM focus. Stopping at
+    // the boundary instead keeps state and actual focus in sync.
+    if (isDisabled(nextKey)) return;
     const d = parseDateKey(nextKey);
     setFocusedKey(nextKey);
     if (d.getMonth() !== viewMonth || d.getFullYear() !== viewYear) {
@@ -230,7 +244,7 @@ export function Calendar({
       case "Enter":
       case " ":
         event.preventDefault();
-        onChange(focusedKey);
+        if (!isDisabled(focusedKey)) onChange(focusedKey);
         return;
       default:
         // Escape (closes the popover) and Tab both fall through
@@ -430,7 +444,13 @@ export function Calendar({
         {cells.map((cell) => {
           const isSelected = cell.key === value;
           const isToday = cell.key === today;
-          const isFocusable = cell.key === focusedKey;
+          const disabled = isDisabled(cell.key);
+          // A disabled button can never actually hold DOM focus, so
+          // marking one as the roving-tabindex/auto-focus target would
+          // just silently fail — see moveFocus's matching guard above
+          // for why focusedKey itself should never land here, but this
+          // keeps the two checks from being able to drift apart.
+          const isFocusable = cell.key === focusedKey && !disabled;
           return (
             <button
               key={cell.key}
@@ -439,22 +459,27 @@ export function Calendar({
                 else dayButtonRefs.current.delete(cell.key);
               }}
               type="button"
+              disabled={disabled}
               tabIndex={isFocusable ? 0 : -1}
               data-focused={isFocusable ? "true" : undefined}
               onClick={() => {
+                if (disabled) return;
                 setFocusedKey(cell.key);
                 onChange(cell.key);
               }}
-              onFocus={() => setFocusedKey(cell.key)}
+              onFocus={() => {
+                if (!disabled) setFocusedKey(cell.key);
+              }}
               aria-label={formatFullDate(cell.key)}
               aria-pressed={isSelected}
               aria-current={isToday ? "date" : undefined}
               className={cn(
                 "relative flex h-9 w-9 items-center justify-center justify-self-center rounded-full text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 !cell.inMonth && "text-subtle-foreground/30",
-                cell.inMonth && !isSelected && "text-foreground hover:bg-background-secondary active:bg-background-secondary",
+                cell.inMonth && !isSelected && !disabled && "text-foreground hover:bg-background-secondary active:bg-background-secondary",
                 isSelected && "bg-primary font-medium text-primary-foreground",
-                isToday && !isSelected && "font-medium text-primary"
+                isToday && !isSelected && "font-medium text-primary",
+                disabled && "cursor-not-allowed text-subtle-foreground/20 hover:bg-transparent active:bg-transparent"
               )}
             >
               {cell.day}

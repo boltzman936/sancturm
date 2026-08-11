@@ -34,11 +34,16 @@ export function DateFilterInput({
   onChange,
   className,
   placeholder = "Any date",
+  minDate,
 }: {
   value: string;
   onChange: (value: string) => void;
   className?: string;
   placeholder?: string;
+  // Passed straight through to Calendar — see its own comment. Every
+  // caller except the CR upload form's custom-date field leaves this
+  // unset.
+  minDate?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -90,7 +95,7 @@ export function DateFilterInput({
           }}
           className="z-50 rounded-lg border border-border bg-card shadow-lg motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=closed]:fade-out-0 motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=closed]:zoom-out-95 motion-safe:data-[state=open]:zoom-in-95"
         >
-          <Calendar value={value} onChange={handleChange} />
+          <Calendar value={value} onChange={handleChange} minDate={minDate} />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

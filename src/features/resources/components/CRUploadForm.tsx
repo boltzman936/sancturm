@@ -14,6 +14,7 @@ import { NoticeComposer } from "@/features/notices/components/NoticeComposer";
 import { CustomNoticeComposer } from "@/features/notices/components/CustomNoticeComposer";
 import { UpdateComposer } from "@/features/sancturmUpdates/components/UpdateComposer";
 import { CustomUpdateComposer } from "@/features/sancturmUpdates/components/CustomUpdateComposer";
+import { localDateKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 type UploadType = "notes" | "lab_manual" | "pyq" | "notice" | "update";
@@ -85,6 +86,11 @@ export function CRUploadForm({
   const canBulkPublish = isAdmin && (resourceType === "notes" || resourceType === "lab_manual" || resourceType === "pyq");
   const showSingleBranchPicker = !canBulkPublish && (resourceType === "pyq" || !fixedBranchId);
   const showTermPicker = !fixedTermId;
+  // Only admin can backdate an upload — a CR's custom date is floored
+  // at today, so the earliest they can pick is "now", never the past.
+  // Recomputed each render rather than memoized: cheap, and it needs
+  // to stay accurate if this form is left open across midnight.
+  const minUploadDate = isAdmin ? undefined : localDateKey(new Date().toISOString());
   const branchId = resourceType === "pyq" ? pyqBranchId : fixedBranchId ?? pyqBranchId;
   // Whichever branch the Subject list previews against — every branch
   // has its own subjects row (different id) for the same subject name,
@@ -444,12 +450,16 @@ export function CRUploadForm({
 
       <div className="flex flex-col gap-1">
         <label className="font-mono text-xs text-subtle-foreground">
-          Date <span className="normal-case text-subtle-foreground/70">(optional — defaults to today)</span>
+          Date{" "}
+          <span className="normal-case text-subtle-foreground/70">
+            (optional — defaults to today{!isAdmin && ", no backdating"})
+          </span>
         </label>
         <DateFilterInput
           value={customDate}
           onChange={setCustomDate}
           placeholder="Today"
+          minDate={minUploadDate}
           className="bg-background"
         />
       </div>

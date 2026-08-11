@@ -44,14 +44,15 @@ const DialogContent = React.forwardRef<
     >
       {children}
       {!hideClose && (
-        // p-2.5 around a 16px icon makes the actual tappable box ~36px,
-        // not the bare 16×16 icon itself — that was the real "too small,
-        // sometimes doesn't register" bug, on every dialog in the app,
-        // not just this one. Positioned right-1.5/top-1.5 (not right-4/
-        // top-4) so the padding grows the tap target outward without
-        // moving the icon's own visual position.
-        <DialogPrimitive.Close className="absolute right-1.5 top-1.5 rounded-md p-2.5 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <X className="h-4 w-4" />
+        // p-3 around a 20px icon makes the actual box 44×44px — the
+        // standard minimum touch-target size — not just a slightly
+        // bigger version of the bare 16×16 icon this started as, which
+        // still read as "too small" once actually tried on a phone.
+        // Positioned right-1/top-1 (not right-4/top-4) so the padding
+        // grows the box outward without moving the icon's own visual
+        // position much.
+        <DialogPrimitive.Close className="absolute right-1 top-1 rounded-md p-3 text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <X className="h-5 w-5" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
       )}
