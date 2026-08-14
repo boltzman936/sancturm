@@ -4,7 +4,8 @@ import { useRef, useState, useTransition } from "react";
 import { useSubjects, useExistingResourceTitles } from "@/features/resources/queries";
 import { pyqSharingBranchNames } from "@/features/resources/pyqSharing";
 import { useTerms } from "@/features/terms/queries";
-import { useBatchesForTerm } from "@/features/batches/queries";
+import { useBatches, useBatchTerms } from "@/features/batches/queries";
+import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
 import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
@@ -29,6 +30,20 @@ type TermOption = { id: string; label: string };
 // one, since there's no scoping reason (unlike backdating) for it to
 // differ between them.
 const MAX_FILES = 3;
+
+// Sensible default once a Batch is picked/changes — whichever of that
+// batch's semesters real calendar dates say is happening right now,
+// falling back to the most recently-started one if none is exactly
+// current (shouldn't happen given batch_terms is pre-seeded through
+// the batch's whole run, but stays safe if it ever is).
+function currentBatchTermId(
+  batchTerms: { term_id: string; start_date: string; end_date: string }[] | undefined
+): string {
+  if (!batchTerms || batchTerms.length === 0) return "";
+  const todayKey = localDateKey(new Date().toISOString());
+  const current = batchTerms.find((bt) => bt.start_date <= todayKey && todayKey <= bt.end_date);
+  return (current ?? batchTerms[batchTerms.length - 1]).term_id;
+}
 
 export function CRUploadForm({
   branches,
@@ -65,13 +80,15 @@ export function CRUploadForm({
   // split above, just picked with its own toggle instead of being a
   // separate top-level Type button (that'd make the Type row 6-wide).
   const [pyqKind, setPyqKind] = useState<"pyq" | "pyq_solution">("pyq");
-  const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
-  // Admin's picked Batch, or "" until a term-valid one loads/gets
-  // picked — the actual value submitted is effectiveBatchId below,
-  // which falls back to the first batch valid for the selected term
-  // rather than needing an effect to "sync" this once that async data
-  // arrives (see effectiveBatchId's own comment).
-  const [batchId, setBatchId] = useState("");
+  // Batch is picked FIRST now — Semester (termId below) is scoped to
+  // whichever academic periods THIS batch has actually reached (via
+  // useBatchTerms), not the other way around. "" until an admin's
+  // explicit pick or the newest-batch fallback loads — same
+  // no-sync-effect pattern as effectiveBatchId below.
+  const [batchId, setBatchId] = useState(fixedBatchId ?? "");
+  // Admin's picked Semester, or "" to defer to whichever of this
+  // batch's semesters is currently active (see effectiveTermId).
+  const [termId, setTermId] = useState(fixedTermId ?? "");
   // Admin-only: publish one upload to any combination of branches
   // (within the picked term) at once instead of repeating it per
   // branch — a multi-select rather than a single branch or an
@@ -123,6 +140,7 @@ export function CRUploadForm({
   // many are selected, not a separate mode/checkbox to toggle first.
   const canBulkPublish = isAdmin && (resourceType === "notes" || resourceType === "lab_manual" || resourceType === "pyq");
   const showSingleBranchPicker = !canBulkPublish && (resourceType === "pyq" || !fixedBranchId);
+  const showBatchPicker = !fixedBatchId;
   const showTermPicker = !fixedTermId;
   // Only admin can backdate an upload — a CR's custom date is floored
   // at today, so the earliest they can pick is "now", never the past.
@@ -130,22 +148,35 @@ export function CRUploadForm({
   // to stay accurate if this form is left open across midnight.
   const minUploadDate = isAdmin ? undefined : localDateKey(new Date().toISOString());
   const branchId = resourceType === "pyq" ? pyqBranchId : fixedBranchId ?? pyqBranchId;
-  // Which batches actually offer the currently-picked term — a
-  // brand-new batch with only a 1st-Year-Sem-1 row shouldn't be
-  // pickable while Sem 2 is selected.
-  const { data: validBatches } = useBatchesForTerm(termId || null);
-  // Falls back to the first term-valid batch instead of an effect
-  // "syncing" batchId once validBatches loads async — batchId itself
-  // only ever holds an EXPLICIT admin pick; this is what's actually
-  // submitted and shown as the Select's value.
-  const effectiveBatchId = fixedBatchId ?? (batchId || validBatches?.[0]?.id || "");
+
+  // Batch drives Semester now, not the other way — every configured
+  // batch is always offered (config-table, zero-resource batches
+  // included), newest first.
+  const { data: allBatches } = useBatches();
+  const effectiveBatchId = fixedBatchId ?? (batchId || allBatches?.[0]?.id || "");
+
+  // Every academic period THIS batch has actually reached, in
+  // chronological order — a batch new to 1st Year offers just its 2
+  // semesters so far; one further along offers all 4 it's passed
+  // through, spanning both years. This is what makes Semester options
+  // batch-scoped instead of year-scoped.
+  const { data: batchTerms } = useBatchTerms(effectiveBatchId || null);
+  const effectiveTermId = fixedTermId ?? (termId || currentBatchTermId(batchTerms));
+  // Batch changed underneath an explicit Semester pick that's no
+  // longer one of ITS periods (e.g. was on 2025-26's Sem 3, switched
+  // to 2026-27 which hasn't reached Sem 3 yet) — defer back to
+  // whichever semester is current for the new batch instead of
+  // silently submitting a stale/invalid pairing.
+  const validTermIds = batchTerms ? batchTerms.map((bt) => bt.term_id) : undefined;
+  useResetInvalidSelection(termId, validTermIds, "", setTermId);
+
   // Whichever branch the Subject list previews against — every branch
   // has its own subjects row (different id) for the same subject name,
   // so this only supplies which NAMES exist to choose from; the id
   // itself is discarded when submitting to multiple branches by name.
   const subjectReferenceBranchId = canBulkPublish ? selectedBranchIds[0] ?? "" : branchId;
 
-  const { data: allSubjects } = useSubjects(subjectReferenceBranchId || null, termId || null);
+  const { data: allSubjects } = useSubjects(subjectReferenceBranchId || null, effectiveTermId || null);
   // Lab-only subjects (Engineering Graphics, Soft Skill) have no
   // notes/PYQ content by design, so they're excluded whenever the
   // upload isn't itself a lab manual.
@@ -162,7 +193,11 @@ export function CRUploadForm({
   // being recorded — a same-named PYQ in a different sharing group
   // (AIDS vs. Core/AIML for 1st Year) isn't actually a duplicate.
   const { data: fullTerms } = useTerms();
-  const currentYearNumber = fullTerms?.find((t) => t.id === termId)?.year_number;
+  // Year is derived from whichever Semester is in effect, never picked
+  // independently — "1st Year - Semester 1" isn't a globally unique
+  // period on its own, (batch, semester) is; Year is just a read-out.
+  const effectiveTerm = fullTerms?.find((t) => t.id === effectiveTermId);
+  const currentYearNumber = effectiveTerm?.year_number;
   const currentBranchName = branches.find((b) => b.id === branchId)?.name;
   const pyqGroupBranchIds =
     currentYearNumber !== undefined && currentBranchName
@@ -181,7 +216,7 @@ export function CRUploadForm({
     sectionForDuplicateCheck,
     resourceTypesForDuplicateCheck,
     branchIdsForDuplicateCheck,
-    termId || null,
+    effectiveTermId || null,
     subjectValue || null,
     effectiveBatchId || null
   );
@@ -215,7 +250,7 @@ export function CRUploadForm({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (files.length === 0 || !termId || !effectiveBatchId) return;
+    if (files.length === 0 || !effectiveTermId || !effectiveBatchId) return;
     if (canBulkPublish ? selectedBranchIds.length === 0 : !branchId) return;
     setSuccess(false);
     setError(null);
@@ -266,7 +301,7 @@ export function CRUploadForm({
             const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress, controller.signal);
 
             const formData = new FormData();
-            formData.set("termId", termId);
+            formData.set("termId", effectiveTermId);
             formData.set("batchId", effectiveBatchId);
             formData.set("branchIds", JSON.stringify(selectedBranchIds));
             formData.set("subjectName", subjectName);
@@ -284,7 +319,7 @@ export function CRUploadForm({
 
             const formData = new FormData();
             formData.set("branchId", branchId);
-            formData.set("termId", termId);
+            formData.set("termId", effectiveTermId);
             formData.set("batchId", effectiveBatchId);
             formData.set("subjectId", subjectValue);
             formData.set("section", section);
@@ -472,45 +507,12 @@ export function CRUploadForm({
         </div>
       )}
 
-      {showTermPicker && (
-        <div className="flex flex-col gap-1">
-          <label htmlFor="term" className="font-mono text-xs text-subtle-foreground">
-            Year
-          </label>
-          <Select
-            id="term"
-            value={termId}
-            onChange={(event) => {
-              setTermId(event.target.value);
-              setSubjectValue("");
-              setBatchId("");
-            }}
-            className="bg-background"
-          >
-            {/* Full label ("1st Year - Semester 1"), not truncated to
-                just "1st Year" — a year can have more than one
-                semester now (Batch), and this picker genuinely needs
-                to distinguish them, unlike onboarding's coarser "pick
-                your year" (which resolves to whichever is current
-                instead of listing every semester at all). Truncating
-                here made two different semesters both read as the
-                literal same "1st Year" text with no way to tell which
-                was which. */}
-            {terms.map((term) => (
-              <option key={term.id} value={term.id}>
-                {term.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-      )}
-
-      {/* Admin only — a CR's batch is fixed to their own cr_profile,
-          same as Branch/Term. Options are whichever batches actually
-          offer the currently-picked term, not every batch that
-          exists — a brand-new batch with only a Sem 1 row has nothing
-          to offer while Sem 2 is selected. */}
-      {!fixedBatchId && (
+      {/* Admin only — a CR's batch is fixed to their own cr_profile.
+          Batch comes FIRST now: every configured batch is always
+          offered (config-table, newest first, zero-resource batches
+          included) — it's the academic context Semester options
+          resolve against below, not the other way around. */}
+      {showBatchPicker && (
         <div className="flex flex-col gap-1">
           <label htmlFor="batch" className="font-mono text-xs text-subtle-foreground">
             Batch
@@ -518,12 +520,58 @@ export function CRUploadForm({
           <Select
             id="batch"
             value={effectiveBatchId}
-            onChange={(event) => setBatchId(event.target.value)}
+            onChange={(event) => {
+              setBatchId(event.target.value);
+              // The new batch's semester list may not include whatever
+              // was picked before (useResetInvalidSelection handles
+              // that), which can change effectiveTermId out from under
+              // Subject — clear it here too, not just on an explicit
+              // Semester change, so a stale id can't silently persist.
+              setSubjectValue("");
+            }}
             className="bg-background"
           >
-            {validBatches?.map((batch) => (
+            {allBatches?.map((batch) => (
               <option key={batch.id} value={batch.id}>
                 {batch.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+
+      {showTermPicker && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="term" className="font-mono text-xs text-subtle-foreground">
+            Semester
+            {/* Year is derived from whichever Semester is picked, not
+                a separate selector — "1st Year - Semester 1" isn't a
+                globally unique period on its own, (batch, semester)
+                is. Shown here as a read-only label. */}
+            {currentYearNumber !== undefined && (
+              <span className="ml-1.5 normal-case text-subtle-foreground/70">
+                ({effectiveTerm?.label.split(" - ")[0]})
+              </span>
+            )}
+          </label>
+          <Select
+            id="term"
+            value={effectiveTermId}
+            onChange={(event) => {
+              setTermId(event.target.value);
+              setSubjectValue("");
+            }}
+            className="bg-background"
+          >
+            {/* Full label ("1st Year - Semester 1"), not just
+                "Semester 1" — a batch's semester list spans multiple
+                years once it's progressed far enough, so the year
+                needs to stay visible per option, not just in the
+                derived label above (which only reflects whichever one
+                is currently selected). */}
+            {batchTerms?.map((bt) => (
+              <option key={bt.term_id} value={bt.term_id}>
+                {bt.term.label}
               </option>
             ))}
           </Select>
@@ -607,7 +655,7 @@ export function CRUploadForm({
           Subject
         </label>
         <Select
-          key={`${resourceType}-${branchId}-${termId}`}
+          key={`${resourceType}-${branchId}-${effectiveTermId}`}
           id="subject"
           name="subject"
           value={subjectValue}
@@ -705,7 +753,7 @@ export function CRUploadForm({
           disabled={
             isPending ||
             files.length === 0 ||
-            !termId ||
+            !effectiveTermId ||
             !effectiveBatchId ||
             (canBulkPublish ? selectedBranchIds.length === 0 : !branchId)
           }
