@@ -158,9 +158,9 @@ export default function PYQsPage() {
     return sortByAcademicPriority(bySearch, dateSort, batchStartYear);
   }, [resources, pyqKind, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort, batchStartYear]);
 
-  // Same batch-group partitioning as Notes & Lab — see its identical
-  // comment for why this is a cheap partition, not a re-sort, and why
-  // headers only show once 2+ batches are actually present.
+  // Same batch-group partitioning as Notes & Lab, always shown — see
+  // its identical comment for why this is a cheap partition, not a
+  // re-sort.
   const groupedByBatch = useMemo(() => {
     const groups: { batchId: string | null; label: string; items: typeof filtered }[] = [];
     for (const resource of filtered) {

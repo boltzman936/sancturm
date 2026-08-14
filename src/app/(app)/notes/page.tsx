@@ -149,9 +149,9 @@ export default function NotesAndLabPage() {
   // above) — this just partitions the already-sorted list into
   // consecutive same-batch runs so each batch's resources can render
   // under its own "Batch 2026-27" heading, making the newest-batch-
-  // first ordering visible instead of implicit. Only shown when 2+
-  // batches are actually present (e.g. "All batches") — a single
-  // batch's own heading would just be redundant noise.
+  // first ordering visible instead of implicit. Always shown, even for
+  // a single batch — which batch you're looking at should be visible
+  // everywhere, not just once a second batch exists to compare against.
   const groupedByBatch = useMemo(() => {
     const groups: { batchId: string | null; label: string; items: typeof filtered }[] = [];
     for (const resource of filtered) {
@@ -379,7 +379,7 @@ export default function NotesAndLabPage() {
         </div>
       )}
 
-      {filtered.length > 0 && groupedByBatch.length > 1 && (
+      {filtered.length > 0 && (
         <div className="flex flex-col gap-5">
           {groupedByBatch.map((group) => (
             <div key={group.batchId ?? "none"} className="flex flex-col gap-2">
@@ -394,14 +394,6 @@ export default function NotesAndLabPage() {
             </div>
           ))}
         </div>
-      )}
-
-      {filtered.length > 0 && groupedByBatch.length <= 1 && (
-        <ul className="flex flex-col gap-2">
-          {filtered.map((resource) => (
-            <ResourceCard key={resource.id} resource={resource} onView={setViewingResource} />
-          ))}
-        </ul>
       )}
 
       <ResourceViewerDialog
