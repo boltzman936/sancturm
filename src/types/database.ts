@@ -91,6 +91,17 @@ export type CrProfile = {
   created_at: string;
 };
 
+// Singleton config row (id is always `true` — the boolean-PK trick
+// that makes a second row physically impossible) controlling whether
+// 1st-Year Sem 2's subject structure is currently interchanged — see
+// src/features/resources/subjectInterchange.ts for what that means.
+export type SubjectStructureConfig = {
+  id: true;
+  interchange_active: boolean;
+  updated_by: string | null;
+  updated_at: string;
+};
+
 export type Subject = {
   id: string;
   branch_id: string;

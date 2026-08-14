@@ -2,6 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useSubjects, useExistingResourceTitles } from "@/features/resources/queries";
+import { pyqSharingBranchNames } from "@/features/resources/pyqSharing";
+import { useTerms } from "@/features/terms/queries";
 import { useBatchesForTerm } from "@/features/batches/queries";
 import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
@@ -153,7 +155,26 @@ export function CRUploadForm({
       : allSubjects?.filter((subject) => !LAB_ONLY_SUBJECT_SLUGS.has(subject.slug));
 
   const sectionForDuplicateCheck = resourceType === "pyq" ? "pyq" : resourceType === "notice" || resourceType === "update" ? null : "notes_lab";
-  const branchIdsForDuplicateCheck = canBulkPublish ? selectedBranchIds : branchId ? [branchId] : [];
+  // For a single-branch PYQ upload, the duplicate check needs the
+  // WHOLE sharing group (see pyqSharing.ts), not just the one branch
+  // being recorded — a same-named PYQ in a different sharing group
+  // (AIDS vs. Core/AIML for 1st Year) isn't actually a duplicate.
+  const { data: fullTerms } = useTerms();
+  const currentYearNumber = fullTerms?.find((t) => t.id === termId)?.year_number;
+  const currentBranchName = branches.find((b) => b.id === branchId)?.name;
+  const pyqGroupBranchIds =
+    currentYearNumber !== undefined && currentBranchName
+      ? branches
+          .filter((b) => pyqSharingBranchNames(currentYearNumber, currentBranchName).includes(b.name))
+          .map((b) => b.id)
+      : [];
+  const branchIdsForDuplicateCheck = canBulkPublish
+    ? selectedBranchIds
+    : resourceType === "pyq"
+      ? pyqGroupBranchIds
+      : branchId
+        ? [branchId]
+        : [];
   const { data: existingTitles } = useExistingResourceTitles(
     sectionForDuplicateCheck,
     branchIdsForDuplicateCheck,

@@ -2,9 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
+import { useBranchBySlug, useBranches } from "@/features/branches/queries";
 import { useTermBySlug } from "@/features/terms/queries";
 import { usePyqResources, useSubjectsForTerm, type ResourceWithSubject } from "@/features/resources/queries";
+import { pyqSharingBranchNames } from "@/features/resources/pyqSharing";
 import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { useBatches } from "@/features/batches/queries";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
@@ -50,6 +53,20 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
 export default function PYQsPage() {
   const { term: termSlug } = useTerm();
   const { data: term } = useTermBySlug(termSlug);
+  const { branch: branchSlug } = useBranch();
+  const { data: branch } = useBranchBySlug(branchSlug);
+  const { data: allBranches } = useBranches();
+  // Which branches' PYQs this viewer actually sees together — 1st Year
+  // splits Core+AIML from AIDS, 2nd Year stays shared across all
+  // three (see pyqSharing.ts). Resolved to real branch ids once both
+  // the term and the full branch list are loaded; usePyqResources
+  // itself won't fire its query until this is non-null, so there's no
+  // window where it fetches unscoped.
+  const allowedBranchIds = useMemo(() => {
+    if (!term || !branch || !allBranches) return null;
+    const names = pyqSharingBranchNames(term.year_number, branch.name);
+    return allBranches.filter((b) => names.includes(b.name)).map((b) => b.id);
+  }, [term, branch, allBranches]);
 
   // Paper vs. worked solution — the PYQ equivalent of Notes & Lab's
   // Notes/Lab toggle, same pattern: one section, two resource_type
@@ -68,7 +85,7 @@ export default function PYQsPage() {
   const [dateFilter, setDateFilter] = useState("");
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
-  const { data: resources, isLoading, isError } = usePyqResources(term?.id ?? null);
+  const { data: resources, isLoading, isError } = usePyqResources(term?.id ?? null, allowedBranchIds);
   // Every batch's PYQs are already in `resources` (batchId omitted
   // from the query above) — filtered client-side below, same reasoning
   // as Notes & Lab's identical comment.
@@ -77,17 +94,23 @@ export default function PYQsPage() {
   // branch — a branch's subject list (e.g. AIDS's, which is entirely
   // different from AIML/Core's for 1st Year) doesn't cover every
   // subject a PYQ might exist under, since PYQs are shared across
-  // every branch in the term. Deduped by name (same subject exists as
-  // a separate row per branch) and lab-only subjects excluded, same
-  // as Notes — a PYQ is never for a subject with no theory component.
+  // every branch WITHIN the viewer's own sharing group. Deduped by
+  // name (same subject exists as a separate row per branch) and
+  // lab-only subjects excluded, same as Notes — a PYQ is never for a
+  // subject with no theory component.
   const { data: allTermSubjects } = useSubjectsForTerm(term?.id ?? null);
   const subjectOptions = useMemo(() => {
     const names = new Set<string>();
     for (const subject of allTermSubjects ?? []) {
+      // Scoped to the same sharing group usePyqResources itself
+      // fetches — without this, the dropdown would offer subject
+      // names (e.g. AIDS-only ones) whose PYQs this viewer can no
+      // longer actually see.
+      if (allowedBranchIds && !allowedBranchIds.includes(subject.branch_id)) continue;
       if (!LAB_ONLY_SUBJECT_SLUGS.has(subject.slug)) names.add(subject.name);
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [allTermSubjects]);
+  }, [allTermSubjects, allowedBranchIds]);
 
   // Resets subjectFilter same as Notes & Lab's tab switch — a subject
   // selected while looking at solutions shouldn't silently carry over

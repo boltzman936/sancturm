@@ -1,29 +1,72 @@
 "use client";
 
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import type { Resource, ResourceType, Subject } from "./types";
+import { useBranches } from "@/features/branches/queries";
+import { useTerms } from "@/features/terms/queries";
+import { resolveSubjectBranchName } from "./subjectInterchange";
+import type { Resource, ResourceType, Subject, SubjectStructureConfig } from "./types";
 
 export type ResourceWithSubject = Resource & {
   subject: Pick<Subject, "id" | "name" | "sort_order"> | null;
 };
 
-/** Subjects for one (branch, term) pair, ordered the way the CR arranged them. */
-export function useSubjects(branchId: string | null, termId: string | null) {
+/**
+ * The 1st-Year Sem 2 subject-interchange toggle — a single row,
+ * public read (every browser needs it to resolve the right subject
+ * list), admin-only write (see subjectInterchange/actions.ts).
+ */
+export function useSubjectStructureConfig() {
   return useQuery({
-    queryKey: ["subjects", branchId, termId],
+    queryKey: ["subject-structure-config"],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase.from("subject_structure_config").select("*").single();
+      if (error) throw error;
+      return data as SubjectStructureConfig;
+    },
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Subjects for one (branch, term) pair, ordered the way the CR
+ * arranged them. Resolves through resolveSubjectBranchName first —
+ * for every term except 1st-Year Sem 2 (or whenever the interchange
+ * toggle is off) this is exactly branchId, unchanged; the swap only
+ * ever kicks in for that one semester. Callers never need to know
+ * interchange exists at all — they ask for "this branch's subjects"
+ * and get the currently-active list back, same call shape as before.
+ */
+export function useSubjects(branchId: string | null, termId: string | null) {
+  const { data: branches } = useBranches();
+  const { data: terms } = useTerms();
+  const { data: config } = useSubjectStructureConfig();
+
+  const effectiveBranchId = useMemo(() => {
+    if (!branchId || !termId || !branches || !terms || !config) return branchId;
+    const term = terms.find((t) => t.id === termId);
+    const branch = branches.find((b) => b.id === branchId);
+    if (!term || !branch) return branchId;
+    const resolvedName = resolveSubjectBranchName(branch.name, term.slug, config.interchange_active);
+    return branches.find((b) => b.name === resolvedName)?.id ?? branchId;
+  }, [branchId, termId, branches, terms, config]);
+
+  return useQuery({
+    queryKey: ["subjects", effectiveBranchId, termId],
     queryFn: async () => {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("subjects")
         .select("*")
-        .eq("branch_id", branchId!)
+        .eq("branch_id", effectiveBranchId!)
         .eq("term_id", termId!)
         .order("sort_order", { ascending: true });
       if (error) throw error;
       return data as Subject[];
     },
-    enabled: !!branchId && !!termId,
+    enabled: !!effectiveBranchId && !!termId,
     // Subjects only change when a CR restructures the syllabus list —
     // near-static reference data, same reasoning as useBranchBySlug.
     staleTime: 5 * 60_000,
@@ -103,9 +146,20 @@ export function useNotesAndLabResources(
  * (a 1st-Year Sem 1 PYQ has nothing to do with a 2nd-Year Sem 3
  * student, even though a same-term PYQ crosses branches freely).
  */
-export function usePyqResources(termId: string | null, batchId?: string | null) {
+export function usePyqResources(
+  termId: string | null,
+  // Which branches' PYQs are actually visible together — resolved by
+  // the caller via pyqSharing.ts's pyqSharingBranchNames (1st Year
+  // splits Core+AIML from AIDS; 2nd Year stays fully shared). This is
+  // the actual enforcement point: a student's browser never sees a
+  // PYQ outside their own sharing group, because the query itself
+  // never fetches it — not a client-side filter over an already-
+  // fetched full set.
+  branchIds: string[] | null,
+  batchId?: string | null
+) {
   return useQuery({
-    queryKey: ["resources", "pyq", termId, batchId ?? null],
+    queryKey: ["resources", "pyq", termId, branchIds ? [...branchIds].sort() : null, batchId ?? null],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase
@@ -113,7 +167,8 @@ export function usePyqResources(termId: string | null, batchId?: string | null) 
         .select("*, subject:subjects(id, name, sort_order)")
         .eq("term_id", termId!)
         .eq("section", "pyq")
-        .eq("status", "approved");
+        .eq("status", "approved")
+        .in("branch_id", branchIds!);
       if (batchId) query = query.eq("batch_id", batchId);
       const { data, error } = await query
         .order("is_pinned", { ascending: false })
@@ -121,7 +176,7 @@ export function usePyqResources(termId: string | null, batchId?: string | null) 
       if (error) throw error;
       return data as unknown as ResourceWithSubject[];
     },
-    enabled: !!termId,
+    enabled: !!termId && !!branchIds && branchIds.length > 0,
     staleTime: 30_000,
   });
 }
@@ -130,10 +185,12 @@ export function usePyqResources(termId: string | null, batchId?: string | null) 
  * Titles already published in the exact scope an upload is about to
  * land in — CRUploadForm checks a picked file's would-be title against
  * this before publishing, so re-uploading something from a past
- * session (not just this same browser tab) still gets flagged. PYQ is
- * cross-branch by design (see usePyqResources), so branchIds is
- * ignored there — matches by term + subject alone, same scope PYQ
- * visibility itself uses.
+ * session (not just this same browser tab) still gets flagged.
+ * branchIds is always applied now, PYQ included — for a PYQ upload the
+ * caller passes the full pyqSharing.ts group (not just the one branch
+ * on record), since a same-named PYQ in a DIFFERENT sharing group
+ * (e.g. AIDS vs. Core/AIML for 1st Year) isn't actually a duplicate
+ * anymore, matching what usePyqResources itself now shows.
  */
 export function useExistingResourceTitles(
   section: "notes_lab" | "pyq" | null,
@@ -155,14 +212,14 @@ export function useExistingResourceTitles(
         .eq("term_id", termId!)
         .eq("batch_id", batchId!)
         .eq("section", section!)
-        .eq("status", "approved");
-      if (section === "notes_lab") query = query.in("branch_id", branchIds);
+        .eq("status", "approved")
+        .in("branch_id", branchIds);
       query = subjectId ? query.eq("subject_id", subjectId) : query.is("subject_id", null);
       const { data, error } = await query;
       if (error) throw error;
       return new Set((data ?? []).map((r) => r.title.trim().toLowerCase()));
     },
-    enabled: !!termId && !!batchId && !!section && (section === "pyq" || branchIds.length > 0),
+    enabled: !!termId && !!batchId && !!section && branchIds.length > 0,
     staleTime: 15_000,
   });
 }

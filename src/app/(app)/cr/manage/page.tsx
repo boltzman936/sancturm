@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
 import { ManageResourceList, type ManageableResource } from "@/features/resources/components/ManageResourceList";
+import { SubjectInterchangeControl } from "@/features/resources/components/SubjectInterchangeControl";
 
 export default async function CRManagePage() {
   const role = await getCurrentRole();
@@ -132,6 +133,8 @@ export default async function CRManagePage() {
             : "Everything currently live in your branch."}
         </p>
       </div>
+
+      {role.type === "admin" && <SubjectInterchangeControl />}
 
       <ManageResourceList
         resources={[...resourceItems, ...noticeItems, ...updateItems]}

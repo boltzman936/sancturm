@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey } from "@/lib/date";
+import { resolveSubjectBranchName } from "./subjectInterchange";
+import type { SubjectStructureConfig } from "./types";
 
 /**
  * Takes down an already-published resource — same RLS-enforced
@@ -92,6 +94,43 @@ export async function updateResourceFields(
   revalidatePath("/notes");
   revalidatePath("/pyqs");
   revalidatePath("/cr");
+  revalidatePath("/cr/manage");
+}
+
+/**
+ * Admin-only: flips the 1st-Year Sem 2 subject-interchange toggle —
+ * the single system-level switch resolveSubjectBranchName reads.
+ * Explicit role check, not left to RLS's own "Admin only updates"
+ * policy alone, for the same clearer-error-message reason as every
+ * other admin action here.
+ */
+export async function setSubjectInterchange(active: boolean) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const role = await getCurrentRole();
+  if (role?.type !== "admin") throw new Error("Admin only.");
+
+  const { error } = await supabase
+    .from("subject_structure_config")
+    .update({
+      interchange_active: active,
+      updated_by: role.displayName,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", true);
+  if (error) throw error;
+
+  // Every page that resolves a subject list needs to see the new
+  // value — Notes/PYQs (browsing), Upload, and Manage (admin's own
+  // edit dialog) all call useSubjects.
+  revalidatePath("/notes");
+  revalidatePath("/pyqs");
+  revalidatePath("/cr");
+  revalidatePath("/cr/upload");
   revalidatePath("/cr/manage");
 }
 
@@ -226,13 +265,38 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   }
   if (!branchIds.length) throw new Error("No branches found.");
 
+  // Resolved once for the whole batch, not per-branch — fine to share
+  // across every target branch since it only depends on termId, which
+  // is fixed for this whole call. Same resolveSubjectBranchName
+  // useSubjects itself calls client-side, so a bulk-publish and a
+  // regular upload can never disagree about which subject list is
+  // currently active for a given branch.
+  let interchangeActive = false;
+  let allBranchNames: { id: string; name: string }[] = [];
+  let termSlug: string | null = null;
+  if (subjectName) {
+    const [{ data: config }, { data: branchRows }, { data: termRow }] = await Promise.all([
+      supabase.from("subject_structure_config").select("*").single(),
+      supabase.from("branches").select("id, name"),
+      supabase.from("academic_terms").select("slug").eq("id", termId).single(),
+    ]);
+    interchangeActive = (config as SubjectStructureConfig | null)?.interchange_active ?? false;
+    allBranchNames = branchRows ?? [];
+    termSlug = termRow?.slug ?? null;
+  }
+
   for (const branchId of branchIds) {
     let subjectId: string | null = null;
     if (subjectName) {
+      const requestedName = allBranchNames.find((b) => b.id === branchId)?.name;
+      const resolvedName = requestedName
+        ? resolveSubjectBranchName(requestedName, termSlug, interchangeActive)
+        : undefined;
+      const resolvedBranchId = resolvedName ? allBranchNames.find((b) => b.name === resolvedName)?.id : branchId;
       const { data: subject } = await supabase
         .from("subjects")
         .select("id")
-        .eq("branch_id", branchId)
+        .eq("branch_id", resolvedBranchId ?? branchId)
         .eq("term_id", termId)
         .eq("name", subjectName)
         .maybeSingle();
