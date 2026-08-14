@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useBranches } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
@@ -97,6 +97,40 @@ export function useSubjectsForTerm(termId: string | null) {
     enabled: !!termId,
     staleTime: 5 * 60_000,
   });
+}
+
+/**
+ * Every subject across every branch, for a SET of terms — Manage's
+ * Year filter is coarser than one term id (a year can span more than
+ * one semester, per the Batch/Semester feature), and "All years" means
+ * every term, so a single termId hook can't cover it. Same query-key
+ * shape as useSubjectsForTerm (["subjects", "term", termId]) so this
+ * shares cache entries with it instead of double-fetching. Uses
+ * useQueries (not a loop of useSubjectsForTerm calls, which would
+ * violate rules of hooks against a dynamic-length term list) — fires
+ * every term's query in parallel, not a sequential waterfall.
+ */
+export function useSubjectsForTerms(termIds: string[]) {
+  const results = useQueries({
+    queries: termIds.map((termId) => ({
+      queryKey: ["subjects", "term", termId],
+      queryFn: async () => {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("subjects")
+          .select("*")
+          .eq("term_id", termId)
+          .order("sort_order", { ascending: true });
+        if (error) throw error;
+        return data as Subject[];
+      },
+      staleTime: 5 * 60_000,
+    })),
+  });
+
+  const isLoading = results.some((r) => r.isLoading);
+  const data = isLoading ? undefined : results.flatMap((r) => r.data ?? []);
+  return { data, isLoading };
 }
 
 /**

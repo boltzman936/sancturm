@@ -4,17 +4,22 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
+import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
 import { useBranchBySlug, useBranches } from "@/features/branches/queries";
 import { useTermBySlug } from "@/features/terms/queries";
 import { usePyqResources, useSubjectsForTerm, type ResourceWithSubject } from "@/features/resources/queries";
 import { pyqSharingBranchNames } from "@/features/resources/pyqSharing";
 import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
-import { useBatches } from "@/features/batches/queries";
+import { useBatch } from "@/hooks/useBatch";
+import { useBatchesForTerm } from "@/features/batches/queries";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
 import { localDateKey, formatShortDate } from "@/lib/date";
+import { shortTermLabel } from "@/lib/termLabel";
+import { matchesQuery } from "@/lib/search";
+import { sortByAcademicPriority } from "@/lib/sortByDate";
 import { cn } from "@/lib/utils";
 import type { ResourceType } from "@/features/resources/types";
 
@@ -27,27 +32,11 @@ const EXTRA_SUBJECT = "extra";
 // hides content by default.
 const ALL_BATCHES = "all";
 
-function sortByDate(resources: ResourceWithSubject[], order: DateSort) {
-  const sorted = [...resources];
-  sorted.sort((a, b) => {
-    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
-    const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    return order === "newest" ? diff : -diff;
-  });
-  return sorted;
-}
-
 function matchesSearch(resource: ResourceWithSubject, query: string) {
-  if (!query.trim()) return true;
-  const haystack = [
-    resource.title,
-    resource.description ?? "",
-    resource.subject?.name ?? "",
-    formatShortDate(resource.created_at),
-  ]
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query.trim().toLowerCase());
+  return matchesQuery(
+    [resource.title, resource.description, resource.subject?.name, formatShortDate(resource.created_at)],
+    query
+  );
 }
 
 export default function PYQsPage() {
@@ -79,7 +68,6 @@ export default function PYQsPage() {
   // for the same-named subject. Matching by name is what makes "DSA"
   // mean the same thing regardless of which branch's PYQ it's on.
   const [subjectFilter, setSubjectFilter] = useState<string>(ALL_SUBJECTS);
-  const [batchFilter, setBatchFilter] = useState<string>(ALL_BATCHES);
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
@@ -88,8 +76,22 @@ export default function PYQsPage() {
   const { data: resources, isLoading, isError } = usePyqResources(term?.id ?? null, allowedBranchIds);
   // Every batch's PYQs are already in `resources` (batchId omitted
   // from the query above) — filtered client-side below, same reasoning
-  // as Notes & Lab's identical comment.
-  const { data: batches } = useBatches();
+  // as Notes & Lab's identical comment. Scoped to the current term,
+  // same reasoning as Notes & Lab's Batch picker.
+  const { batch: batchLabel, setBatch } = useBatch();
+  const { data: batches } = useBatchesForTerm(term?.id ?? null);
+  const batchFilter = useMemo(() => {
+    if (!batchLabel || batchLabel === ALL_BATCHES) return ALL_BATCHES;
+    return batches?.find((b) => b.label === batchLabel)?.id ?? ALL_BATCHES;
+  }, [batchLabel, batches]);
+  function handleBatchFilterChange(id: string) {
+    if (id === ALL_BATCHES) {
+      setBatch(ALL_BATCHES);
+      return;
+    }
+    const picked = batches?.find((b) => b.id === id);
+    if (picked) setBatch(picked.label);
+  }
   // Every branch's subjects for this term, not just the viewer's own
   // branch — a branch's subject list (e.g. AIDS's, which is entirely
   // different from AIML/Core's for 1st Year) doesn't cover every
@@ -120,6 +122,20 @@ export default function PYQsPage() {
     setSubjectFilter(ALL_SUBJECTS);
   }
 
+  // Branch/Year are global (sidebar switchers) — no local onChange to
+  // extend, so this catches a Subject name that's no longer valid for
+  // the new branch/year's sharing group and resets it.
+  const validSubjectValues = useMemo(
+    () => [ALL_SUBJECTS, EXTRA_SUBJECT, ...subjectOptions],
+    [subjectOptions]
+  );
+  useResetInvalidSelection(subjectFilter, validSubjectValues, ALL_SUBJECTS, setSubjectFilter);
+
+  // Newest batch always groups first, regardless of dateSort direction —
+  // built from the same term-scoped batches list already fetched above
+  // for the Batch filter, not a new fetch.
+  const batchStartYear = useMemo(() => new Map((batches ?? []).map((b) => [b.id, b.start_year])), [batches]);
+
   const filtered = useMemo(() => {
     const base = (resources ?? []).filter((resource) => resource.resource_type === pyqKind);
     const bySubject =
@@ -134,18 +150,17 @@ export default function PYQsPage() {
       ? byBatch.filter((resource) => localDateKey(resource.created_at) === dateFilter)
       : byBatch;
     const bySearch = byDate.filter((resource) => matchesSearch(resource, searchQuery));
-    return sortByDate(bySearch, dateSort);
-  }, [resources, pyqKind, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort]);
+    return sortByAcademicPriority(bySearch, dateSort, batchStartYear);
+  }, [resources, pyqKind, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort, batchStartYear]);
 
   // Describes whichever sharing group actually applies right now —
   // 1st Year genuinely isn't "every CSE branch" anymore (AIDS has its
   // own separate PYQs there), so this can't be a fixed string.
-  const sharingDescription =
-    term && branch
-      ? pyqSharingBranchNames(term.year_number, branch.name).length > 1
-        ? `shared between ${pyqSharingBranchNames(term.year_number, branch.name).join(" and ")}`
-        : `separate from other branches`
-      : "shared across your branch";
+  const sharingDescription = useMemo(() => {
+    if (!term || !branch) return "shared across your branch";
+    const names = pyqSharingBranchNames(term.year_number, branch.name);
+    return names.length > 1 ? `shared between ${names.join(" and ")}` : "separate from other branches";
+  }, [term, branch]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -153,7 +168,7 @@ export default function PYQsPage() {
         <h1 className="text-2xl font-medium text-foreground">PYQs</h1>
         <p className="text-muted-foreground">
           Previous year questions — {sharingDescription}
-          {term ? ` in ${term.label.split(" - ")[0]}` : " this term"}.
+          {term ? ` in ${shortTermLabel(term)}` : " this term"}.
         </p>
       </div>
 
@@ -214,7 +229,7 @@ export default function PYQsPage() {
 
           <Select
             value={batchFilter}
-            onChange={(event) => setBatchFilter(event.target.value)}
+            onChange={(event) => handleBatchFilterChange(event.target.value)}
             className="w-[150px] shrink-0"
           >
             <option value={ALL_BATCHES}>All batches</option>
@@ -306,7 +321,7 @@ export default function PYQsPage() {
             <option value={EXTRA_SUBJECT}>Extra</option>
           </Select>
 
-          <Select value={batchFilter} onChange={(event) => setBatchFilter(event.target.value)} className="min-w-0">
+          <Select value={batchFilter} onChange={(event) => handleBatchFilterChange(event.target.value)} className="min-w-0">
             <option value={ALL_BATCHES}>All batches</option>
             {batches?.map((batch) => (
               <option key={batch.id} value={batch.id}>

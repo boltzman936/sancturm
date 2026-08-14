@@ -15,7 +15,10 @@ export function useBatches() {
     queryKey: ["batches"],
     queryFn: async () => {
       const supabase = createClient();
-      const { data, error } = await supabase.from("batches").select("*").order("sort_order");
+      // Newest first — sort_order ascends with start_year (see
+      // add_batches.sql), so descending here means the latest cohort
+      // is always first, everywhere this list is rendered as options.
+      const { data, error } = await supabase.from("batches").select("*").order("sort_order", { ascending: false });
       if (error) throw error;
       return data as Batch[];
     },
@@ -55,7 +58,8 @@ export function useBatchesForTerm(termId: string | null) {
       const batches = (data ?? [])
         .map((row) => (Array.isArray(row.batch) ? row.batch[0] : row.batch))
         .filter((b): b is Batch => !!b);
-      return batches.sort((a, b) => a.sort_order - b.sort_order);
+      // Newest first, same reasoning as useBatches().
+      return batches.sort((a, b) => b.sort_order - a.sort_order);
     },
     enabled: !!termId,
     staleTime: 5 * 60_000,

@@ -31,3 +31,17 @@ export const LAB_ONLY_SUBJECT_SLUGS = new Set([
   "engineering-graphics", // AIML / Core — lab only, no notes
   "soft-skill", // AIDS — lab only, no notes
 ]);
+
+// Which subjects are valid options for a given resource type — Lab
+// only ever offers subjects with a lab component; Notes/PYQ exclude
+// the lab-only ones (no theory component to have notes/PYQs about).
+// Shared by Notes, PYQs, CRUploadForm, and Manage's Subject filter —
+// previously each reimplemented this branch inline.
+export function filterSubjectsForResourceType<T extends { slug: string }>(
+  subjects: T[],
+  resourceType: "notes" | "lab_manual" | "pyq" | "pyq_solution" | "notice" | "update"
+): T[] {
+  return resourceType === "lab_manual"
+    ? subjects.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
+    : subjects.filter((subject) => !LAB_ONLY_SUBJECT_SLUGS.has(subject.slug));
+}

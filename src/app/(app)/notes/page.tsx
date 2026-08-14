@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
+import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
 import { useBranchBySlug } from "@/features/branches/queries";
 import { useTermBySlug } from "@/features/terms/queries";
 import {
@@ -11,13 +12,17 @@ import {
   useSubjects,
   type ResourceWithSubject,
 } from "@/features/resources/queries";
-import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
-import { useBatches } from "@/features/batches/queries";
+import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
+import { useBatch } from "@/hooks/useBatch";
+import { useBatchesForTerm } from "@/features/batches/queries";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
 import { localDateKey, formatShortDate } from "@/lib/date";
+import { shortTermLabel } from "@/lib/termLabel";
+import { matchesQuery } from "@/lib/search";
+import { sortByAcademicPriority } from "@/lib/sortByDate";
 import { cn } from "@/lib/utils";
 import type { ResourceType } from "@/features/resources/types";
 
@@ -30,31 +35,15 @@ const EXTRA_SUBJECT = "extra";
 // hides content by default (see this file's own filter useMemo).
 const ALL_BATCHES = "all";
 
-function sortByDate(resources: ResourceWithSubject[], order: DateSort) {
-  const sorted = [...resources];
-  sorted.sort((a, b) => {
-    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
-    const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    return order === "newest" ? diff : -diff;
-  });
-  return sorted;
-}
-
 // One search box, matched against title, description, and the date as
 // displayed (so typing "Aug" or "2026" works the same as a title
 // keyword) — a CR looking something up shouldn't need to know which
 // field it's in.
 function matchesSearch(resource: ResourceWithSubject, query: string) {
-  if (!query.trim()) return true;
-  const haystack = [
-    resource.title,
-    resource.description ?? "",
-    resource.subject?.name ?? "",
-    formatShortDate(resource.created_at),
-  ]
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query.trim().toLowerCase());
+  return matchesQuery(
+    [resource.title, resource.description, resource.subject?.name, formatShortDate(resource.created_at)],
+    query
+  );
 }
 
 export default function NotesAndLabPage() {
@@ -66,7 +55,6 @@ export default function NotesAndLabPage() {
   const [resourceType, setResourceType] = useState<NotesOrLab>("notes");
   const [dateSort, setDateSort] = useState<DateSort>("newest");
   const [subjectFilter, setSubjectFilter] = useState<string>(ALL_SUBJECTS);
-  const [batchFilter, setBatchFilter] = useState<string>(ALL_BATCHES);
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
@@ -78,10 +66,7 @@ export default function NotesAndLabPage() {
   // component, same restriction as the upload form. Notes excludes
   // the reverse case: a few subjects (Engineering Graphics, Soft
   // Skill) are lab-only and have no notes content at all.
-  const subjectOptions =
-    resourceType === "lab_manual"
-      ? allSubjects?.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
-      : allSubjects?.filter((subject) => !LAB_ONLY_SUBJECT_SLUGS.has(subject.slug));
+  const subjectOptions = allSubjects ? filterSubjectsForResourceType(allSubjects, resourceType) : undefined;
 
   // A subject valid for "Notes" (e.g. Human Values) isn't a valid
   // filter once you switch to "Lab" — reset it right where resourceType
@@ -92,6 +77,17 @@ export default function NotesAndLabPage() {
     setSubjectFilter(ALL_SUBJECTS);
   }
 
+  // Branch/Year are global (set from the sidebar switchers, outside
+  // this component) — there's no local onChange to extend when they
+  // change, so an effect is what catches a Subject that's no longer
+  // valid for the new branch/term and resets it instead of silently
+  // showing zero results.
+  const validSubjectValues = useMemo(
+    () => (subjectOptions ? [ALL_SUBJECTS, EXTRA_SUBJECT, ...subjectOptions.map((s) => s.id)] : undefined),
+    [subjectOptions]
+  );
+  useResetInvalidSelection(subjectFilter, validSubjectValues, ALL_SUBJECTS, setSubjectFilter);
+
   const { data: resources, isLoading, isError } = useNotesAndLabResources(
     branch?.id ?? null,
     term?.id ?? null,
@@ -101,7 +97,36 @@ export default function NotesAndLabPage() {
   // deliberately omitted from the query above) — filtered client-side
   // below like Subject/Date/Search already are, so switching Batch is
   // instant with no extra fetch, same as every other filter here.
-  const { data: batches } = useBatches();
+  // Scoped to the current term (not every batch that's ever existed) —
+  // a batch with no batch_terms row for this term isn't a valid filter
+  // option, same reasoning as CRUploadForm's Batch picker.
+  const { batch: batchLabel, setBatch } = useBatch();
+  const { data: batches } = useBatchesForTerm(term?.id ?? null);
+  // Derived every render (not its own useState) — an invalid batch
+  // (not valid for the newly-selected term) falls back to "all"
+  // automatically, no explicit reset needed, and switching back to a
+  // term where the persisted batch IS valid re-activates it.
+  const batchFilter = useMemo(() => {
+    if (!batchLabel || batchLabel === ALL_BATCHES) return ALL_BATCHES;
+    return batches?.find((b) => b.label === batchLabel)?.id ?? ALL_BATCHES;
+  }, [batchLabel, batches]);
+
+  // useBatch() persists a label, but this Select works in ids (like
+  // every other filter here) — resolve the picked id back to a label
+  // before persisting it.
+  function handleBatchFilterChange(id: string) {
+    if (id === ALL_BATCHES) {
+      setBatch(ALL_BATCHES);
+      return;
+    }
+    const picked = batches?.find((b) => b.id === id);
+    if (picked) setBatch(picked.label);
+  }
+
+  // Newest batch always groups first, regardless of dateSort direction —
+  // built from the same term-scoped batches list already fetched above
+  // for the Batch filter, not a new fetch.
+  const batchStartYear = useMemo(() => new Map((batches ?? []).map((b) => [b.id, b.start_year])), [batches]);
 
   const filtered = useMemo(() => {
     const base = resources ?? [];
@@ -117,8 +142,8 @@ export default function NotesAndLabPage() {
       ? byBatch.filter((resource) => localDateKey(resource.created_at) === dateFilter)
       : byBatch;
     const bySearch = byDate.filter((resource) => matchesSearch(resource, searchQuery));
-    return sortByDate(bySearch, dateSort);
-  }, [resources, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort]);
+    return sortByAcademicPriority(bySearch, dateSort, batchStartYear);
+  }, [resources, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort, batchStartYear]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -126,7 +151,7 @@ export default function NotesAndLabPage() {
         <h1 className="text-2xl font-medium text-foreground">Notes & lab</h1>
         <p className="text-muted-foreground">
           Notes and lab manuals for {branch?.name ?? "your branch"}
-          {term ? ` — ${term.label.split(" - ")[0]}` : ""}.
+          {term ? ` — ${shortTermLabel(term)}` : ""}.
         </p>
       </div>
 
@@ -185,7 +210,7 @@ export default function NotesAndLabPage() {
 
           <Select
             value={batchFilter}
-            onChange={(event) => setBatchFilter(event.target.value)}
+            onChange={(event) => handleBatchFilterChange(event.target.value)}
             className="w-[150px] shrink-0"
           >
             <option value={ALL_BATCHES}>All batches</option>
@@ -279,7 +304,7 @@ export default function NotesAndLabPage() {
             <option value={EXTRA_SUBJECT}>Extra</option>
           </Select>
 
-          <Select value={batchFilter} onChange={(event) => setBatchFilter(event.target.value)} className="min-w-0">
+          <Select value={batchFilter} onChange={(event) => handleBatchFilterChange(event.target.value)} className="min-w-0">
             <option value={ALL_BATCHES}>All batches</option>
             {batches?.map((batch) => (
               <option key={batch.id} value={batch.id}>

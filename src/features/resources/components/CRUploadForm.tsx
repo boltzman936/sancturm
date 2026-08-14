@@ -7,7 +7,7 @@ import { useTerms } from "@/features/terms/queries";
 import { useBatchesForTerm } from "@/features/batches/queries";
 import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
-import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
+import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
 import { titleFromFileName } from "@/features/uploads/titleFromFileName";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
@@ -149,10 +149,7 @@ export function CRUploadForm({
   // Lab-only subjects (Engineering Graphics, Soft Skill) have no
   // notes/PYQ content by design, so they're excluded whenever the
   // upload isn't itself a lab manual.
-  const subjects =
-    resourceType === "lab_manual"
-      ? allSubjects?.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
-      : allSubjects?.filter((subject) => !LAB_ONLY_SUBJECT_SLUGS.has(subject.slug));
+  const subjects = allSubjects ? filterSubjectsForResourceType(allSubjects, resourceType) : undefined;
 
   const sectionForDuplicateCheck = resourceType === "pyq" ? "pyq" : resourceType === "notice" || resourceType === "update" ? null : "notes_lab";
   // For a single-branch PYQ upload, the duplicate check needs the
@@ -553,7 +550,14 @@ export function CRUploadForm({
           <BranchMultiSelect
             branches={branches}
             selectedBranchIds={selectedBranchIds}
-            onChange={setSelectedBranchIds}
+            onChange={(ids) => {
+              setSelectedBranchIds(ids);
+              // The Subject list is sourced from selectedBranchIds[0] (see
+              // subjectReferenceBranchId) — a stale subject id from a
+              // different branch's list could otherwise silently persist,
+              // same reason the single-branch picker clears it on change.
+              setSubjectValue("");
+            }}
           />
           {selectedBranchIds.length > 1 && (
             <p className="mt-1 font-mono text-xs text-subtle-foreground">

@@ -59,21 +59,15 @@ export default async function CRManagePage() {
 
   // Unrelated queries — none depends on another's result — were being
   // awaited one after another, paying for each round trip in sequence
-  // when they could all be in flight at once.
-  const [
-    { data: published },
-    { data: notices },
-    { data: updates },
-    { data: branches },
-    { data: terms },
-    { data: batches },
-  ] = await Promise.all([
+  // when they could all be in flight at once. Branches/terms/batches
+  // are NOT fetched here anymore — ManageResourceList gets those from
+  // the same client-side hooks (useBranches/useTerms/useBatches)
+  // EditResourceButton already used, instead of a second, separate
+  // server-side fetch that could drift from it.
+  const [{ data: published }, { data: notices }, { data: updates }] = await Promise.all([
     query,
     noticesQuery,
     updatesQuery,
-    supabase.from("branches").select("name").order("sort_order"),
-    supabase.from("academic_terms").select("label").order("sort_order"),
-    supabase.from("batches").select("label").order("sort_order"),
   ]);
 
   const resourceItems: ManageableResource[] = (published ?? []).map((resource) => ({
@@ -143,9 +137,6 @@ export default async function CRManagePage() {
       <ManageResourceList
         resources={[...resourceItems, ...noticeItems, ...updateItems]}
         isAdmin={role.type === "admin"}
-        branches={branches ?? []}
-        terms={terms ?? []}
-        batches={batches ?? []}
       />
     </div>
   );

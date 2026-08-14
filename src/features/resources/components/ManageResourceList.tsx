@@ -11,12 +11,16 @@ import { deleteNotice, updateNoticeFields } from "@/features/notices/actions";
 import { deleteSancturmUpdate, updateSancturmUpdateDate } from "@/features/sancturmUpdates/actions";
 import { useBranches } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
-import { useBatchesForTerm } from "@/features/batches/queries";
-import { useSubjects } from "@/features/resources/queries";
+import { useBatches, useBatchesForTerm } from "@/features/batches/queries";
+import { useSubjects, useSubjectsForTerms } from "@/features/resources/queries";
+import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Calendar } from "@/components/shared/Calendar";
 import { Select } from "@/components/shared/Select";
 import { localDateKey, formatShortDate } from "@/lib/date";
+import { shortTermLabel } from "@/lib/termLabel";
+import { matchesQuery } from "@/lib/search";
+import { sortResourcesByBatchThenDate } from "@/lib/sortByDate";
 import { cn } from "@/lib/utils";
 
 const SECTION_LABEL: Record<string, string> = {
@@ -98,12 +102,6 @@ export type ManageableResource = {
   cr_only: boolean;
 };
 
-// Terms show as just "1st Year" / "2nd Year" everywhere in the UI —
-// see TermSelectCard's identical comment for why.
-function termShortLabel(term: { label: string } | null) {
-  return term?.label.split(" - ")[0] ?? "";
-}
-
 const ALL = "all";
 
 function bySubject(a: ManageableResource, b: ManageableResource) {
@@ -111,18 +109,17 @@ function bySubject(a: ManageableResource, b: ManageableResource) {
 }
 
 function matchesSearch(resource: ManageableResource, query: string) {
-  if (!query.trim()) return true;
-  const haystack = [
-    resource.title,
-    resource.subject?.name ?? "",
-    resource.branch?.name ?? "",
-    termShortLabel(resource.term),
-    uploaderLabel(resource),
-    formatShortDate(resource.created_at),
-  ]
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query.trim().toLowerCase());
+  return matchesQuery(
+    [
+      resource.title,
+      resource.subject?.name,
+      resource.branch?.name,
+      shortTermLabel(resource.term),
+      uploaderLabel(resource),
+      formatShortDate(resource.created_at),
+    ],
+    query
+  );
 }
 
 function FilterSelect({
@@ -470,7 +467,7 @@ function ResourceRow({
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-subtle-foreground">
             {showTerm && (
               <>
-                <span>{termShortLabel(resource.term)}</span>
+                <span>{shortTermLabel(resource.term)}</span>
                 <span aria-hidden="true">·</span>
               </>
             )}
@@ -515,23 +512,25 @@ function ResourceRow({
   );
 }
 
+// Maps the Type filter's display label to the resourceType
+// filterSubjectsForResourceType expects — only for the labels that
+// actually map to one concrete resource_type. "All types" doesn't map
+// to anything (subjectOptions shows the union, unfiltered by lab-slug,
+// same as before); "Notices"/"Sancturm updates" never reach this table
+// at all (subjectOptions returns [] for those, checked first).
+const TYPE_LABEL_TO_RESOURCE_TYPE: Record<string, "notes" | "lab_manual" | "pyq" | "pyq_solution"> = {
+  Notes: "notes",
+  Lab: "lab_manual",
+  PYQ: "pyq",
+  "PYQ Solution": "pyq_solution",
+};
+
 export function ManageResourceList({
   resources,
   isAdmin,
-  branches,
-  terms,
-  batches,
 }: {
   resources: ManageableResource[];
   isAdmin: boolean;
-  // Full catalog (every branch, not just ones with a published item
-  // right now) — same fixed-list treatment as TYPE_OPTIONS below.
-  branches: { name: string }[];
-  // Same idea, for year — lets admin narrow the list to one year
-  // instead of seeing every branch/term combo interleaved.
-  terms: { label: string }[];
-  // Same idea again, for batch/cohort.
-  batches: { label: string }[];
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
@@ -545,16 +544,41 @@ export function ManageResourceList({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, startBulkDelete] = useTransition();
 
+  // Branch/Year/Batch all feed subjectOptions above (directly, or via
+  // termIdsForSubjects) — same reset-on-change already applied to the
+  // Type filter, extended here so a Subject picked under one Branch/
+  // Year/Batch doesn't silently keep filtering (to zero results) once
+  // switched to a combination it's no longer valid for.
+  function handleTermFilterChange(value: string) {
+    setTermFilter(value);
+    setSubjectFilter(ALL);
+  }
+  function handleBranchFilterChange(value: string) {
+    setBranchFilter(value);
+    setSubjectFilter(ALL);
+  }
+  function handleBatchFilterChange(value: string) {
+    setBatchFilter(value);
+    setSubjectFilter(ALL);
+  }
+
+  // Config-table catalogs, same client hooks EditResourceButton (below,
+  // same file) already used — a single source of truth instead of a
+  // second, separate server-side fetch that could drift from it.
+  const { data: branches } = useBranches();
+  const { data: terms } = useTerms();
+  const { data: batches } = useBatches();
+
   // Not re-sorted here — `branches` already arrives in the app's
   // standard branch order (AIML, Core, AIDS) straight from the query,
   // and alphabetizing here would silently undo that.
-  const branchOptions = useMemo(() => branches.map((b) => b.name), [branches]);
+  const branchOptions = useMemo(() => (branches ?? []).map((b) => b.name), [branches]);
   // Dedupe — Batch/Semester means `terms` can now hold more than one row
   // per year (e.g. "1st Year - Semester 1" and "1st Year - Semester 2"),
-  // but this filter matches at the coarser termShortLabel() ("1st Year")
+  // but this filter matches at the coarser shortTermLabel() ("1st Year")
   // granularity, so without this it showed the same option twice.
-  const termOptions = useMemo(() => Array.from(new Set(terms.map((t) => termShortLabel(t)))), [terms]);
-  const batchOptions = useMemo(() => batches.map((b) => b.label), [batches]);
+  const termOptions = useMemo(() => Array.from(new Set((terms ?? []).map((t) => shortTermLabel(t)))), [terms]);
+  const batchOptions = useMemo(() => (batches ?? []).map((b) => b.label), [batches]);
 
   // Fixed set, not derived — these are the app's upload types
   // regardless of whether one currently has zero items. Sancturm
@@ -565,37 +589,47 @@ export function ManageResourceList({
     ? ["Notes", "Lab", "PYQ", "PYQ Solution", "Notices", "Sancturm updates"]
     : ["Notes", "Lab", "PYQ", "PYQ Solution", "Notices"];
 
-  // Derived from the actual published resources currently in scope
-  // (matching Branch/Year/Type, same as `visible` below), not a
-  // separate subjects-table query scoped to the viewer's own branch —
-  // that stand-in broke once AIDS's 1st-Year subject list diverged
-  // from AIML/Core's: an admin browsing "All branches" would only
-  // ever see AIML/Core's subject names as filter options, with
-  // AIDS-only ones (e.g. Soft Skill) never selectable even though
-  // real AIDS resources existed under them. Reading subjects straight
-  // off `resources` is also naturally correct for what's Lab-capable —
-  // a resource's own resource_type already says so, no separate
-  // LAB_SUBJECT_SLUGS lookup needed here.
+  // Which exact term id(s) the Year filter's short label resolves to —
+  // 1-N (a year can span more than one semester), or every term when
+  // "All years" is picked.
+  const termIdsForSubjects = useMemo(() => {
+    if (!terms) return [];
+    if (termFilter === ALL) return terms.map((t) => t.id);
+    return terms.filter((t) => shortTermLabel(t) === termFilter).map((t) => t.id);
+  }, [terms, termFilter]);
+  const { data: termSubjects } = useSubjectsForTerms(termIdsForSubjects);
+  const branchIdForSubjects = useMemo(() => {
+    if (branchFilter === ALL || !branches) return null;
+    return branches.find((b) => b.name === branchFilter)?.id ?? null;
+  }, [branchFilter, branches]);
+
+  // Config-table driven (the `subjects` table), not derived from
+  // already-published resources — a subject with zero approved
+  // uploads still shows up here, same as Notes' Subject filter.
+  // Previously this scanned `resources` instead, which was a
+  // deliberate workaround for a per-branch subjects query that broke
+  // under "All branches" once AIDS's subject list diverged from
+  // AIML/Core's — useSubjectsForTerms (all branches, all picked terms,
+  // resolved without ever assuming a single branch) doesn't have that
+  // problem, since PYQs' page already proves the "all branches" case
+  // works via the same underlying query shape.
   const subjectOptions = useMemo(() => {
     if (typeFilter === "Notices" || typeFilter === "Sancturm updates") return [];
-    const names = new Set<string>();
-    for (const r of resources) {
-      if (r.section !== "notes_lab" && r.section !== "pyq") continue;
-      if (branchFilter !== ALL && r.branch?.name !== branchFilter) continue;
-      if (termFilter !== ALL && termShortLabel(r.term) !== termFilter) continue;
-      if (batchFilter !== ALL && r.batch?.label !== batchFilter) continue;
-      if (!matchesTypeFilter(r, typeFilter)) continue;
-      if (r.subject?.name) names.add(r.subject.name);
-    }
+    let scoped = branchIdForSubjects
+      ? (termSubjects ?? []).filter((s) => s.branch_id === branchIdForSubjects)
+      : (termSubjects ?? []);
+    const mappedType = TYPE_LABEL_TO_RESOURCE_TYPE[typeFilter];
+    if (mappedType) scoped = filterSubjectsForResourceType(scoped, mappedType);
+    const names = new Set(scoped.map((s) => s.name));
     return [...Array.from(names).sort(), "Extra"];
-  }, [resources, branchFilter, termFilter, batchFilter, typeFilter]);
+  }, [termSubjects, branchIdForSubjects, typeFilter]);
 
   const visible = useMemo(() => {
     return resources
       .filter((r) => !dateFilter || localDateKey(r.created_at) === dateFilter)
       .filter((r) => matchesSearch(r, searchQuery))
       .filter((r) => branchFilter === ALL || r.branch?.name === branchFilter)
-      .filter((r) => termFilter === ALL || termShortLabel(r.term) === termFilter)
+      .filter((r) => termFilter === ALL || shortTermLabel(r.term) === termFilter)
       .filter((r) => batchFilter === ALL || r.batch?.label === batchFilter)
       .filter((r) => matchesTypeFilter(r, typeFilter))
       .filter((r) => subjectFilter === ALL || (r.subject?.name ?? "Extra") === subjectFilter);
@@ -624,18 +658,18 @@ export function ManageResourceList({
     return [...visible].sort(bySubject);
   }, [visible, typeFilter]);
 
+  // Newest academic batch always groups first (never reversed by
+  // dateSort), same rule as Notes/PYQs — built from the same `batches`
+  // catalog already fetched above for the Batch filter, not a new fetch.
+  const batchStartYear = useMemo(() => new Map((batches ?? []).map((b) => [b.id, b.start_year])), [batches]);
+
   // Date sort applies within whichever view is showing — grouped
   // sections are sorted by subject already, so "newest/oldest" only
   // makes sense in flat mode; grouped mode ignores it deliberately.
   const sortedFlat = useMemo(() => {
     if (!flat) return null;
-    const sorted = [...flat];
-    sorted.sort((a, b) => {
-      const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      return dateSort === "newest" ? diff : -diff;
-    });
-    return sorted;
-  }, [flat, dateSort]);
+    return sortResourcesByBatchThenDate(flat, dateSort, batchStartYear);
+  }, [flat, dateSort, batchStartYear]);
 
   const isEmpty = visible.length === 0;
 
@@ -718,7 +752,7 @@ export function ManageResourceList({
           <FilterSelect
             label="Year"
             value={termFilter}
-            onChange={setTermFilter}
+            onChange={handleTermFilterChange}
             options={[{ value: ALL, label: "All years" }, ...termOptions.map((t) => ({ value: t, label: t }))]}
           />
         )}
@@ -727,7 +761,7 @@ export function ManageResourceList({
           <FilterSelect
             label="Branch"
             value={branchFilter}
-            onChange={setBranchFilter}
+            onChange={handleBranchFilterChange}
             options={[{ value: ALL, label: "All branches" }, ...branchOptions.map((b) => ({ value: b, label: b }))]}
           />
         )}
@@ -736,7 +770,7 @@ export function ManageResourceList({
           <FilterSelect
             label="Batch"
             value={batchFilter}
-            onChange={setBatchFilter}
+            onChange={handleBatchFilterChange}
             options={[{ value: ALL, label: "All batches" }, ...batchOptions.map((b) => ({ value: b, label: b }))]}
           />
         )}
@@ -794,14 +828,14 @@ export function ManageResourceList({
             <FilterSelect
               label="Year"
               value={termFilter}
-              onChange={setTermFilter}
+              onChange={handleTermFilterChange}
               options={[{ value: ALL, label: "All years" }, ...termOptions.map((t) => ({ value: t, label: t }))]}
               fullWidth
             />
             <FilterSelect
               label="Branch"
               value={branchFilter}
-              onChange={setBranchFilter}
+              onChange={handleBranchFilterChange}
               options={[
                 { value: ALL, label: "All branches" },
                 ...branchOptions.map((b) => ({ value: b, label: b })),
@@ -816,7 +850,7 @@ export function ManageResourceList({
             <FilterSelect
               label="Batch"
               value={batchFilter}
-              onChange={setBatchFilter}
+              onChange={handleBatchFilterChange}
               options={[
                 { value: ALL, label: "All batches" },
                 ...batchOptions.map((b) => ({ value: b, label: b })),
