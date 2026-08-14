@@ -262,21 +262,27 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   // Legacy "pdf" rows (pre-dating the pyq/pyq_solution split) get
   // normalized to "pyq" here — same equivalence the rest of the app
   // already treats them as (see usePyqResources/Manage's own PYQ
-  // filter) — so the toggle below always has one of its two real
+  // filter) — so the toggle below always has one of its four real
   // options selected, and saving naturally cleans the legacy value up.
-  const [resourceType, setResourceType] = useState(
-    resource.resource_type === "pdf" ? "pyq" : resource.resource_type ?? "notes"
+  const [resourceType, setResourceType] = useState<"notes" | "lab_manual" | "pyq" | "pyq_solution">(
+    resource.resource_type === "pdf"
+      ? "pyq"
+      : (resource.resource_type as "notes" | "lab_manual" | "pyq" | "pyq_solution" | null) ?? "notes"
   );
 
   const { data: branches } = useBranches();
   const { data: terms } = useTerms();
   const { data: validBatches } = useBatchesForTerm(termId || null);
-  const isPyq = resource.kind === "resource" && resource.section === "pyq";
-  const isNotesLab = resource.kind === "resource" && resource.section === "notes_lab";
-  const { data: subjects } = useSubjects(
+  // Driven by the currently-picked Type, not the resource's original
+  // section — switching Type here can move a row between notes_lab
+  // and pyq, so "on record" and the valid subject list both need to
+  // track whatever's selected right now, not what it started as.
+  const isPyqType = resourceType === "pyq" || resourceType === "pyq_solution";
+  const { data: allSubjects } = useSubjects(
     resource.kind === "resource" ? branchId || null : null,
     resource.kind === "resource" ? termId || null : null
   );
+  const subjects = allSubjects ? filterSubjectsForResourceType(allSubjects, resourceType) : undefined;
   // Falls back to the first term-valid batch instead of an effect
   // "syncing" once validBatches loads async — same reasoning as
   // CRUploadForm's identical effectiveBatchId.
@@ -306,6 +312,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
             title: title.trim(),
             description: description.trim() || null,
             resourceType,
+            section: isPyqType ? "pyq" : "notes_lab",
           });
         }
         setOpen(false);
@@ -343,33 +350,39 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
               </div>
             )}
 
-            {(isNotesLab || isPyq) && (
+            {resource.kind === "resource" && (
               <div className="flex flex-col gap-1">
                 <label className="font-mono text-xs text-subtle-foreground">Type</label>
+                {/* All four — not just whatever section this row
+                    started in. Picking across the Notes/Lab ↔ PYQ
+                    line is a genuine recategorization (changes both
+                    `section` and `resource_type` on save), same as
+                    picking within one side of it. */}
                 <div className="flex flex-wrap gap-1 rounded-md border border-border bg-background p-1">
-                  {(isNotesLab ? (["notes", "lab_manual"] as const) : (["pyq", "pyq_solution"] as const)).map(
-                    (kind) => (
-                      <button
-                        key={kind}
-                        type="button"
-                        onClick={() => setResourceType(kind)}
-                        className={cn(
-                          "min-w-[7rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
-                          resourceType === kind
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:text-foreground active:text-foreground"
-                        )}
-                      >
-                        {kind === "notes"
-                          ? "Notes"
-                          : kind === "lab_manual"
-                            ? "Lab manual"
-                            : kind === "pyq"
-                              ? "Question paper"
-                              : "Solution"}
-                      </button>
-                    )
-                  )}
+                  {(["notes", "lab_manual", "pyq", "pyq_solution"] as const).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => {
+                        setResourceType(kind);
+                        setSubjectId("");
+                      }}
+                      className={cn(
+                        "min-w-[7rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
+                        resourceType === kind
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:text-foreground active:text-foreground"
+                      )}
+                    >
+                      {kind === "notes"
+                        ? "Notes"
+                        : kind === "lab_manual"
+                          ? "Lab manual"
+                          : kind === "pyq"
+                            ? "Question paper"
+                            : "Solution"}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -410,7 +423,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
 
             <div className="flex flex-col gap-1">
               <label className="font-mono text-xs text-subtle-foreground">
-                Branch{isPyq && <span className="ml-1.5 normal-case text-subtle-foreground/70">(on record)</span>}
+                Branch{isPyqType && <span className="ml-1.5 normal-case text-subtle-foreground/70">(on record)</span>}
               </label>
               <Select
                 value={branchId}

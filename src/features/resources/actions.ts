@@ -88,12 +88,12 @@ export async function updateResourceFields(
     dateKey?: string;
     title?: string;
     description?: string | null;
-    // Kept as one pairing (never set independently) — a "notes_lab"
-    // section item can only become notes/lab_manual, a "pyq" one only
-    // pyq/pyq_solution; switching a row across sections entirely isn't
-    // offered by the edit dialog, so this never needs to move a row
-    // between them.
+    // Always sent together (never one without the other) — the edit
+    // dialog's Type toggle covers all four resource_types, including
+    // across the notes_lab/pyq line, so a save can genuinely move a
+    // row from one section to the other.
     resourceType?: string;
+    section?: string;
   }
 ) {
   const supabase = await createClient();
@@ -113,6 +113,7 @@ export async function updateResourceFields(
   if (fields.title !== undefined) update.title = fields.title;
   if (fields.description !== undefined) update.description = fields.description;
   if (fields.resourceType !== undefined) update.resource_type = fields.resourceType;
+  if (fields.section !== undefined) update.section = fields.section;
 
   if (fields.dateKey !== undefined) {
     const { data: existing, error: fetchError } = await supabase
