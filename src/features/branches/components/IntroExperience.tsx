@@ -127,22 +127,41 @@ export function IntroExperience() {
   // from cache the moment they land, instead of paying for a fresh
   // fetch on the connection that matters most (a cold cache, right
   // after picking a branch).
+  //
+  // queryClient.prefetchQuery, not a raw supabase call + setQueryData
+  // (what this used to be) — that version force-wrote its result into
+  // the cache unconditionally, error or not. A transient failure (any
+  // network hiccup) meant `data` came back null, and null ?? [] cached
+  // an EMPTY branch list as if it had loaded successfully — silently
+  // poisoning BranchSelectCard's own useBranches() into skipping its
+  // loading/error states entirely (the cache already had "data") and
+  // rendering a permanently blank list with no retry. prefetchQuery
+  // shares the exact queryFn a real useQuery call would use, so it
+  // dedupes against BranchSelectCard's own fetch instead of racing it,
+  // and a failure here just leaves the query to actually error (or
+  // retry) through the normal isLoading/isError path instead of
+  // masquerading as a successful empty result.
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("branches")
-      .select("*")
-      .order("sort_order")
-      .then(({ data }) => {
-        queryClient.setQueryData(["branches"], (data as Branch[] | null) ?? []);
-      });
-    supabase
-      .from("academic_terms")
-      .select("*")
-      .order("sort_order")
-      .then(({ data }) => {
-        queryClient.setQueryData(["terms"], (data as AcademicTerm[] | null) ?? []);
-      });
+    queryClient.prefetchQuery({
+      queryKey: ["branches"],
+      queryFn: async () => {
+        const supabase = createClient();
+        const { data, error } = await supabase.from("branches").select("*").order("sort_order");
+        if (error) throw error;
+        return data as Branch[];
+      },
+      staleTime: 5 * 60_000,
+    });
+    queryClient.prefetchQuery({
+      queryKey: ["terms"],
+      queryFn: async () => {
+        const supabase = createClient();
+        const { data, error } = await supabase.from("academic_terms").select("*").order("sort_order");
+        if (error) throw error;
+        return data as AcademicTerm[];
+      },
+      staleTime: 5 * 60_000,
+    });
   }, [queryClient]);
 
   // The typing sequence: 700ms wait after the video is actually ready,
