@@ -65,20 +65,27 @@ export function useSubjectsForTerm(termId: string | null) {
 export function useNotesAndLabResources(
   branchId: string | null,
   termId: string | null,
-  resourceType: ResourceType
+  resourceType: ResourceType,
+  // Optional — a FILTER, not a scoping dimension like branch/term.
+  // Omitted (null) shows every batch's content for this (branch,
+  // term), which is what "browsing your year" meant before Batch
+  // existed and stays the default now.
+  batchId?: string | null
 ) {
   return useQuery({
-    queryKey: ["resources", "notes_lab", branchId, termId, resourceType],
+    queryKey: ["resources", "notes_lab", branchId, termId, resourceType, batchId ?? null],
     queryFn: async () => {
       const supabase = createClient();
-      const { data, error } = await supabase
+      let query = supabase
         .from("resources")
         .select("*, subject:subjects(id, name, sort_order)")
         .eq("branch_id", branchId!)
         .eq("term_id", termId!)
         .eq("section", "notes_lab")
         .eq("resource_type", resourceType)
-        .eq("status", "approved")
+        .eq("status", "approved");
+      if (batchId) query = query.eq("batch_id", batchId);
+      const { data, error } = await query
         .order("is_pinned", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -96,17 +103,19 @@ export function useNotesAndLabResources(
  * (a 1st-Year Sem 1 PYQ has nothing to do with a 2nd-Year Sem 3
  * student, even though a same-term PYQ crosses branches freely).
  */
-export function usePyqResources(termId: string | null) {
+export function usePyqResources(termId: string | null, batchId?: string | null) {
   return useQuery({
-    queryKey: ["resources", "pyq", termId],
+    queryKey: ["resources", "pyq", termId, batchId ?? null],
     queryFn: async () => {
       const supabase = createClient();
-      const { data, error } = await supabase
+      let query = supabase
         .from("resources")
         .select("*, subject:subjects(id, name, sort_order)")
         .eq("term_id", termId!)
         .eq("section", "pyq")
-        .eq("status", "approved")
+        .eq("status", "approved");
+      if (batchId) query = query.eq("batch_id", batchId);
+      const { data, error } = await query
         .order("is_pinned", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -130,16 +139,21 @@ export function useExistingResourceTitles(
   section: "notes_lab" | "pyq" | null,
   branchIds: string[],
   termId: string | null,
-  subjectId: string | null
+  subjectId: string | null,
+  // Scopes the check to the batch actually being uploaded to — the
+  // same title already existing in a DIFFERENT batch isn't really a
+  // duplicate (that's a different cohort's copy of the same subject).
+  batchId: string | null
 ) {
   return useQuery({
-    queryKey: ["resources", "titles", section, branchIds, termId, subjectId],
+    queryKey: ["resources", "titles", section, branchIds, termId, subjectId, batchId],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase
         .from("resources")
         .select("title")
         .eq("term_id", termId!)
+        .eq("batch_id", batchId!)
         .eq("section", section!)
         .eq("status", "approved");
       if (section === "notes_lab") query = query.in("branch_id", branchIds);
@@ -148,7 +162,7 @@ export function useExistingResourceTitles(
       if (error) throw error;
       return new Set((data ?? []).map((r) => r.title.trim().toLowerCase()));
     },
-    enabled: !!termId && !!section && (section === "pyq" || branchIds.length > 0),
+    enabled: !!termId && !!batchId && !!section && (section === "pyq" || branchIds.length > 0),
     staleTime: 15_000,
   });
 }

@@ -39,15 +39,26 @@ export async function deleteResource(resourceId: string) {
 }
 
 /**
- * Admin-only: retroactively changes an already-published resource's
- * date from the Manage list — the same field a backdated upload writes
- * (see uploadResourceDirect's customCreatedAt), just editable after the
- * fact. Explicit role check here, not left to RLS alone — RLS's own
- * "CR or admin updates" policy would otherwise let a CR reach this too,
- * defeating the backdating restriction CRUploadForm's minDate already
- * enforces at upload time.
+ * Admin-only: retroactively changes ANY of an already-published
+ * resource's Year/Batch/Branch/Subject/Date — every field pickable at
+ * upload time, now editable after the fact from Manage instead of
+ * only the date. Only the fields actually passed get updated
+ * (omitted = leave unchanged), so editing just the date doesn't need
+ * to resend everything else. Explicit role check, not left to RLS
+ * alone — RLS's own "CR or admin updates" policy would otherwise let
+ * a CR reach this too, defeating the backdating restriction
+ * CRUploadForm's minDate already enforces at upload time.
  */
-export async function updateResourceDate(resourceId: string, dateKey: string) {
+export async function updateResourceFields(
+  resourceId: string,
+  fields: {
+    branchId?: string;
+    termId?: string;
+    batchId?: string;
+    subjectId?: string | null;
+    dateKey?: string;
+  }
+) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -57,18 +68,26 @@ export async function updateResourceDate(resourceId: string, dateKey: string) {
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
 
-  const { data: existing, error: fetchError } = await supabase
-    .from("resources")
-    .select("created_at")
-    .eq("id", resourceId)
-    .single();
-  if (fetchError) throw fetchError;
+  const update: Record<string, string | null> = {};
+  if (fields.branchId !== undefined) update.branch_id = fields.branchId;
+  if (fields.termId !== undefined) update.term_id = fields.termId;
+  if (fields.batchId !== undefined) update.batch_id = fields.batchId;
+  if (fields.subjectId !== undefined) update.subject_id = fields.subjectId;
 
-  const { error: updateError } = await supabase
-    .from("resources")
-    .update({ created_at: withDateKey(existing.created_at, dateKey) })
-    .eq("id", resourceId);
-  if (updateError) throw updateError;
+  if (fields.dateKey !== undefined) {
+    const { data: existing, error: fetchError } = await supabase
+      .from("resources")
+      .select("created_at")
+      .eq("id", resourceId)
+      .single();
+    if (fetchError) throw fetchError;
+    update.created_at = withDateKey(existing.created_at, fields.dateKey);
+  }
+
+  if (Object.keys(update).length > 0) {
+    const { error: updateError } = await supabase.from("resources").update(update).eq("id", resourceId);
+    if (updateError) throw updateError;
+  }
 
   revalidatePath("/notes");
   revalidatePath("/pyqs");
@@ -107,6 +126,7 @@ export async function uploadResourceDirect(formData: FormData) {
 
   const branchId = formData.get("branchId") as string;
   const termId = formData.get("termId") as string;
+  const batchId = formData.get("batchId") as string;
   const subjectId = (formData.get("subjectId") as string) || null;
   const section = formData.get("section") as string;
   const resourceType = formData.get("resourceType") as string;
@@ -126,6 +146,7 @@ export async function uploadResourceDirect(formData: FormData) {
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
     term_id: termId,
+    batch_id: batchId,
     subject_id: subjectId,
     section,
     resource_type: resourceType,
@@ -173,6 +194,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   if (role?.type !== "admin") throw new Error("Admin only.");
 
   const termId = formData.get("termId") as string;
+  const batchId = formData.get("batchId") as string;
   const subjectName = (formData.get("subjectName") as string) || null;
   const section = formData.get("section") as string;
   const resourceType = formData.get("resourceType") as string;
@@ -220,6 +242,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
     const { error: insertError } = await supabase.from("resources").insert({
       branch_id: branchId,
       term_id: termId,
+      batch_id: batchId,
       subject_id: subjectId,
       section,
       resource_type: resourceType,

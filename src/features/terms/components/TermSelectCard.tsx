@@ -1,6 +1,6 @@
 "use client";
 
-import { useTerms } from "@/features/terms/queries";
+import { useCurrentTermsByYear } from "@/features/terms/queries";
 import { cn } from "@/lib/utils";
 
 export function TermSelectCard({
@@ -13,7 +13,12 @@ export function TermSelectCard({
   // Same reasoning as BranchSelectCard's identical change: no loading
   // or error fallback here meant a slow/flaky connection landed on an
   // empty card with just a header and no way forward.
-  const { data: terms, isLoading, isError, refetch } = useTerms();
+  //
+  // useCurrentTermsByYear, not useTerms() — a year can now have
+  // multiple terms (Sem 1 and Sem 2, across batches), and this picker
+  // still only ever asks "which year", resolving to whichever term is
+  // actually current for it.
+  const { data: terms, isLoading, isError, refetch } = useCurrentTermsByYear();
 
   return (
     <div

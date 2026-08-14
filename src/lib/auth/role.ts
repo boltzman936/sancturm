@@ -30,7 +30,7 @@ export const getUser = cache(async () => {
  */
 export type Role =
   | { type: "admin"; displayName: string }
-  | { type: "cr"; branchId: string; termId: string; displayName: string }
+  | { type: "cr"; branchId: string; termId: string; batchId: string; displayName: string }
   | null;
 
 export async function getCurrentRole(): Promise<Role> {
@@ -47,12 +47,19 @@ export async function getCurrentRole(): Promise<Role> {
     supabase.from("admins").select("display_name").eq("auth_user_id", user.id).maybeSingle(),
     supabase
       .from("cr_profiles")
-      .select("branch_id, term_id, display_name")
+      .select("branch_id, term_id, batch_id, display_name")
       .eq("auth_user_id", user.id)
       .maybeSingle(),
   ]);
 
   if (admin) return { type: "admin", displayName: admin.display_name };
-  if (cr) return { type: "cr", branchId: cr.branch_id, termId: cr.term_id, displayName: cr.display_name };
+  if (cr)
+    return {
+      type: "cr",
+      branchId: cr.branch_id,
+      termId: cr.term_id,
+      batchId: cr.batch_id,
+      displayName: cr.display_name,
+    };
   return null;
 }

@@ -7,6 +7,34 @@ import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey } from "@/lib/date";
 
 /**
+ * Resolves the currently-active batch for one term, server-side — same
+ * "latest batch_terms row that's already started, falling back to the
+ * earliest upcoming one" logic as the client's useCurrentTermsByYear,
+ * just inverted (given a term, not a year). Only the admin bulk-
+ * publish paths below use this: with several years selectable at
+ * once, there's no practical single "pick a batch" control to show,
+ * so each selected year resolves its own current batch instead. The
+ * single-year paths (createNotice/createCustomNotice) still take an
+ * explicit client-supplied batchId (always a CR's own fixed one).
+ */
+async function resolveCurrentBatchId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  termId: string
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("batch_terms")
+    .select("batch_id, start_date")
+    .eq("term_id", termId)
+    .order("start_date", { ascending: true });
+  if (error) throw error;
+  const today = new Date().toISOString().slice(0, 10);
+  const started = (data ?? []).filter((row) => row.start_date <= today);
+  const chosen = started.length ? started[started.length - 1] : data?.[0];
+  if (!chosen) throw new Error("No batch configured for this year yet.");
+  return chosen.batch_id;
+}
+
+/**
  * Only a CR (own branch) or admin (any branch) can ever call this
  * successfully — there's no "anyone can submit" policy on `notices`
  * like there is on `resources`. Postgres RLS ("CR or admin manages",
@@ -22,6 +50,7 @@ export async function createNotice(formData: FormData) {
 
   const branchId = formData.get("branchId") as string;
   const termId = formData.get("termId") as string;
+  const batchId = formData.get("batchId") as string;
   const title = formData.get("title") as string;
   // Uploaded straight to R2 from the browser already — see resources/
   // actions.ts's uploadResourceDirect for the full reasoning.
@@ -30,6 +59,7 @@ export async function createNotice(formData: FormData) {
   const { error: insertError } = await supabase.from("notices").insert({
     branch_id: branchId,
     term_id: termId,
+    batch_id: batchId,
     title,
     pdf_url: fileUrl,
     important_dates: [],
@@ -59,23 +89,33 @@ export async function createNoticeAllBranches(formData: FormData) {
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
 
-  const termId = formData.get("termId") as string;
   const title = formData.get("title") as string;
   const fileUrl = formData.get("fileUrl") as string;
   const branchIds = JSON.parse(formData.get("branchIds") as string) as string[];
   if (!Array.isArray(branchIds) || !branchIds.every((id) => typeof id === "string") || !branchIds.length) {
     throw new Error("Invalid branch selection.");
   }
+  const termIds = JSON.parse(formData.get("termIds") as string) as string[];
+  if (!Array.isArray(termIds) || !termIds.every((id) => typeof id === "string") || !termIds.length) {
+    throw new Error("Invalid year selection.");
+  }
 
-  const { error: insertError } = await supabase.from("notices").insert(
-    branchIds.map((branchId) => ({
-      branch_id: branchId,
-      term_id: termId,
-      title,
-      pdf_url: fileUrl,
-      important_dates: [],
-    }))
-  );
+  const rows = [];
+  for (const termId of termIds) {
+    const batchId = await resolveCurrentBatchId(supabase, termId);
+    for (const branchId of branchIds) {
+      rows.push({
+        branch_id: branchId,
+        term_id: termId,
+        batch_id: batchId,
+        title,
+        pdf_url: fileUrl,
+        important_dates: [],
+      });
+    }
+  }
+
+  const { error: insertError } = await supabase.from("notices").insert(rows);
   if (insertError) throw insertError;
 
   revalidatePath("/notices");
@@ -93,24 +133,34 @@ export async function createCustomNoticeAllBranches(formData: FormData) {
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
 
-  const termId = formData.get("termId") as string;
   const title = formData.get("title") as string;
   const body = formData.get("body") as string;
   const branchIds = JSON.parse(formData.get("branchIds") as string) as string[];
   if (!Array.isArray(branchIds) || !branchIds.every((id) => typeof id === "string") || !branchIds.length) {
     throw new Error("Invalid branch selection.");
   }
+  const termIds = JSON.parse(formData.get("termIds") as string) as string[];
+  if (!Array.isArray(termIds) || !termIds.every((id) => typeof id === "string") || !termIds.length) {
+    throw new Error("Invalid year selection.");
+  }
 
-  const { error: insertError } = await supabase.from("notices").insert(
-    branchIds.map((branchId) => ({
-      branch_id: branchId,
-      term_id: termId,
-      title,
-      body,
-      pdf_url: null,
-      important_dates: [],
-    }))
-  );
+  const rows = [];
+  for (const termId of termIds) {
+    const batchId = await resolveCurrentBatchId(supabase, termId);
+    for (const branchId of branchIds) {
+      rows.push({
+        branch_id: branchId,
+        term_id: termId,
+        batch_id: batchId,
+        title,
+        body,
+        pdf_url: null,
+        important_dates: [],
+      });
+    }
+  }
+
+  const { error: insertError } = await supabase.from("notices").insert(rows);
   if (insertError) throw insertError;
 
   revalidatePath("/notices");
@@ -127,12 +177,14 @@ export async function createCustomNotice(formData: FormData) {
 
   const branchId = formData.get("branchId") as string;
   const termId = formData.get("termId") as string;
+  const batchId = formData.get("batchId") as string;
   const title = formData.get("title") as string;
   const body = formData.get("body") as string;
 
   const { error: insertError } = await supabase.from("notices").insert({
     branch_id: branchId,
     term_id: termId,
+    batch_id: batchId,
     title,
     body,
     pdf_url: null,
@@ -165,12 +217,16 @@ export async function deleteNotice(noticeId: string) {
 }
 
 /**
- * Admin-only: retroactively changes an already-published notice's date
- * from the Manage list — same reasoning as resources' updateResourceDate,
- * including the explicit role check (RLS alone would let a CR reach
- * this within their own branch, which isn't the intent here).
+ * Admin-only: retroactively changes ANY of an already-published
+ * notice's Year/Batch/Branch/Date — same reasoning as resources'
+ * updateResourceFields, including the explicit role check (RLS alone
+ * would let a CR reach this within their own branch, which isn't the
+ * intent here).
  */
-export async function updateNoticeDate(noticeId: string, dateKey: string) {
+export async function updateNoticeFields(
+  noticeId: string,
+  fields: { branchId?: string; termId?: string; batchId?: string; dateKey?: string }
+) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -180,18 +236,25 @@ export async function updateNoticeDate(noticeId: string, dateKey: string) {
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
 
-  const { data: existing, error: fetchError } = await supabase
-    .from("notices")
-    .select("created_at")
-    .eq("id", noticeId)
-    .single();
-  if (fetchError) throw fetchError;
+  const update: Record<string, string> = {};
+  if (fields.branchId !== undefined) update.branch_id = fields.branchId;
+  if (fields.termId !== undefined) update.term_id = fields.termId;
+  if (fields.batchId !== undefined) update.batch_id = fields.batchId;
 
-  const { error: updateError } = await supabase
-    .from("notices")
-    .update({ created_at: withDateKey(existing.created_at, dateKey) })
-    .eq("id", noticeId);
-  if (updateError) throw updateError;
+  if (fields.dateKey !== undefined) {
+    const { data: existing, error: fetchError } = await supabase
+      .from("notices")
+      .select("created_at")
+      .eq("id", noticeId)
+      .single();
+    if (fetchError) throw fetchError;
+    update.created_at = withDateKey(existing.created_at, fields.dateKey);
+  }
+
+  if (Object.keys(update).length > 0) {
+    const { error: updateError } = await supabase.from("notices").update(update).eq("id", noticeId);
+    if (updateError) throw updateError;
+  }
 
   revalidatePath("/notices");
   revalidatePath("/cr/manage");

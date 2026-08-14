@@ -40,3 +40,50 @@ export function useTermBySlug(slug: string | null) {
   const query = useTerms();
   return { ...query, data: slug ? query.data?.find((t) => t.slug === slug) : undefined };
 }
+
+/**
+ * Exactly one term per year_number — whichever one is CURRENT right
+ * now, resolved from batch_terms' real calendar dates. Before Batch
+ * existed, every year mapped to exactly one term 1:1, so
+ * TermSelectCard/TermSwitcher could just list every row from
+ * useTerms() and show its year. Now that a year can have several
+ * terms (Sem 1 AND Sem 2, across multiple batches), listing every raw
+ * term there would show "1st Year" duplicated once per semester/batch
+ * combination — this resolves that back down to one entry per year,
+ * so the "pick your year" flow students already know is completely
+ * unchanged. useTerms() itself is untouched and still returns every
+ * term for callers that genuinely need the full list (Manage's Year
+ * filter, the upload form's Year picker, both of which SHOULD offer
+ * every semester, not just the current one).
+ */
+export function useCurrentTermsByYear() {
+  return useQuery({
+    queryKey: ["terms", "current-by-year"],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("batch_terms")
+        .select("start_date, term:academic_terms(*)")
+        .order("start_date", { ascending: true });
+      if (error) throw error;
+
+      const today = new Date().toISOString().slice(0, 10);
+      const byYear = new Map<number, AcademicTerm>();
+      for (const row of data ?? []) {
+        const term = (Array.isArray(row.term) ? row.term[0] : row.term) as AcademicTerm | null;
+        if (!term) continue;
+        const alreadyStarted = row.start_date <= today;
+        // First row seen for a year always fills the slot (so a year
+        // with only future semesters still shows its soonest upcoming
+        // one) — after that, only a row that's actually started can
+        // overwrite it. Ascending order means the LAST started row we
+        // see for a year is the most recently begun one, i.e. current.
+        if (!byYear.has(term.year_number) || alreadyStarted) {
+          byYear.set(term.year_number, term);
+        }
+      }
+      return [...byYear.values()].sort((a, b) => a.year_number - b.year_number);
+    },
+    staleTime: 5 * 60_000,
+  });
+}

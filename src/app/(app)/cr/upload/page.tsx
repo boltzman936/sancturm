@@ -39,6 +39,7 @@ export default async function CRUploadPage() {
         terms={terms ?? []}
         fixedBranchId={role.type === "cr" ? role.branchId : undefined}
         fixedTermId={role.type === "cr" ? role.termId : undefined}
+        fixedBatchId={role.type === "cr" ? role.batchId : undefined}
         isAdmin={role.type === "admin"}
       />
     </div>

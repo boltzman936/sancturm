@@ -12,6 +12,7 @@ import {
   type ResourceWithSubject,
 } from "@/features/resources/queries";
 import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
+import { useBatches } from "@/features/batches/queries";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
@@ -24,6 +25,10 @@ type NotesOrLab = Extract<ResourceType, "notes" | "lab_manual">;
 type DateSort = "newest" | "oldest";
 const ALL_SUBJECTS = "all";
 const EXTRA_SUBJECT = "extra";
+// Defaults to showing every batch's content, same as before Batch
+// existed — it's an additive narrowing filter, not something that
+// hides content by default (see this file's own filter useMemo).
+const ALL_BATCHES = "all";
 
 function sortByDate(resources: ResourceWithSubject[], order: DateSort) {
   const sorted = [...resources];
@@ -61,6 +66,7 @@ export default function NotesAndLabPage() {
   const [resourceType, setResourceType] = useState<NotesOrLab>("notes");
   const [dateSort, setDateSort] = useState<DateSort>("newest");
   const [subjectFilter, setSubjectFilter] = useState<string>(ALL_SUBJECTS);
+  const [batchFilter, setBatchFilter] = useState<string>(ALL_BATCHES);
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
@@ -91,6 +97,11 @@ export default function NotesAndLabPage() {
     term?.id ?? null,
     resourceType
   );
+  // Every batch's content is already in `resources` (batchId is
+  // deliberately omitted from the query above) — filtered client-side
+  // below like Subject/Date/Search already are, so switching Batch is
+  // instant with no extra fetch, same as every other filter here.
+  const { data: batches } = useBatches();
 
   const filtered = useMemo(() => {
     const base = resources ?? [];
@@ -100,12 +111,14 @@ export default function NotesAndLabPage() {
         : subjectFilter === EXTRA_SUBJECT
           ? base.filter((resource) => !resource.subject)
           : base.filter((resource) => resource.subject?.id === subjectFilter);
+    const byBatch =
+      batchFilter === ALL_BATCHES ? bySubject : bySubject.filter((resource) => resource.batch_id === batchFilter);
     const byDate = dateFilter
-      ? bySubject.filter((resource) => localDateKey(resource.created_at) === dateFilter)
-      : bySubject;
+      ? byBatch.filter((resource) => localDateKey(resource.created_at) === dateFilter)
+      : byBatch;
     const bySearch = byDate.filter((resource) => matchesSearch(resource, searchQuery));
     return sortByDate(bySearch, dateSort);
-  }, [resources, subjectFilter, dateFilter, searchQuery, dateSort]);
+  }, [resources, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -168,6 +181,19 @@ export default function NotesAndLabPage() {
               </option>
             ))}
             <option value={EXTRA_SUBJECT}>Extra</option>
+          </Select>
+
+          <Select
+            value={batchFilter}
+            onChange={(event) => setBatchFilter(event.target.value)}
+            className="w-[150px] shrink-0"
+          >
+            <option value={ALL_BATCHES}>All batches</option>
+            {batches?.map((batch) => (
+              <option key={batch.id} value={batch.id}>
+                {batch.label}
+              </option>
+            ))}
           </Select>
         </div>
       </div>
@@ -253,8 +279,17 @@ export default function NotesAndLabPage() {
             <option value={EXTRA_SUBJECT}>Extra</option>
           </Select>
 
-          <DateFilterInput value={dateFilter} onChange={setDateFilter} />
+          <Select value={batchFilter} onChange={(event) => setBatchFilter(event.target.value)} className="min-w-0">
+            <option value={ALL_BATCHES}>All batches</option>
+            {batches?.map((batch) => (
+              <option key={batch.id} value={batch.id}>
+                {batch.label}
+              </option>
+            ))}
+          </Select>
         </div>
+
+        <DateFilterInput value={dateFilter} onChange={setDateFilter} />
 
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />

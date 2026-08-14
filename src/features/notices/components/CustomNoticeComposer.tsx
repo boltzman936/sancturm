@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createCustomNotice, createCustomNoticeAllBranches } from "@/features/notices/actions";
 import { Select } from "@/components/shared/Select";
 import { BranchMultiSelect } from "@/components/shared/BranchMultiSelect";
+import { TermMultiSelect } from "@/components/shared/TermMultiSelect";
 import { cn } from "@/lib/utils";
 
 type BranchOption = { id: string; name: string };
@@ -16,14 +17,20 @@ export function CustomNoticeComposer({
   terms,
   fixedBranchId,
   fixedTermId,
+  fixedBatchId,
   isAdmin,
 }: {
   branches: BranchOption[];
   terms: TermOption[];
   fixedBranchId?: string;
   fixedTermId?: string;
+  // A CR's batch is fixed to their own cr_profile — admin's bulk path
+  // resolves the current batch per selected year server-side instead,
+  // same reasoning as NoticeComposer's identical comment.
+  fixedBatchId?: string;
   // Same rule as NoticeComposer: only an admin can pick more than one
-  // branch — a CR is always scoped to their own (fixedBranchId).
+  // branch/year — a CR is always scoped to their own (fixedBranchId/
+  // fixedTermId).
   isAdmin: boolean;
 }) {
   const [branchId, setBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
@@ -31,6 +38,9 @@ export function CustomNoticeComposer({
     fixedBranchId ? [fixedBranchId] : branches[0] ? [branches[0].id] : []
   );
   const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
+  const [selectedTermIds, setSelectedTermIds] = useState<string[]>(
+    fixedTermId ? [fixedTermId] : terms[0] ? [terms[0].id] : []
+  );
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +49,7 @@ export function CustomNoticeComposer({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!termId) return;
+    if (isAdmin ? selectedTermIds.length === 0 : !termId) return;
     if (isAdmin ? selectedBranchIds.length === 0 : !branchId) return;
     setSuccess(false);
     setError(null);
@@ -50,16 +60,18 @@ export function CustomNoticeComposer({
     if (!title || !body) return;
 
     const formData = new FormData();
-    formData.set("termId", termId);
     formData.set("title", title);
     formData.set("body", body);
 
     startTransition(async () => {
       try {
         if (isAdmin) {
+          formData.set("termIds", JSON.stringify(selectedTermIds));
           formData.set("branchIds", JSON.stringify(selectedBranchIds));
           await createCustomNoticeAllBranches(formData);
         } else {
+          formData.set("termId", termId);
+          formData.set("batchId", fixedBatchId!);
           formData.set("branchId", branchId);
           await createCustomNotice(formData);
         }
@@ -78,24 +90,31 @@ export function CustomNoticeComposer({
       onSubmit={handleSubmit}
       className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4"
     >
-      {!fixedTermId && (
+      {isAdmin ? (
         <div className="flex flex-col gap-1">
-          <label htmlFor="custom-notice-term" className="font-mono text-xs text-subtle-foreground">
-            Year
-          </label>
-          <Select
-            id="custom-notice-term"
-            value={termId}
-            onChange={(event) => setTermId(event.target.value)}
-            className="bg-background"
-          >
-            {terms.map((term) => (
-              <option key={term.id} value={term.id}>
-                {term.label.split(" - ")[0]}
-              </option>
-            ))}
-          </Select>
+          <label className="font-mono text-xs text-subtle-foreground">Year</label>
+          <TermMultiSelect terms={terms} selectedTermIds={selectedTermIds} onChange={setSelectedTermIds} />
         </div>
+      ) : (
+        !fixedTermId && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="custom-notice-term" className="font-mono text-xs text-subtle-foreground">
+              Year
+            </label>
+            <Select
+              id="custom-notice-term"
+              value={termId}
+              onChange={(event) => setTermId(event.target.value)}
+              className="bg-background"
+            >
+              {terms.map((term) => (
+                <option key={term.id} value={term.id}>
+                  {term.label.split(" - ")[0]}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )
       )}
 
       {isAdmin && (
@@ -158,7 +177,9 @@ export function CustomNoticeComposer({
       <button
         type="submit"
         disabled={
-          isPending || !termId || (isAdmin ? selectedBranchIds.length === 0 : !branchId)
+          isPending ||
+          (isAdmin ? selectedTermIds.length === 0 : !termId) ||
+          (isAdmin ? selectedBranchIds.length === 0 : !branchId)
         }
         className={cn(
           "self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
@@ -166,15 +187,15 @@ export function CustomNoticeComposer({
       >
         {isPending
           ? "Publishing…"
-          : isAdmin && selectedBranchIds.length > 1
-            ? `Publish to ${selectedBranchIds.length} branches`
+          : isAdmin && (selectedBranchIds.length > 1 || selectedTermIds.length > 1)
+            ? `Publish to ${selectedTermIds.length} year${selectedTermIds.length > 1 ? "s" : ""} × ${selectedBranchIds.length} branch${selectedBranchIds.length > 1 ? "es" : ""}`
             : "Publish notice"}
       </button>
 
       {success && (
         <p className="font-mono text-xs text-terminal-blue">
-          {isAdmin && selectedBranchIds.length > 1
-            ? "Published to every selected branch — already live, no review needed."
+          {isAdmin && (selectedBranchIds.length > 1 || selectedTermIds.length > 1)
+            ? "Published to every selected year and branch — already live, no review needed."
             : "Published — it's already live, no review needed."}
         </p>
       )}

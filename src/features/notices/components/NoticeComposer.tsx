@@ -7,6 +7,7 @@ import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { titleFromFileName } from "@/features/uploads/titleFromFileName";
 import { Select } from "@/components/shared/Select";
 import { BranchMultiSelect } from "@/components/shared/BranchMultiSelect";
+import { TermMultiSelect } from "@/components/shared/TermMultiSelect";
 import { UploadProgress } from "@/components/shared/UploadProgress";
 import { cn } from "@/lib/utils";
 
@@ -18,15 +19,23 @@ export function NoticeComposer({
   terms,
   fixedBranchId,
   fixedTermId,
+  fixedBatchId,
   isAdmin,
 }: {
   branches: BranchOption[];
   terms: TermOption[];
   fixedBranchId?: string;
   fixedTermId?: string;
-  // Only an admin gets to pick more than one branch — a CR is always
-  // scoped to their own single branch (fixedBranchId), same rule as
-  // CRUploadForm's canBulkPublish.
+  // A CR's batch is fixed to their own cr_profile (always set for a
+  // CR) — admin's bulk-publish path resolves the current batch per
+  // selected year server-side instead (see createNoticeAllBranches),
+  // since there's no practical way to ask "which batch, for each of
+  // several years" in this form.
+  fixedBatchId?: string;
+  // Only an admin gets to pick more than one branch OR more than one
+  // year — a CR is always scoped to their own single branch/term
+  // (fixedBranchId/fixedTermId), same rule as CRUploadForm's
+  // canBulkPublish.
   isAdmin: boolean;
 }) {
   const [branchId, setBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
@@ -34,6 +43,9 @@ export function NoticeComposer({
     fixedBranchId ? [fixedBranchId] : branches[0] ? [branches[0].id] : []
   );
   const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
+  const [selectedTermIds, setSelectedTermIds] = useState<string[]>(
+    fixedTermId ? [fixedTermId] : terms[0] ? [terms[0].id] : []
+  );
   const [file, setFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -44,7 +56,8 @@ export function NoticeComposer({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file || !termId) return;
+    if (!file) return;
+    if (isAdmin ? selectedTermIds.length === 0 : !termId) return;
     if (isAdmin ? selectedBranchIds.length === 0 : !branchId) return;
     setSuccess(false);
     setError(null);
@@ -62,14 +75,16 @@ export function NoticeComposer({
         const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress);
 
         const formData = new FormData();
-        formData.set("termId", termId);
         formData.set("title", title);
         formData.set("fileUrl", fileUrl);
 
         if (isAdmin) {
+          formData.set("termIds", JSON.stringify(selectedTermIds));
           formData.set("branchIds", JSON.stringify(selectedBranchIds));
           await createNoticeAllBranches(formData);
         } else {
+          formData.set("termId", termId);
+          formData.set("batchId", fixedBatchId!);
           formData.set("branchId", branchId);
           await createNotice(formData);
         }
@@ -95,24 +110,31 @@ export function NoticeComposer({
       onSubmit={handleSubmit}
       className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4"
     >
-      {!fixedTermId && (
+      {isAdmin ? (
         <div className="flex flex-col gap-1">
-          <label htmlFor="notice-term" className="font-mono text-xs text-subtle-foreground">
-            Year
-          </label>
-          <Select
-            id="notice-term"
-            value={termId}
-            onChange={(event) => setTermId(event.target.value)}
-            className="bg-background"
-          >
-            {terms.map((term) => (
-              <option key={term.id} value={term.id}>
-                {term.label.split(" - ")[0]}
-              </option>
-            ))}
-          </Select>
+          <label className="font-mono text-xs text-subtle-foreground">Year</label>
+          <TermMultiSelect terms={terms} selectedTermIds={selectedTermIds} onChange={setSelectedTermIds} />
         </div>
+      ) : (
+        !fixedTermId && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="notice-term" className="font-mono text-xs text-subtle-foreground">
+              Year
+            </label>
+            <Select
+              id="notice-term"
+              value={termId}
+              onChange={(event) => setTermId(event.target.value)}
+              className="bg-background"
+            >
+              {terms.map((term) => (
+                <option key={term.id} value={term.id}>
+                  {term.label.split(" - ")[0]}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )
       )}
 
       {isAdmin && (
@@ -176,7 +198,10 @@ export function NoticeComposer({
       <button
         type="submit"
         disabled={
-          isPending || !file || !termId || (isAdmin ? selectedBranchIds.length === 0 : !branchId)
+          isPending ||
+          !file ||
+          (isAdmin ? selectedTermIds.length === 0 : !termId) ||
+          (isAdmin ? selectedBranchIds.length === 0 : !branchId)
         }
         className={cn(
           "self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
@@ -184,15 +209,15 @@ export function NoticeComposer({
       >
         {isPending
           ? "Publishing…"
-          : isAdmin && selectedBranchIds.length > 1
-            ? `Publish to ${selectedBranchIds.length} branches`
+          : isAdmin && (selectedBranchIds.length > 1 || selectedTermIds.length > 1)
+            ? `Publish to ${selectedTermIds.length} year${selectedTermIds.length > 1 ? "s" : ""} × ${selectedBranchIds.length} branch${selectedBranchIds.length > 1 ? "es" : ""}`
             : "Publish notice"}
       </button>
 
       {success && (
         <p className="font-mono text-xs text-terminal-blue">
-          {isAdmin && selectedBranchIds.length > 1
-            ? "Published to every selected branch — already live, no review needed."
+          {isAdmin && (selectedBranchIds.length > 1 || selectedTermIds.length > 1)
+            ? "Published to every selected year and branch — already live, no review needed."
             : "Published — it's already live, no review needed."}
         </p>
       )}

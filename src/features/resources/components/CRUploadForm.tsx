@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useSubjects, useExistingResourceTitles } from "@/features/resources/queries";
+import { useBatchesForTerm } from "@/features/batches/queries";
 import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
@@ -32,6 +33,7 @@ export function CRUploadForm({
   terms,
   fixedBranchId,
   fixedTermId,
+  fixedBatchId,
   isAdmin,
 }: {
   // Every branch, always fetched now — needed even for a CR when
@@ -45,6 +47,9 @@ export function CRUploadForm({
   terms: TermOption[];
   fixedBranchId?: string;
   fixedTermId?: string;
+  // A CR's batch never changes either (their cr_profile's own batch) —
+  // only admin gets a picker, same fixed-vs-picker split as Branch/Term.
+  fixedBatchId?: string;
   // "Update" is admin-only (Sancturm updates has no CR access at all,
   // see supabase/sancturm_updates_v2.sql) — CRs never see that type.
   isAdmin: boolean;
@@ -59,6 +64,12 @@ export function CRUploadForm({
   // separate top-level Type button (that'd make the Type row 6-wide).
   const [pyqKind, setPyqKind] = useState<"pyq" | "pyq_solution">("pyq");
   const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
+  // Admin's picked Batch, or "" until a term-valid one loads/gets
+  // picked — the actual value submitted is effectiveBatchId below,
+  // which falls back to the first batch valid for the selected term
+  // rather than needing an effect to "sync" this once that async data
+  // arrives (see effectiveBatchId's own comment).
+  const [batchId, setBatchId] = useState("");
   // Admin-only: publish one upload to any combination of branches
   // (within the picked term) at once instead of repeating it per
   // branch — a multi-select rather than a single branch or an
@@ -117,6 +128,15 @@ export function CRUploadForm({
   // to stay accurate if this form is left open across midnight.
   const minUploadDate = isAdmin ? undefined : localDateKey(new Date().toISOString());
   const branchId = resourceType === "pyq" ? pyqBranchId : fixedBranchId ?? pyqBranchId;
+  // Which batches actually offer the currently-picked term — a
+  // brand-new batch with only a 1st-Year-Sem-1 row shouldn't be
+  // pickable while Sem 2 is selected.
+  const { data: validBatches } = useBatchesForTerm(termId || null);
+  // Falls back to the first term-valid batch instead of an effect
+  // "syncing" batchId once validBatches loads async — batchId itself
+  // only ever holds an EXPLICIT admin pick; this is what's actually
+  // submitted and shown as the Select's value.
+  const effectiveBatchId = fixedBatchId ?? (batchId || validBatches?.[0]?.id || "");
   // Whichever branch the Subject list previews against — every branch
   // has its own subjects row (different id) for the same subject name,
   // so this only supplies which NAMES exist to choose from; the id
@@ -138,7 +158,8 @@ export function CRUploadForm({
     sectionForDuplicateCheck,
     branchIdsForDuplicateCheck,
     termId || null,
-    subjectValue || null
+    subjectValue || null,
+    effectiveBatchId || null
   );
   // Same title-per-file logic handleSubmit itself will use — computed
   // here too so the warning shown BEFORE publishing matches exactly
@@ -158,7 +179,7 @@ export function CRUploadForm({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (files.length === 0 || !termId) return;
+    if (files.length === 0 || !termId || !effectiveBatchId) return;
     if (canBulkPublish ? selectedBranchIds.length === 0 : !branchId) return;
     setSuccess(false);
     setError(null);
@@ -210,6 +231,7 @@ export function CRUploadForm({
 
             const formData = new FormData();
             formData.set("termId", termId);
+            formData.set("batchId", effectiveBatchId);
             formData.set("branchIds", JSON.stringify(selectedBranchIds));
             formData.set("subjectName", subjectName);
             formData.set("section", section);
@@ -227,6 +249,7 @@ export function CRUploadForm({
             const formData = new FormData();
             formData.set("branchId", branchId);
             formData.set("termId", termId);
+            formData.set("batchId", effectiveBatchId);
             formData.set("subjectId", subjectValue);
             formData.set("section", section);
             formData.set("resourceType", resourceType === "pyq" ? pyqKind : resourceType);
@@ -349,6 +372,7 @@ export function CRUploadForm({
             terms={terms}
             fixedBranchId={fixedBranchId}
             fixedTermId={fixedTermId}
+            fixedBatchId={fixedBatchId}
             isAdmin={isAdmin}
           />
         ) : (
@@ -357,6 +381,7 @@ export function CRUploadForm({
             terms={terms}
             fixedBranchId={fixedBranchId}
             fixedTermId={fixedTermId}
+            fixedBatchId={fixedBatchId}
             isAdmin={isAdmin}
           />
         )}
@@ -417,12 +442,38 @@ export function CRUploadForm({
             onChange={(event) => {
               setTermId(event.target.value);
               setSubjectValue("");
+              setBatchId("");
             }}
             className="bg-background"
           >
             {terms.map((term) => (
               <option key={term.id} value={term.id}>
                 {term.label.split(" - ")[0]}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+
+      {/* Admin only — a CR's batch is fixed to their own cr_profile,
+          same as Branch/Term. Options are whichever batches actually
+          offer the currently-picked term, not every batch that
+          exists — a brand-new batch with only a Sem 1 row has nothing
+          to offer while Sem 2 is selected. */}
+      {!fixedBatchId && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="batch" className="font-mono text-xs text-subtle-foreground">
+            Batch
+          </label>
+          <Select
+            id="batch"
+            value={effectiveBatchId}
+            onChange={(event) => setBatchId(event.target.value)}
+            className="bg-background"
+          >
+            {validBatches?.map((batch) => (
+              <option key={batch.id} value={batch.id}>
+                {batch.label}
               </option>
             ))}
           </Select>
@@ -598,6 +649,7 @@ export function CRUploadForm({
             isPending ||
             files.length === 0 ||
             !termId ||
+            !effectiveBatchId ||
             (canBulkPublish ? selectedBranchIds.length === 0 : !branchId)
           }
           className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"

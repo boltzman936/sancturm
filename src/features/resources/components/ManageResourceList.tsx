@@ -1,14 +1,18 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Search, Calendar as CalendarIcon } from "lucide-react";
+import { Search, Calendar as CalendarIcon, Pencil } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DeleteResourceButton } from "@/features/resources/components/DeleteResourceButton";
 import { DeleteNoticeButton } from "@/features/notices/components/DeleteNoticeButton";
 import { DeleteSancturmUpdateButton } from "@/features/sancturmUpdates/components/DeleteSancturmUpdateButton";
-import { deleteResource, updateResourceDate } from "@/features/resources/actions";
-import { deleteNotice, updateNoticeDate } from "@/features/notices/actions";
+import { deleteResource, updateResourceFields } from "@/features/resources/actions";
+import { deleteNotice, updateNoticeFields } from "@/features/notices/actions";
 import { deleteSancturmUpdate, updateSancturmUpdateDate } from "@/features/sancturmUpdates/actions";
+import { useBranches } from "@/features/branches/queries";
+import { useTerms } from "@/features/terms/queries";
+import { useBatchesForTerm } from "@/features/batches/queries";
+import { useSubjects } from "@/features/resources/queries";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Calendar } from "@/components/shared/Calendar";
 import { Select } from "@/components/shared/Select";
@@ -75,6 +79,17 @@ export type ManageableResource = {
   subject: { name: string } | null;
   branch: { name: string } | null;
   term: { label: string } | null;
+  batch: { label: string } | null;
+  // Raw foreign keys, alongside the name-joined display objects above —
+  // EditResourceButton needs the actual ids to pre-select and submit
+  // an edit; the display objects alone (name/label text) aren't enough
+  // to know which row to point a field at. null for "update" rows,
+  // which have none of these (Sancturm Updates isn't scoped to any of
+  // branch/term/batch/subject at all).
+  branch_id: string | null;
+  term_id: string | null;
+  batch_id: string | null;
+  subject_id: string | null;
 };
 
 // Terms show as just "1st Year" / "2nd Year" everywhere in the UI —
@@ -150,8 +165,10 @@ function FilterSelect({
 
 // Admin-only — lets Anurag retroactively fix a published item's date
 // straight from Manage, instead of that only being settable at upload
-// time. Reuses the same Calendar redesigned for DateFilterInput, just
-// behind a small icon trigger rather than a full date field.
+// time. Sancturm Updates has none of Branch/Year/Batch/Subject to edit
+// (it isn't scoped to any of them at all), so it keeps this simpler
+// date-only dialog; EditResourceButton below handles the full field
+// set for everything else.
 //
 // A centered Dialog, not an anchored dropdown — two rounds of trying
 // to anchor a popover to this specific trigger (first Radix Popover,
@@ -163,16 +180,9 @@ function FilterSelect({
 // that — same fixed/centered/translate approach every OTHER dialog in
 // this app already uses correctly (see ResourceViewerDialog), so
 // there's no anchor-relative-to-a-button math left to get wrong on any
-// screen size.
-function EditDateButton({
-  kind,
-  id,
-  createdAt,
-}: {
-  kind: ManageableResource["kind"];
-  id: string;
-  createdAt: string;
-}) {
+// screen size. EditResourceButton's bigger form dialog reuses the same
+// approach.
+function EditDateButton({ id, createdAt }: { id: string; createdAt: string }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -182,9 +192,7 @@ function EditDateButton({
     setError(null);
     startTransition(async () => {
       try {
-        if (kind === "notice") await updateNoticeDate(id, dateKey);
-        else if (kind === "update") await updateSancturmUpdateDate(id, dateKey);
-        else await updateResourceDate(id, dateKey);
+        await updateSancturmUpdateDate(id, dateKey);
       } catch (err) {
         // A Server Action rejecting inside startTransition with nothing
         // catching it takes down the ENTIRE page to Next's generic
@@ -226,6 +234,175 @@ function EditDateButton({
   );
 }
 
+// The full editor — every field pickable at upload time (Branch, Year,
+// Batch, Subject, Date), not just the date, per the "anything
+// selectable at upload must be editable later" requirement. Resource
+// rows get all five fields; notice rows get Branch/Year/Batch/Date
+// (notices have no subject_id at all). Options come from the same
+// client-side queries CRUploadForm itself uses (useBranches/useTerms/
+// useBatchesForTerm/useSubjects) rather than new server-fetched props,
+// so this needs nothing extra threaded down from the page.
+function EditResourceButton({ resource }: { resource: ManageableResource }) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const [branchId, setBranchId] = useState(resource.branch_id ?? "");
+  const [termId, setTermId] = useState(resource.term_id ?? "");
+  const [batchId, setBatchId] = useState(resource.batch_id ?? "");
+  const [subjectId, setSubjectId] = useState(resource.subject_id ?? "");
+  const [dateKey, setDateKey] = useState(localDateKey(resource.created_at));
+
+  const { data: branches } = useBranches();
+  const { data: terms } = useTerms();
+  const { data: validBatches } = useBatchesForTerm(termId || null);
+  const isPyq = resource.kind === "resource" && resource.section === "pyq";
+  const { data: subjects } = useSubjects(
+    resource.kind === "resource" ? branchId || null : null,
+    resource.kind === "resource" ? termId || null : null
+  );
+  // Falls back to the first term-valid batch instead of an effect
+  // "syncing" once validBatches loads async — same reasoning as
+  // CRUploadForm's identical effectiveBatchId.
+  const effectiveBatchId = batchId || validBatches?.[0]?.id || "";
+
+  function handleSave() {
+    if (!branchId || !termId || !effectiveBatchId || !dateKey) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        if (resource.kind === "notice") {
+          await updateNoticeFields(resource.id, {
+            branchId,
+            termId,
+            batchId: effectiveBatchId,
+            dateKey,
+          });
+        } else {
+          await updateResourceFields(resource.id, {
+            branchId,
+            termId,
+            batchId: effectiveBatchId,
+            subjectId: subjectId || null,
+            dateKey,
+          });
+        }
+        setOpen(false);
+      } catch (err) {
+        console.error(err);
+        setError("Couldn't save these changes. Try again.");
+      }
+    });
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Edit"
+        className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
+      >
+        <Pencil className="h-4 w-4" />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <div className="flex flex-col gap-3 p-6">
+            <h2 className="pr-6 text-lg font-medium text-foreground">Edit</h2>
+
+            <div className="flex flex-col gap-1">
+              <label className="font-mono text-xs text-subtle-foreground">Year</label>
+              <Select
+                value={termId}
+                onChange={(event) => {
+                  setTermId(event.target.value);
+                  setBatchId("");
+                  setSubjectId("");
+                }}
+                className="bg-background"
+              >
+                {terms?.map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {term.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="font-mono text-xs text-subtle-foreground">Batch</label>
+              <Select
+                value={effectiveBatchId}
+                onChange={(event) => setBatchId(event.target.value)}
+                className="bg-background"
+              >
+                {validBatches?.map((batch) => (
+                  <option key={batch.id} value={batch.id}>
+                    {batch.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="font-mono text-xs text-subtle-foreground">
+                Branch{isPyq && <span className="ml-1.5 normal-case text-subtle-foreground/70">(on record)</span>}
+              </label>
+              <Select
+                value={branchId}
+                onChange={(event) => {
+                  setBranchId(event.target.value);
+                  setSubjectId("");
+                }}
+                className="bg-background"
+              >
+                {branches?.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            {resource.kind === "resource" && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-xs text-subtle-foreground">Subject</label>
+                <Select
+                  value={subjectId}
+                  onChange={(event) => setSubjectId(event.target.value)}
+                  className="bg-background"
+                >
+                  <option value="">Extra</option>
+                  {subjects?.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1">
+              <label className="font-mono text-xs text-subtle-foreground">Date</label>
+              <DateFilterInput value={dateKey} onChange={setDateKey} placeholder="Pick a date" className="bg-background" />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isPending || !branchId || !termId || !effectiveBatchId || !dateKey}
+              className="mt-1 self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+            >
+              {isPending ? "Saving…" : "Save changes"}
+            </button>
+            {error && <p className="font-mono text-xs text-destructive">{error}</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function ResourceRow({
   resource,
   isAdmin,
@@ -245,6 +422,7 @@ function ResourceRow({
   // stays within their own term, never shown to them cross-term).
   const showBranch = isAdmin || resource.section === "pyq";
   const showTerm = isAdmin && resource.term;
+  const showBatch = isAdmin && resource.batch;
   return (
     <li
       className={cn(
@@ -269,6 +447,12 @@ function ResourceRow({
                 <span aria-hidden="true">·</span>
               </>
             )}
+            {showBatch && (
+              <>
+                <span>{resource.batch?.label}</span>
+                <span aria-hidden="true">·</span>
+              </>
+            )}
             {showBranch && (
               <>
                 <span>{resource.branch?.name}</span>
@@ -286,9 +470,12 @@ function ResourceRow({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        {isAdmin && (
-          <EditDateButton kind={resource.kind} id={resource.id} createdAt={resource.created_at} />
-        )}
+        {isAdmin &&
+          (resource.kind === "update" ? (
+            <EditDateButton id={resource.id} createdAt={resource.created_at} />
+          ) : (
+            <EditResourceButton resource={resource} />
+          ))}
         {resource.kind === "notice" ? (
           <DeleteNoticeButton noticeId={resource.id} />
         ) : resource.kind === "update" ? (
@@ -306,6 +493,7 @@ export function ManageResourceList({
   isAdmin,
   branches,
   terms,
+  batches,
 }: {
   resources: ManageableResource[];
   isAdmin: boolean;
@@ -315,12 +503,15 @@ export function ManageResourceList({
   // Same idea, for year — lets admin narrow the list to one year
   // instead of seeing every branch/term combo interleaved.
   terms: { label: string }[];
+  // Same idea again, for batch/cohort.
+  batches: { label: string }[];
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
   const [branchFilter, setBranchFilter] = useState(ALL);
   const [termFilter, setTermFilter] = useState(ALL);
+  const [batchFilter, setBatchFilter] = useState(ALL);
   const [typeFilter, setTypeFilter] = useState(ALL);
   const [subjectFilter, setSubjectFilter] = useState(ALL);
   const [dateSort, setDateSort] = useState<"newest" | "oldest">("newest");
@@ -332,6 +523,7 @@ export function ManageResourceList({
   // and alphabetizing here would silently undo that.
   const branchOptions = useMemo(() => branches.map((b) => b.name), [branches]);
   const termOptions = useMemo(() => terms.map((t) => termShortLabel(t)), [terms]);
+  const batchOptions = useMemo(() => batches.map((b) => b.label), [batches]);
 
   // Fixed set, not derived — these are the app's upload types
   // regardless of whether one currently has zero items. Sancturm
@@ -360,11 +552,12 @@ export function ManageResourceList({
       if (r.section !== "notes_lab" && r.section !== "pyq") continue;
       if (branchFilter !== ALL && r.branch?.name !== branchFilter) continue;
       if (termFilter !== ALL && termShortLabel(r.term) !== termFilter) continue;
+      if (batchFilter !== ALL && r.batch?.label !== batchFilter) continue;
       if (!matchesTypeFilter(r, typeFilter)) continue;
       if (r.subject?.name) names.add(r.subject.name);
     }
     return [...Array.from(names).sort(), "Extra"];
-  }, [resources, branchFilter, termFilter, typeFilter]);
+  }, [resources, branchFilter, termFilter, batchFilter, typeFilter]);
 
   const visible = useMemo(() => {
     return resources
@@ -372,9 +565,10 @@ export function ManageResourceList({
       .filter((r) => matchesSearch(r, searchQuery))
       .filter((r) => branchFilter === ALL || r.branch?.name === branchFilter)
       .filter((r) => termFilter === ALL || termShortLabel(r.term) === termFilter)
+      .filter((r) => batchFilter === ALL || r.batch?.label === batchFilter)
       .filter((r) => matchesTypeFilter(r, typeFilter))
       .filter((r) => subjectFilter === ALL || (r.subject?.name ?? "Extra") === subjectFilter);
-  }, [resources, dateFilter, searchQuery, branchFilter, termFilter, typeFilter, subjectFilter]);
+  }, [resources, dateFilter, searchQuery, branchFilter, termFilter, batchFilter, typeFilter, subjectFilter]);
 
   // With no type picked, group into labeled sections (Notes, Lab, PYQ,
   // Notices) so they don't interleave. Once a specific type is chosen
@@ -507,6 +701,15 @@ export function ManageResourceList({
           />
         )}
 
+        {isAdmin && (
+          <FilterSelect
+            label="Batch"
+            value={batchFilter}
+            onChange={setBatchFilter}
+            options={[{ value: ALL, label: "All batches" }, ...batchOptions.map((b) => ({ value: b, label: b }))]}
+          />
+        )}
+
         <FilterSelect
           label="Type"
           value={typeFilter}
@@ -571,6 +774,21 @@ export function ManageResourceList({
               options={[
                 { value: ALL, label: "All branches" },
                 ...branchOptions.map((b) => ({ value: b, label: b })),
+              ]}
+              fullWidth
+            />
+          </div>
+        )}
+
+        {isAdmin && (
+          <div className="grid grid-cols-2 gap-2">
+            <FilterSelect
+              label="Batch"
+              value={batchFilter}
+              onChange={setBatchFilter}
+              options={[
+                { value: ALL, label: "All batches" },
+                ...batchOptions.map((b) => ({ value: b, label: b })),
               ]}
               fullWidth
             />

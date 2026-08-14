@@ -4,7 +4,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronsUpDown } from "lucide-react";
 
 import { useTerm } from "@/hooks/useTerm";
-import { useTerms } from "@/features/terms/queries";
+import { useCurrentTermsByYear } from "@/features/terms/queries";
 import { cn } from "@/lib/utils";
 
 // Mirrors BranchSwitcher exactly — same dropdown, same DB-driven
@@ -12,9 +12,13 @@ import { cn } from "@/lib/utils";
 // see". Kept as its own separate switcher (not merged into one
 // combined control) so switching term doesn't force re-picking branch
 // and vice versa.
+//
+// useCurrentTermsByYear, not useTerms() — see TermSelectCard's
+// identical comment: a year can have more than one term now, and this
+// switcher still only ever offers "which year", not "which semester".
 export function TermSwitcher() {
   const { term, setTerm } = useTerm();
-  const { data: terms } = useTerms();
+  const { data: terms } = useCurrentTermsByYear();
   const current = terms?.find((t) => t.slug === term);
 
   return (

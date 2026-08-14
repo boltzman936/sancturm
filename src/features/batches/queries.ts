@@ -1,0 +1,89 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
+import type { Batch, BatchTerm } from "./types";
+
+/**
+ * Every batch (admission cohort) that exists — same "database is the
+ * source of truth, adding a new one is an INSERT, not a code change"
+ * reasoning as useBranches()/useTerms(). BatchSwitcher and the upload
+ * form's Batch picker both read from this.
+ */
+export function useBatches() {
+  return useQuery({
+    queryKey: ["batches"],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase.from("batches").select("*").order("sort_order");
+      if (error) throw error;
+      return data as Batch[];
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Resolves the slug stored by useBatch() into the actual batch row —
+ * built on useBatches() rather than its own fetch, same reasoning as
+ * useBranchBySlug/useTermBySlug: batches is a handful of rows, no
+ * reason for a second round trip when the switcher's own useBatches()
+ * call already has it.
+ */
+export function useBatchByLabel(label: string | null) {
+  const query = useBatches();
+  return { ...query, data: label ? query.data?.find((b) => b.label === label) : undefined };
+}
+
+/**
+ * Which batches actually offer a given term (year+semester) — the
+ * reverse lookup of useBatchTerms, for the Upload form's admin-only
+ * Batch picker: given the Year already picked, only offer batches
+ * that genuinely have that semester (a brand-new batch with only a
+ * 1st-Year-Sem-1 row shouldn't be pickable while Sem 2 is selected).
+ */
+export function useBatchesForTerm(termId: string | null) {
+  return useQuery({
+    queryKey: ["batches", "for-term", termId],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("batch_terms")
+        .select("batch:batches(*)")
+        .eq("term_id", termId!);
+      if (error) throw error;
+      const batches = (data ?? [])
+        .map((row) => (Array.isArray(row.batch) ? row.batch[0] : row.batch))
+        .filter((b): b is Batch => !!b);
+      return batches.sort((a, b) => a.sort_order - b.sort_order);
+    },
+    enabled: !!termId,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Which (curriculum-slot) terms actually exist for one batch, plus
+ * their real dates — this is what makes a dependent filter ("1st Year
+ * -> 2025-26" should only offer the semesters that batch actually
+ * has) driven by real data instead of hardcoded year/semester logic.
+ * A batch with only a 1st-Year Sem 1 row (a brand-new batch) correctly
+ * offers just that one semester; one further along offers all of them.
+ */
+export function useBatchTerms(batchId: string | null) {
+  return useQuery({
+    queryKey: ["batch-terms", batchId],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("batch_terms")
+        .select("*, term:academic_terms(*)")
+        .eq("batch_id", batchId!)
+        .order("start_date");
+      if (error) throw error;
+      return data as unknown as (BatchTerm & { term: import("@/types/database").AcademicTerm })[];
+    },
+    enabled: !!batchId,
+    staleTime: 5 * 60_000,
+  });
+}

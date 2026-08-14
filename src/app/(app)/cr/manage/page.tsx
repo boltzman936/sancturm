@@ -17,27 +17,34 @@ export default async function CRManagePage() {
   const supabase = await createClient();
   let query = supabase
     .from("resources")
-    .select("*, subject:subjects(name), branch:branches(name), term:academic_terms(label)")
+    .select("*, subject:subjects(name), branch:branches(name), term:academic_terms(label), batch:batches(label)")
     .eq("status", "approved")
     .order("created_at", { ascending: false });
 
   // Same shape as the approvals queue: a CR manages their own (branch,
-  // term)'s notes_lab items, plus every branch's PYQs within their own
-  // term (shared content — see supabase/scope_cr_by_term.sql).
+  // term, batch)'s notes_lab items, plus every branch's PYQs within
+  // their own term (shared content — see supabase/scope_cr_by_term.sql
+  // and supabase/add_batches.sql; PYQ stays batch-agnostic there too).
   if (role.type === "cr") {
     query = query
       .eq("term_id", role.termId)
-      .or(`section.eq.pyq,and(section.eq.notes_lab,branch_id.eq.${role.branchId})`);
+      .or(`section.eq.pyq,and(section.eq.notes_lab,branch_id.eq.${role.branchId},batch_id.eq.${role.batchId})`);
   }
 
   // Notices are branch-scoped only (no PYQ-style cross-branch exception),
-  // so a CR only ever manages their own (branch, term)'s notices here.
+  // so a CR only ever manages their own (branch, term, batch)'s notices
+  // here.
   let noticesQuery = supabase
     .from("notices")
-    .select("id, title, created_at, branch:branches(name), term:academic_terms(label)")
+    .select(
+      "id, title, created_at, branch_id, term_id, batch_id, branch:branches(name), term:academic_terms(label), batch:batches(label)"
+    )
     .order("created_at", { ascending: false });
   if (role.type === "cr") {
-    noticesQuery = noticesQuery.eq("branch_id", role.branchId).eq("term_id", role.termId);
+    noticesQuery = noticesQuery
+      .eq("branch_id", role.branchId)
+      .eq("term_id", role.termId)
+      .eq("batch_id", role.batchId);
   }
 
   // Sancturm Updates are admin-only end to end (RLS rejects a CR's
@@ -52,19 +59,27 @@ export default async function CRManagePage() {
   // Unrelated queries — none depends on another's result — were being
   // awaited one after another, paying for each round trip in sequence
   // when they could all be in flight at once.
-  const [{ data: published }, { data: notices }, { data: updates }, { data: branches }, { data: terms }] =
-    await Promise.all([
-      query,
-      noticesQuery,
-      updatesQuery,
-      supabase.from("branches").select("name").order("sort_order"),
-      supabase.from("academic_terms").select("label").order("sort_order"),
-    ]);
+  const [
+    { data: published },
+    { data: notices },
+    { data: updates },
+    { data: branches },
+    { data: terms },
+    { data: batches },
+  ] = await Promise.all([
+    query,
+    noticesQuery,
+    updatesQuery,
+    supabase.from("branches").select("name").order("sort_order"),
+    supabase.from("academic_terms").select("label").order("sort_order"),
+    supabase.from("batches").select("label").order("sort_order"),
+  ]);
 
   const resourceItems: ManageableResource[] = (published ?? []).map((resource) => ({
     ...resource,
     kind: "resource",
     term: Array.isArray(resource.term) ? resource.term[0] ?? null : resource.term,
+    batch: Array.isArray(resource.batch) ? resource.batch[0] ?? null : resource.batch,
   }));
 
   const noticeItems: ManageableResource[] = (notices ?? []).map((notice) => ({
@@ -79,6 +94,11 @@ export default async function CRManagePage() {
     subject: null,
     branch: Array.isArray(notice.branch) ? notice.branch[0] ?? null : notice.branch,
     term: Array.isArray(notice.term) ? notice.term[0] ?? null : notice.term,
+    batch: Array.isArray(notice.batch) ? notice.batch[0] ?? null : notice.batch,
+    branch_id: notice.branch_id,
+    term_id: notice.term_id,
+    batch_id: notice.batch_id,
+    subject_id: null,
   }));
 
   const updateItems: ManageableResource[] = (updates ?? []).map((update) => ({
@@ -93,6 +113,13 @@ export default async function CRManagePage() {
     subject: null,
     branch: null,
     term: null,
+    // Sancturm Updates has no batch_id (platform-wide, not scoped to a
+    // cohort at all) — null here, same as branch/term above.
+    batch: null,
+    branch_id: null,
+    term_id: null,
+    batch_id: null,
+    subject_id: null,
   }));
 
   return (
@@ -111,6 +138,7 @@ export default async function CRManagePage() {
         isAdmin={role.type === "admin"}
         branches={branches ?? []}
         terms={terms ?? []}
+        batches={batches ?? []}
       />
     </div>
   );

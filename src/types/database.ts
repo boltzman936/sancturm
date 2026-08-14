@@ -48,6 +48,32 @@ export type AcademicTerm = {
   created_at: string;
 };
 
+// Cohort identity (e.g. "2025-26") — deliberately NOT tied to one
+// year_number, since the same batch is in 1st Year today and 2nd Year
+// a year from now as the cohort progresses. See batch_terms below for
+// which (batch, term) combinations actually exist and their real dates.
+export type Batch = {
+  id: string;
+  label: string;
+  start_year: number;
+  sort_order: number;
+  created_at: string;
+};
+
+// Which (batch, curriculum-slot) combinations are valid/live, plus the
+// real calendar dates for each — e.g. (batch "2025-26", term "1st Year
+// Sem 1") ran 1 Aug 2025 - 30 Dec 2025. This is what lets a future
+// batch/semester be added as pure data (one batches row + N of these),
+// and what a dependent filter ("this batch only offers these
+// semesters") is driven by instead of hardcoded logic.
+export type BatchTerm = {
+  id: string;
+  batch_id: string;
+  term_id: string;
+  start_date: string; // yyyy-mm-dd
+  end_date: string; // yyyy-mm-dd
+};
+
 export type Admin = {
   id: string;
   auth_user_id: string;
@@ -60,6 +86,7 @@ export type CrProfile = {
   auth_user_id: string;
   branch_id: string;
   term_id: string;
+  batch_id: string;
   display_name: string;
   created_at: string;
 };
@@ -96,6 +123,7 @@ export type Resource = {
   id: string;
   branch_id: string;
   term_id: string;
+  batch_id: string;
   subject_id: string | null;
   section: ResourceSection;
   resource_type: ResourceType | null;
@@ -123,6 +151,7 @@ export type Notice = {
   id: string;
   branch_id: string;
   term_id: string;
+  batch_id: string;
   title: string;
   // Exactly one of these is set — pdf_url for an uploaded PDF, body
   // for a notice typed directly in the custom composer.

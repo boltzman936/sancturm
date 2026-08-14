@@ -6,6 +6,7 @@ import { useTerm } from "@/hooks/useTerm";
 import { useTermBySlug } from "@/features/terms/queries";
 import { usePyqResources, useSubjectsForTerm, type ResourceWithSubject } from "@/features/resources/queries";
 import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
+import { useBatches } from "@/features/batches/queries";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
@@ -18,6 +19,10 @@ type PyqKind = Extract<ResourceType, "pyq" | "pyq_solution">;
 type DateSort = "newest" | "oldest";
 const ALL_SUBJECTS = "all";
 const EXTRA_SUBJECT = "extra";
+// Same reasoning as Notes & Lab's identical constant — defaults to
+// every batch, an additive narrowing filter rather than one that
+// hides content by default.
+const ALL_BATCHES = "all";
 
 function sortByDate(resources: ResourceWithSubject[], order: DateSort) {
   const sorted = [...resources];
@@ -57,12 +62,17 @@ export default function PYQsPage() {
   // for the same-named subject. Matching by name is what makes "DSA"
   // mean the same thing regardless of which branch's PYQ it's on.
   const [subjectFilter, setSubjectFilter] = useState<string>(ALL_SUBJECTS);
+  const [batchFilter, setBatchFilter] = useState<string>(ALL_BATCHES);
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
   const { data: resources, isLoading, isError } = usePyqResources(term?.id ?? null);
+  // Every batch's PYQs are already in `resources` (batchId omitted
+  // from the query above) — filtered client-side below, same reasoning
+  // as Notes & Lab's identical comment.
+  const { data: batches } = useBatches();
   // Every branch's subjects for this term, not just the viewer's own
   // branch — a branch's subject list (e.g. AIDS's, which is entirely
   // different from AIML/Core's for 1st Year) doesn't cover every
@@ -95,12 +105,14 @@ export default function PYQsPage() {
         : subjectFilter === EXTRA_SUBJECT
           ? base.filter((resource) => !resource.subject)
           : base.filter((resource) => resource.subject?.name === subjectFilter);
+    const byBatch =
+      batchFilter === ALL_BATCHES ? bySubject : bySubject.filter((resource) => resource.batch_id === batchFilter);
     const byDate = dateFilter
-      ? bySubject.filter((resource) => localDateKey(resource.created_at) === dateFilter)
-      : bySubject;
+      ? byBatch.filter((resource) => localDateKey(resource.created_at) === dateFilter)
+      : byBatch;
     const bySearch = byDate.filter((resource) => matchesSearch(resource, searchQuery));
     return sortByDate(bySearch, dateSort);
-  }, [resources, pyqKind, subjectFilter, dateFilter, searchQuery, dateSort]);
+  }, [resources, pyqKind, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -165,6 +177,19 @@ export default function PYQsPage() {
               </option>
             ))}
             <option value={EXTRA_SUBJECT}>Extra</option>
+          </Select>
+
+          <Select
+            value={batchFilter}
+            onChange={(event) => setBatchFilter(event.target.value)}
+            className="w-[150px] shrink-0"
+          >
+            <option value={ALL_BATCHES}>All batches</option>
+            {batches?.map((batch) => (
+              <option key={batch.id} value={batch.id}>
+                {batch.label}
+              </option>
+            ))}
           </Select>
         </div>
       </div>
@@ -248,8 +273,17 @@ export default function PYQsPage() {
             <option value={EXTRA_SUBJECT}>Extra</option>
           </Select>
 
-          <DateFilterInput value={dateFilter} onChange={setDateFilter} />
+          <Select value={batchFilter} onChange={(event) => setBatchFilter(event.target.value)} className="min-w-0">
+            <option value={ALL_BATCHES}>All batches</option>
+            {batches?.map((batch) => (
+              <option key={batch.id} value={batch.id}>
+                {batch.label}
+              </option>
+            ))}
+          </Select>
         </div>
+
+        <DateFilterInput value={dateFilter} onChange={setDateFilter} />
 
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
