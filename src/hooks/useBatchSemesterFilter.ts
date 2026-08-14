@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useBatches, useBatchTerms, useAllBatchTerms } from "@/features/batches/queries";
-import { useTerms } from "@/features/terms/queries";
+import { useTerms, useTermBySlug } from "@/features/terms/queries";
 import { useBatch } from "@/hooks/useBatch";
 import { useTerm } from "@/hooks/useTerm";
 import { useResetInvalidSelection } from "./useResetInvalidSelection";
@@ -14,20 +14,51 @@ export const ALL_BATCHES = "all";
 type ReachedTerm = BatchTerm & { term: AcademicTerm };
 
 /**
- * Batch-primary academic scoping for student browsing (Notes/Lab/PYQ) —
- * the same model CRUploadForm already uses: Batch picked first (or
- * "All batches"), Semester scoped to whichever periods that batch has
- * actually reached (a batch new to 1st Year offers just its own 2
- * semesters; one further along offers every one it's passed through,
- * spanning multiple years). Year is never picked independently — it's
- * derived from whichever Semester ends up in effect (see
- * `effectiveTerm.year_number`).
+ * The one centralized academic-default resolver: given a year and the
+ * full (batch, term) chronology, finds whichever batch is currently
+ * AT that year — the one with a reached (start_date <= today) row for
+ * this year_number that's still running (today <= end_date), or if
+ * none is exactly active right now, whichever reached that year most
+ * recently. Every place that needs "the current batch for year N"
+ * calls this same function so the rule can't drift or get
+ * reimplemented differently per page.
+ */
+function resolveDefaultBatchIdForYear(
+  yearNumber: number,
+  everyBatchTerms: ReachedTerm[],
+  todayKey: string
+): string | null {
+  const forYear = everyBatchTerms.filter((bt) => bt.term.year_number === yearNumber && bt.start_date <= todayKey);
+  if (forYear.length === 0) return null;
+  const current = forYear.find((bt) => todayKey <= bt.end_date);
+  const chosen = current ?? forYear.reduce((latest, bt) => (bt.start_date > latest.start_date ? bt : latest));
+  return chosen.batch_id;
+}
+
+/**
+ * Batch+Semester scoping for student browsing (Notes/Lab/PYQ) — the
+ * sidebar's "Switch year" (existing, untouched UI) is the real input:
+ * Semester options never span years (1st Year only ever offers its
+ * own 2 semesters, never a 2nd-Year one), and "the current batch" is
+ * always resolved relative to whichever year the sidebar has picked.
+ * Batch and Semester DEFAULTS are computed dynamically from the real
+ * academic calendar (batch_terms dates) — never hardcoded, never
+ * derived from which batch happens to have uploads — but once a
+ * student explicitly picks a Batch or Semester, that choice is
+ * respected and not silently overwritten; defaults are only
+ * recomputed when the current selection actually becomes invalid
+ * (typically: the sidebar Year changed to one the picked batch hasn't
+ * reached).
  *
  * A single shared hook so Notes and PYQs can't drift out of sync on
  * this logic the way they already did once this session.
  */
 export function useBatchSemesterFilter() {
-  const { data: allBatches } = useBatches(); // config-driven, newest first
+  const { term: sidebarSlug } = useTerm();
+  const { data: sidebarTerm } = useTermBySlug(sidebarSlug);
+  const yearNumber = sidebarTerm?.year_number;
+
+  const { data: allBatches } = useBatches(); // config-driven, newest first, never filtered
   const { batch: batchLabel, setBatch: persistBatch } = useBatch();
   const batchFilter = useMemo(() => {
     if (!batchLabel || batchLabel === ALL_BATCHES) return ALL_BATCHES;
@@ -38,23 +69,21 @@ export function useBatchSemesterFilter() {
   const { data: everyBatchTerms } = useAllBatchTerms();
 
   const todayKey = localDateKey(new Date().toISOString());
-  // Reached (current or past) periods only — a semester that hasn't
-  // started yet isn't selectable until its calendar window actually
-  // begins. No upper bound here, so a completed semester stays
-  // available permanently.
+
+  // Reached AND scoped to the sidebar's Year — even under "All
+  // batches", Semester never spans years: 1st Year never shows
+  // Semester 3, 2nd Year never shows Semester 1.
   const reachedTerms = useMemo<ReachedTerm[]>(() => {
+    if (yearNumber === undefined) return [];
     const source: ReachedTerm[] = (batchFilter === ALL_BATCHES ? everyBatchTerms : oneBatchTerms) ?? [];
-    const reached = source.filter((bt) => bt.start_date <= todayKey);
+    const reached = source.filter((bt) => bt.term.year_number === yearNumber && bt.start_date <= todayKey);
     if (batchFilter !== ALL_BATCHES) return reached;
-    // "All batches": union across every batch, deduped by term_id — if
-    // ANY batch has reached a period, it's a valid option here. A
-    // term_id can be shared by two batches at different points in
-    // their own progression (e.g. "1st Year Sem 1" for both a
-    // long-established batch, now past it, and a brand-new one,
-    // currently in it) — prefer whichever batch's row is actually
-    // CURRENT for the "(current)" check below, not just whichever
-    // sorts first, or a currently-active period could silently lose
-    // its marker to an older batch's already-finished one.
+    // "All batches": union across every batch (within this year),
+    // deduped by term_id — if ANY batch has reached a period, it's a
+    // valid option here. A term_id can be shared by two batches at
+    // different points in their own progression — prefer whichever
+    // batch's row is actually CURRENT for the "(current)" check
+    // below, not just whichever sorts first.
     const byTerm = new Map<string, ReachedTerm>();
     for (const bt of reached) {
       const existing = byTerm.get(bt.term_id);
@@ -67,9 +96,11 @@ export function useBatchSemesterFilter() {
       if (candidateCurrent && !existingCurrent) byTerm.set(bt.term_id, bt);
     }
     return Array.from(byTerm.values()).sort((a, b) => a.start_date.localeCompare(b.start_date));
-  }, [batchFilter, oneBatchTerms, everyBatchTerms, todayKey]);
+  }, [yearNumber, batchFilter, oneBatchTerms, everyBatchTerms, todayKey]);
 
-  const isLoadingReachedTerms = batchFilter === ALL_BATCHES ? everyBatchTerms === undefined : oneBatchTerms === undefined;
+  const isLoadingReachedTerms =
+    yearNumber === undefined ||
+    (batchFilter === ALL_BATCHES ? everyBatchTerms === undefined : oneBatchTerms === undefined);
 
   // null = defer to whichever period is calendar-current.
   const [termId, setTermIdState] = useState<string | null>(null);
@@ -80,9 +111,9 @@ export function useBatchSemesterFilter() {
   }, [reachedTerms, todayKey]);
   const effectiveTermId = termId ?? currentTermId;
 
-  // Batch changed underneath an explicit Semester pick that batch
-  // hasn't reached — defer back to that batch's current period instead
-  // of silently querying a stale/invalid pairing.
+  // Batch or Year changed underneath an explicit Semester pick that's
+  // no longer reached — defer back to whatever's current instead of
+  // silently querying a stale/invalid pairing.
   const validTermIds = useMemo(
     () => (isLoadingReachedTerms ? undefined : [null, ...reachedTerms.map((bt) => bt.term_id)]),
     [isLoadingReachedTerms, reachedTerms]
@@ -92,18 +123,37 @@ export function useBatchSemesterFilter() {
   const { data: allTerms } = useTerms();
   const effectiveTerm = allTerms?.find((t) => t.id === effectiveTermId);
 
-  // Keeps the sidebar's "Switch year" display truthful — Batch+Semester
-  // is the real academic scope here, so the sidebar (a separate,
-  // globally-persisted control also used on Notices/onboarding/etc.)
-  // must never show a Year that contradicts what's actually selected
-  // (e.g. sidebar says "1st Year" while this page is showing 2025-26's
-  // 3rd Semester content). One-way only — this pushes the derived Year
-  // out to the sidebar; it does not read the sidebar back in, so
-  // there's no feedback loop.
-  const { setTerm: syncSidebarTerm } = useTerm();
+  // Batch DEFAULT recomputation — fires only when actually needed:
+  // first-ever visit (batchLabel never persisted), or the persisted/
+  // picked batch no longer has a reached row for the sidebar's
+  // CURRENT year (most commonly: the sidebar Year just changed to one
+  // this batch hasn't gotten to, or already passed). An explicit "All
+  // batches" choice is always valid for any year and is never
+  // overridden. Never fires on a timer/re-render alone — only reacts
+  // to an actual mismatch, so a student's manual pick survives a
+  // refresh or the calendar date quietly advancing mid-session.
   useEffect(() => {
-    if (effectiveTerm) syncSidebarTerm(effectiveTerm.slug);
-  }, [effectiveTerm, syncSidebarTerm]);
+    if (yearNumber === undefined || !everyBatchTerms || !allBatches) return;
+    if (batchLabel === ALL_BATCHES) return;
+
+    const pickedBatch = batchLabel ? allBatches.find((b) => b.label === batchLabel) : undefined;
+    const currentlyValid =
+      !!pickedBatch &&
+      everyBatchTerms.some(
+        (bt) => bt.batch_id === pickedBatch.id && bt.term.year_number === yearNumber && bt.start_date <= todayKey
+      );
+    if (currentlyValid) return;
+
+    // Only writes to the external localStorage-backed store here, not
+    // local React state — the batch switch this triggers changes
+    // `reachedTerms` (year+batch scoped), which is exactly what the
+    // useResetInvalidSelection call above already watches: an old
+    // explicit Semester pick that no longer belongs to the new scope
+    // gets caught and cleared there, not duplicated in this effect.
+    const defaultBatchId = resolveDefaultBatchIdForYear(yearNumber, everyBatchTerms, todayKey);
+    const defaultBatch = defaultBatchId ? allBatches.find((b) => b.id === defaultBatchId) : undefined;
+    persistBatch(defaultBatch ? defaultBatch.label : ALL_BATCHES);
+  }, [yearNumber, everyBatchTerms, allBatches, batchLabel, todayKey, persistBatch]);
 
   function setBatchFilter(id: string) {
     if (id === ALL_BATCHES) {
