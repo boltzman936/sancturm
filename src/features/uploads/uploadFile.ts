@@ -17,11 +17,20 @@ import { getUploadUrl } from "@/features/uploads/actions";
 export async function uploadFileToR2(
   path: string,
   file: File,
-  onProgress?: (fraction: number) => void
+  onProgress?: (fraction: number) => void,
+  // Lets a caller (CRUploadForm's Cancel button) abort a PUT that's
+  // actively in flight — XHR has its own .abort(), this just wires a
+  // standard AbortSignal to it so cancellation doesn't need its own
+  // one-off API.
+  signal?: AbortSignal
 ): Promise<string> {
   const { uploadUrl, publicUrl } = await getUploadUrl(path, file.type);
 
   await new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Upload cancelled.", "AbortError"));
+      return;
+    }
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", uploadUrl);
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
@@ -33,6 +42,8 @@ export async function uploadFileToR2(
       else reject(new Error("Upload to storage failed."));
     };
     xhr.onerror = () => reject(new Error("Upload to storage failed."));
+    xhr.onabort = () => reject(new DOMException("Upload cancelled.", "AbortError"));
+    signal?.addEventListener("abort", () => xhr.abort());
     xhr.send(file);
   });
 

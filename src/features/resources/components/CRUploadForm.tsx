@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { useSubjects } from "@/features/resources/queries";
+import { useSubjects, useExistingResourceTitles } from "@/features/resources/queries";
 import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { LAB_SUBJECT_SLUGS, LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
@@ -21,6 +21,11 @@ type UploadType = "notes" | "lab_manual" | "pyq" | "notice" | "update";
 type PublishMode = "upload" | "custom";
 type BranchOption = { id: string; name: string };
 type TermOption = { id: string; label: string };
+
+// Applies to both CR and admin — a shared cap rather than a per-role
+// one, since there's no scoping reason (unlike backdating) for it to
+// differ between them.
+const MAX_FILES = 3;
 
 export function CRUploadForm({
   branches,
@@ -66,7 +71,17 @@ export function CRUploadForm({
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>(
     fixedBranchId ? [fixedBranchId] : branches[0] ? [branches[0].id] : []
   );
-  const [file, setFile] = useState<File | null>(null);
+  // Up to MAX_FILES — each becomes its own resource row (own title,
+  // own R2 object), sharing whatever Subject/Description/Date was set
+  // once in the form. Truncated to the first MAX_FILES rather than
+  // rejected outright if more get selected (see fileLimitNotice).
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileLimitNotice, setFileLimitNotice] = useState(false);
+  // Title/Subject are controlled (not read off the DOM at submit time
+  // like Description still is) specifically so the "already uploaded"
+  // check below can react to them live, before publishing.
+  const [titleValue, setTitleValue] = useState("");
+  const [subjectValue, setSubjectValue] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" to leave it blank —
   // an empty value means the insert omits created_at entirely and the
   // database's own now() default applies, exactly today's behavior.
@@ -75,10 +90,20 @@ export function CRUploadForm({
   // of the time — null (not 0) is what keeps the progress bar hidden
   // before a submit and after one finishes, instead of flashing at 0%.
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  // Which file (of possibly several) that progress bar is currently
+  // for — only used to label it "file 2 of 3", not to gate anything.
+  const [uploadingFileIndex, setUploadingFileIndex] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
+  // Captured at the moment of success, independent of `files` (which
+  // gets cleared right after) — so the success message can still say
+  // "published 3 files" instead of reading `files.length` as 0.
+  const [publishedCount, setPublishedCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  // Aborts the in-flight R2 PUT when Cancel is clicked mid-upload — a
+  // fresh controller per submission, not one reused across them.
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Admin publishing Notes/Lab/PYQ always goes through the multi-branch
   // picker/action now — whether that's 1 branch or all 3 is just how
@@ -107,17 +132,38 @@ export function CRUploadForm({
       ? allSubjects?.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))
       : allSubjects?.filter((subject) => !LAB_ONLY_SUBJECT_SLUGS.has(subject.slug));
 
+  const sectionForDuplicateCheck = resourceType === "pyq" ? "pyq" : resourceType === "notice" || resourceType === "update" ? null : "notes_lab";
+  const branchIdsForDuplicateCheck = canBulkPublish ? selectedBranchIds : branchId ? [branchId] : [];
+  const { data: existingTitles } = useExistingResourceTitles(
+    sectionForDuplicateCheck,
+    branchIdsForDuplicateCheck,
+    termId || null,
+    subjectValue || null
+  );
+  // Same title-per-file logic handleSubmit itself will use — computed
+  // here too so the warning shown BEFORE publishing matches exactly
+  // what would actually get inserted.
+  function titleForFile(file: File, index: number, total: number) {
+    const trimmed = titleValue.trim();
+    if (!trimmed) return titleFromFileName(file.name);
+    return total > 1 ? `${trimmed} (${index + 1})` : trimmed;
+  }
+  const duplicateFileNames = new Set(
+    files
+      .filter((file, index) =>
+        existingTitles?.has(titleForFile(file, index, files.length).trim().toLowerCase())
+      )
+      .map((file) => file.name)
+  );
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file || !termId) return;
+    if (files.length === 0 || !termId) return;
     if (canBulkPublish ? selectedBranchIds.length === 0 : !branchId) return;
     setSuccess(false);
     setError(null);
 
     const form = event.currentTarget;
-    const titleInput = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
-    const title = titleInput || titleFromFileName(file.name);
-    const subjectValue = (form.elements.namedItem("subject") as HTMLSelectElement).value || "";
     const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value;
     // Combined with the CURRENT time-of-day (not midnight) so it sorts
     // sensibly against same-day uploads, and built with the local Date
@@ -139,74 +185,90 @@ export function CRUploadForm({
       ).toISOString();
     }
 
-    if (canBulkPublish) {
-      const section = resourceType === "pyq" ? "pyq" : "notes_lab";
-      const bulkResourceType = resourceType === "pyq" ? pyqKind : resourceType;
-      const subjectName = subjects?.find((subject) => subject.id === subjectValue)?.name ?? "";
-
-      startTransition(async () => {
-        setUploadProgress(0);
-        try {
-          // Straight to R2 from the browser, bypassing the serverless
-          // body-size limit a large PDF would otherwise hit.
-          const filePath = `multi-branch/${section}/${crypto.randomUUID()}-${file.name}`;
-          const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress);
-
-          const formData = new FormData();
-          formData.set("termId", termId);
-          formData.set("branchIds", JSON.stringify(selectedBranchIds));
-          formData.set("subjectName", subjectName);
-          formData.set("section", section);
-          formData.set("resourceType", bulkResourceType);
-          formData.set("title", title);
-          formData.set("description", description);
-          formData.set("fileUrl", fileUrl);
-          if (customCreatedAt) formData.set("customCreatedAt", customCreatedAt);
-
-          await uploadResourceDirectAllBranches(formData);
-          setSuccess(true);
-          formRef.current?.reset();
-          setFile(null);
-          setCustomDate("");
-        } catch {
-          setError("Something went wrong. Try again.");
-        } finally {
-          setUploadProgress(null);
-        }
-      });
-      return;
-    }
-
     const section = resourceType === "pyq" ? "pyq" : "notes_lab";
+    const bulkResourceType = resourceType === "pyq" ? pyqKind : resourceType;
+    const subjectName = subjects?.find((subject) => subject.id === subjectValue)?.name ?? "";
+    const filesToUpload = files;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     startTransition(async () => {
-      setUploadProgress(0);
+      let uploadedCount = 0;
       try {
-        const filePath = `${branchId}/${section}/${crypto.randomUUID()}-${file.name}`;
-        const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress);
+        for (let index = 0; index < filesToUpload.length; index++) {
+          const file = filesToUpload[index];
+          const title = titleForFile(file, index, filesToUpload.length);
 
-        const formData = new FormData();
-        formData.set("branchId", branchId);
-        formData.set("termId", termId);
-        formData.set("subjectId", subjectValue);
-        formData.set("section", section);
-        formData.set("resourceType", resourceType === "pyq" ? pyqKind : resourceType);
-        formData.set("title", title);
-        formData.set("description", description);
-        formData.set("fileUrl", fileUrl);
-        if (customCreatedAt) formData.set("customCreatedAt", customCreatedAt);
+          setUploadingFileIndex(index);
+          setUploadProgress(0);
 
-        await uploadResourceDirect(formData);
+          if (canBulkPublish) {
+            // Straight to R2 from the browser, bypassing the serverless
+            // body-size limit a large PDF would otherwise hit.
+            const filePath = `multi-branch/${section}/${crypto.randomUUID()}-${file.name}`;
+            const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress, controller.signal);
+
+            const formData = new FormData();
+            formData.set("termId", termId);
+            formData.set("branchIds", JSON.stringify(selectedBranchIds));
+            formData.set("subjectName", subjectName);
+            formData.set("section", section);
+            formData.set("resourceType", bulkResourceType);
+            formData.set("title", title);
+            formData.set("description", description);
+            formData.set("fileUrl", fileUrl);
+            if (customCreatedAt) formData.set("customCreatedAt", customCreatedAt);
+
+            await uploadResourceDirectAllBranches(formData);
+          } else {
+            const filePath = `${branchId}/${section}/${crypto.randomUUID()}-${file.name}`;
+            const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress, controller.signal);
+
+            const formData = new FormData();
+            formData.set("branchId", branchId);
+            formData.set("termId", termId);
+            formData.set("subjectId", subjectValue);
+            formData.set("section", section);
+            formData.set("resourceType", resourceType === "pyq" ? pyqKind : resourceType);
+            formData.set("title", title);
+            formData.set("description", description);
+            formData.set("fileUrl", fileUrl);
+            if (customCreatedAt) formData.set("customCreatedAt", customCreatedAt);
+
+            await uploadResourceDirect(formData);
+          }
+          uploadedCount++;
+        }
+
+        setPublishedCount(uploadedCount);
         setSuccess(true);
         formRef.current?.reset();
-        setFile(null);
+        setFiles([]);
+        setFileLimitNotice(false);
+        setTitleValue("");
+        setSubjectValue("");
         setCustomDate("");
-      } catch {
-        setError("Something went wrong. Try again.");
+      } catch (err) {
+        const cancelled = err instanceof DOMException && err.name === "AbortError";
+        setError(
+          cancelled
+            ? uploadedCount > 0
+              ? `Cancelled — ${uploadedCount} of ${filesToUpload.length} file${filesToUpload.length > 1 ? "s" : ""} were already published before you stopped it.`
+              : "Cancelled."
+            : uploadedCount > 0
+              ? `Published ${uploadedCount} of ${filesToUpload.length} file${filesToUpload.length > 1 ? "s" : ""} — the rest failed. Try again for the ones that didn't go through.`
+              : "Something went wrong. Try again."
+        );
       } finally {
         setUploadProgress(null);
+        setUploadingFileIndex(null);
+        abortControllerRef.current = null;
       }
     });
+  }
+
+  function handleCancel() {
+    abortControllerRef.current?.abort();
   }
 
   const typeOptions = [
@@ -228,7 +290,10 @@ export function CRUploadForm({
           <button
             key={type}
             type="button"
-            onClick={() => setResourceType(type)}
+            onClick={() => {
+              setResourceType(type);
+              setSubjectValue("");
+            }}
             className={cn(
               "min-w-[4.5rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
               resourceType === type
@@ -349,7 +414,10 @@ export function CRUploadForm({
           <Select
             id="term"
             value={termId}
-            onChange={(event) => setTermId(event.target.value)}
+            onChange={(event) => {
+              setTermId(event.target.value);
+              setSubjectValue("");
+            }}
             className="bg-background"
           >
             {terms.map((term) => (
@@ -374,7 +442,10 @@ export function CRUploadForm({
           <Select
             id="branch"
             value={branchId}
-            onChange={(event) => setPyqBranchId(event.target.value)}
+            onChange={(event) => {
+              setPyqBranchId(event.target.value);
+              setSubjectValue("");
+            }}
             className="bg-background"
           >
             {branches.map((branch) => (
@@ -408,11 +479,17 @@ export function CRUploadForm({
 
       <div className="flex flex-col gap-1">
         <label htmlFor="title" className="font-mono text-xs text-subtle-foreground">
-          Title <span className="normal-case text-subtle-foreground/70">(optional — defaults to file name)</span>
+          Title{" "}
+          <span className="normal-case text-subtle-foreground/70">
+            (optional — defaults to file name
+            {files.length > 1 ? ", used as a shared prefix across all files" : ""})
+          </span>
         </label>
         <input
           id="title"
           name="title"
+          value={titleValue}
+          onChange={(event) => setTitleValue(event.target.value)}
           className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
@@ -425,6 +502,8 @@ export function CRUploadForm({
           key={`${resourceType}-${branchId}-${termId}`}
           id="subject"
           name="subject"
+          value={subjectValue}
+          onChange={(event) => setSubjectValue(event.target.value)}
           className="bg-background"
         >
           <option value="">Extra</option>
@@ -466,41 +545,93 @@ export function CRUploadForm({
 
       <div className="flex flex-col gap-1">
         <label htmlFor="file" className="font-mono text-xs text-subtle-foreground">
-          File
+          File <span className="normal-case text-subtle-foreground/70">(up to {MAX_FILES} at once)</span>
         </label>
         <input
           id="file"
           type="file"
-          required
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          multiple
+          onChange={(event) => {
+            const selected = Array.from(event.target.files ?? []);
+            setFileLimitNotice(selected.length > MAX_FILES);
+            setFiles(selected.slice(0, MAX_FILES));
+          }}
           className="text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background-secondary file:px-3 file:py-1.5 file:text-sm file:text-foreground"
         />
+        {fileLimitNotice && (
+          <p className="font-mono text-xs text-destructive">
+            Only the first {MAX_FILES} files were kept — reselect if you meant a different set.
+          </p>
+        )}
+        {files.length > 0 && (
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {files.map((file, index) => (
+              <li
+                key={`${file.name}-${index}`}
+                className="flex items-center gap-1.5 font-mono text-xs text-subtle-foreground"
+              >
+                <span className="truncate">{file.name}</span>
+                {duplicateFileNames.has(file.name) && (
+                  <span className="shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive">
+                    Already uploaded
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
-      {uploadProgress !== null && <UploadProgress fraction={uploadProgress} />}
+      {uploadProgress !== null && (
+        <UploadProgress
+          fraction={uploadProgress}
+          label={
+            files.length > 1 ? `Uploading file ${(uploadingFileIndex ?? 0) + 1} of ${files.length}` : "Uploading"
+          }
+        />
+      )}
 
-      <button
-        type="submit"
-        disabled={
-          isPending ||
-          !file ||
-          !termId ||
-          (canBulkPublish ? selectedBranchIds.length === 0 : !branchId)
-        }
-        className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-      >
-        {isPending
-          ? "Publishing…"
-          : canBulkPublish && selectedBranchIds.length > 1
-            ? `Publish to ${selectedBranchIds.length} branches`
-            : "Publish now"}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={
+            isPending ||
+            files.length === 0 ||
+            !termId ||
+            (canBulkPublish ? selectedBranchIds.length === 0 : !branchId)
+          }
+          className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+        >
+          {isPending
+            ? "Publishing…"
+            : files.length > 1 && canBulkPublish && selectedBranchIds.length > 1
+              ? `Publish ${files.length} files to ${selectedBranchIds.length} branches`
+              : canBulkPublish && selectedBranchIds.length > 1
+                ? `Publish to ${selectedBranchIds.length} branches`
+                : files.length > 1
+                  ? `Publish ${files.length} files`
+                  : "Publish now"}
+        </button>
+        {isPending && (
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="self-start rounded-md border border-border px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
 
       {success && (
         <p className="font-mono text-xs text-terminal-blue">
           {canBulkPublish && selectedBranchIds.length > 1
-            ? "Published to every selected branch — already live, no review needed."
-            : "Published — it's already live, no review needed."}
+            ? publishedCount > 1
+              ? `Published ${publishedCount} files to every selected branch — already live, no review needed.`
+              : "Published to every selected branch — already live, no review needed."
+            : publishedCount > 1
+              ? `Published all ${publishedCount} files — already live, no review needed.`
+              : "Published — it's already live, no review needed."}
         </p>
       )}
       {error && <p className="font-mono text-xs text-destructive">{error}</p>}

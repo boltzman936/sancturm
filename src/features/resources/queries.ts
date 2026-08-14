@@ -117,6 +117,42 @@ export function usePyqResources(termId: string | null) {
   });
 }
 
+/**
+ * Titles already published in the exact scope an upload is about to
+ * land in — CRUploadForm checks a picked file's would-be title against
+ * this before publishing, so re-uploading something from a past
+ * session (not just this same browser tab) still gets flagged. PYQ is
+ * cross-branch by design (see usePyqResources), so branchIds is
+ * ignored there — matches by term + subject alone, same scope PYQ
+ * visibility itself uses.
+ */
+export function useExistingResourceTitles(
+  section: "notes_lab" | "pyq" | null,
+  branchIds: string[],
+  termId: string | null,
+  subjectId: string | null
+) {
+  return useQuery({
+    queryKey: ["resources", "titles", section, branchIds, termId, subjectId],
+    queryFn: async () => {
+      const supabase = createClient();
+      let query = supabase
+        .from("resources")
+        .select("title")
+        .eq("term_id", termId!)
+        .eq("section", section!)
+        .eq("status", "approved");
+      if (section === "notes_lab") query = query.in("branch_id", branchIds);
+      query = subjectId ? query.eq("subject_id", subjectId) : query.is("subject_id", null);
+      const { data, error } = await query;
+      if (error) throw error;
+      return new Set((data ?? []).map((r) => r.title.trim().toLowerCase()));
+    },
+    enabled: !!termId && !!section && (section === "pyq" || branchIds.length > 0),
+    staleTime: 15_000,
+  });
+}
+
 /** Fire-and-forget counter bump — matches increment_resource_counter's
  * "only these two columns" guard in the migration. One hook covers
  * both download_count (Download button) and view_count (View/preview
