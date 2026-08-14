@@ -55,16 +55,16 @@ function typeGroupLabel(resource: ManageableResource) {
   return SECTION_LABEL[resource.section] ?? resource.section;
 }
 
-// The "PYQ" filter is the one exception to exact-label matching: a
-// question paper and its solution are two resource_type values under
-// the same section, and unlike Notes/Lab (which stay deliberately
-// separate filters), a solution is only ever useful alongside its
-// paper — so picking "PYQ" here means "everything in the pyq section",
-// not just the question-paper half. "PYQ Solution" stays available as
-// its own option for narrowing down to just solutions when wanted.
+// "PYQ" and "PYQ Solution" are two separate, mutually-exclusive
+// options in the same Type dropdown — matching "PYQ" against the whole
+// pyq section (question papers AND solutions) would make "Select all"
+// under "PYQ" silently include and bulk-delete solutions too, despite
+// "PYQ Solution" existing right next to it as its own option. Legacy
+// 'pdf' rows (pre-dating the pyq/pyq_solution split) still count as a
+// question paper, same equivalence typeGroupLabel already gives them.
 function matchesTypeFilter(resource: ManageableResource, typeFilter: string) {
   if (typeFilter === ALL) return true;
-  if (typeFilter === "PYQ") return resource.section === "pyq";
+  if (typeFilter === "PYQ") return resource.section === "pyq" && resource.resource_type !== "pyq_solution";
   return typeGroupLabel(resource) === typeFilter;
 }
 

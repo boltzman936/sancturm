@@ -225,9 +225,16 @@ export function usePyqResources(
  * on record), since a same-named PYQ in a DIFFERENT sharing group
  * (e.g. AIDS vs. Core/AIML for 1st Year) isn't actually a duplicate
  * anymore, matching what usePyqResources itself now shows.
+ * resourceTypes scopes by the actual resource_type(s), not just
+ * section — without this, a PYQ Solution shared the same "already
+ * uploaded" check as its question paper (same section, both "pyq"),
+ * flagging one as a duplicate of the other even though they're
+ * different resource_type values and not actually duplicates. Same
+ * reasoning keeps Notes and Lab from colliding under "notes_lab".
  */
 export function useExistingResourceTitles(
   section: "notes_lab" | "pyq" | null,
+  resourceTypes: string[],
   branchIds: string[],
   termId: string | null,
   subjectId: string | null,
@@ -237,7 +244,7 @@ export function useExistingResourceTitles(
   batchId: string | null
 ) {
   return useQuery({
-    queryKey: ["resources", "titles", section, branchIds, termId, subjectId, batchId],
+    queryKey: ["resources", "titles", section, resourceTypes, branchIds, termId, subjectId, batchId],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase
@@ -247,13 +254,14 @@ export function useExistingResourceTitles(
         .eq("batch_id", batchId!)
         .eq("section", section!)
         .eq("status", "approved")
+        .in("resource_type", resourceTypes)
         .in("branch_id", branchIds);
       query = subjectId ? query.eq("subject_id", subjectId) : query.is("subject_id", null);
       const { data, error } = await query;
       if (error) throw error;
       return new Set((data ?? []).map((r) => r.title.trim().toLowerCase()));
     },
-    enabled: !!termId && !!batchId && !!section && branchIds.length > 0,
+    enabled: !!termId && !!batchId && !!section && branchIds.length > 0 && resourceTypes.length > 0,
     staleTime: 15_000,
   });
 }

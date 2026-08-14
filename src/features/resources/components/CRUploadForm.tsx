@@ -152,6 +152,11 @@ export function CRUploadForm({
   const subjects = allSubjects ? filterSubjectsForResourceType(allSubjects, resourceType) : undefined;
 
   const sectionForDuplicateCheck = resourceType === "pyq" ? "pyq" : resourceType === "notice" || resourceType === "update" ? null : "notes_lab";
+  // Legacy "pdf" rows (pre-dating the pyq/pyq_solution split) still
+  // count as a question paper for this check — same equivalence
+  // usePyqResources/Manage already treat pdf as.
+  const resourceTypesForDuplicateCheck =
+    resourceType === "pyq" ? (pyqKind === "pyq" ? ["pyq", "pdf"] : ["pyq_solution"]) : [resourceType];
   // For a single-branch PYQ upload, the duplicate check needs the
   // WHOLE sharing group (see pyqSharing.ts), not just the one branch
   // being recorded — a same-named PYQ in a different sharing group
@@ -174,6 +179,7 @@ export function CRUploadForm({
         : [];
   const { data: existingTitles } = useExistingResourceTitles(
     sectionForDuplicateCheck,
+    resourceTypesForDuplicateCheck,
     branchIdsForDuplicateCheck,
     termId || null,
     subjectValue || null,

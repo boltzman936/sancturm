@@ -137,7 +137,12 @@ export default function PYQsPage() {
   const batchStartYear = useMemo(() => new Map((batches ?? []).map((b) => [b.id, b.start_year])), [batches]);
 
   const filtered = useMemo(() => {
-    const base = (resources ?? []).filter((resource) => resource.resource_type === pyqKind);
+    // Legacy 'pdf' rows (pre-dating the pyq/pyq_solution split) count
+    // as a question paper — without this they're invisible here even
+    // though Manage still shows and labels them as "PYQ".
+    const base = (resources ?? []).filter((resource) =>
+      pyqKind === "pyq" ? resource.resource_type === "pyq" || resource.resource_type === "pdf" : resource.resource_type === pyqKind
+    );
     const bySubject =
       subjectFilter === ALL_SUBJECTS
         ? base
@@ -152,6 +157,23 @@ export default function PYQsPage() {
     const bySearch = byDate.filter((resource) => matchesSearch(resource, searchQuery));
     return sortByAcademicPriority(bySearch, dateSort, batchStartYear);
   }, [resources, pyqKind, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort, batchStartYear]);
+
+  // Same batch-group partitioning as Notes & Lab — see its identical
+  // comment for why this is a cheap partition, not a re-sort, and why
+  // headers only show once 2+ batches are actually present.
+  const groupedByBatch = useMemo(() => {
+    const groups: { batchId: string | null; label: string; items: typeof filtered }[] = [];
+    for (const resource of filtered) {
+      const last = groups[groups.length - 1];
+      if (last && last.batchId === resource.batch_id) {
+        last.items.push(resource);
+      } else {
+        const label = batches?.find((b) => b.id === resource.batch_id)?.label ?? "Other";
+        groups.push({ batchId: resource.batch_id, label, items: [resource] });
+      }
+    }
+    return groups;
+  }, [filtered, batches]);
 
   // Describes whichever sharing group actually applies right now —
   // 1st Year genuinely isn't "every CSE branch" anymore (AIDS has its
@@ -375,7 +397,24 @@ export default function PYQsPage() {
         </div>
       )}
 
-      {filtered.length > 0 && (
+      {filtered.length > 0 && groupedByBatch.length > 1 && (
+        <div className="flex flex-col gap-5">
+          {groupedByBatch.map((group) => (
+            <div key={group.batchId ?? "none"} className="flex flex-col gap-2">
+              <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">
+                BATCH {group.label.toUpperCase()}
+              </h2>
+              <ul className="flex flex-col gap-2">
+                {group.items.map((resource) => (
+                  <ResourceCard key={resource.id} resource={resource} onView={setViewingResource} />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {filtered.length > 0 && groupedByBatch.length <= 1 && (
         <ul className="flex flex-col gap-2">
           {filtered.map((resource) => (
             <ResourceCard key={resource.id} resource={resource} onView={setViewingResource} />

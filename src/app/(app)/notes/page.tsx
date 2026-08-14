@@ -145,6 +145,27 @@ export default function NotesAndLabPage() {
     return sortByAcademicPriority(bySearch, dateSort, batchStartYear);
   }, [resources, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort, batchStartYear]);
 
+  // `filtered` is already batch-grouped (batch is the primary sort key
+  // above) — this just partitions the already-sorted list into
+  // consecutive same-batch runs so each batch's resources can render
+  // under its own "Batch 2026-27" heading, making the newest-batch-
+  // first ordering visible instead of implicit. Only shown when 2+
+  // batches are actually present (e.g. "All batches") — a single
+  // batch's own heading would just be redundant noise.
+  const groupedByBatch = useMemo(() => {
+    const groups: { batchId: string | null; label: string; items: typeof filtered }[] = [];
+    for (const resource of filtered) {
+      const last = groups[groups.length - 1];
+      if (last && last.batchId === resource.batch_id) {
+        last.items.push(resource);
+      } else {
+        const label = batches?.find((b) => b.id === resource.batch_id)?.label ?? "Other";
+        groups.push({ batchId: resource.batch_id, label, items: [resource] });
+      }
+    }
+    return groups;
+  }, [filtered, batches]);
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -358,7 +379,24 @@ export default function NotesAndLabPage() {
         </div>
       )}
 
-      {filtered.length > 0 && (
+      {filtered.length > 0 && groupedByBatch.length > 1 && (
+        <div className="flex flex-col gap-5">
+          {groupedByBatch.map((group) => (
+            <div key={group.batchId ?? "none"} className="flex flex-col gap-2">
+              <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">
+                BATCH {group.label.toUpperCase()}
+              </h2>
+              <ul className="flex flex-col gap-2">
+                {group.items.map((resource) => (
+                  <ResourceCard key={resource.id} resource={resource} onView={setViewingResource} />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {filtered.length > 0 && groupedByBatch.length <= 1 && (
         <ul className="flex flex-col gap-2">
           {filtered.map((resource) => (
             <ResourceCard key={resource.id} resource={resource} onView={setViewingResource} />
