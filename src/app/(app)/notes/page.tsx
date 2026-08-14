@@ -3,24 +3,22 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
-import { useTerm } from "@/hooks/useTerm";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
+import { useBatchSemesterFilter, ALL_BATCHES } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug } from "@/features/branches/queries";
-import { useTermBySlug, useTerms } from "@/features/terms/queries";
 import {
   useNotesAndLabResources,
   useSubjects,
   type ResourceWithSubject,
 } from "@/features/resources/queries";
 import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
-import { useBatch } from "@/hooks/useBatch";
-import { useBatchesForTerm } from "@/features/batches/queries";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
 import { localDateKey, formatShortDate } from "@/lib/date";
 import { matchesQuery } from "@/lib/search";
+import { ordinalSemesterLabel } from "@/lib/termLabel";
 import { sortByAcademicPriority } from "@/lib/sortByDate";
 import { cn } from "@/lib/utils";
 import type { ResourceType } from "@/features/resources/types";
@@ -29,10 +27,6 @@ type NotesOrLab = Extract<ResourceType, "notes" | "lab_manual">;
 type DateSort = "newest" | "oldest";
 const ALL_SUBJECTS = "all";
 const EXTRA_SUBJECT = "extra";
-// Defaults to showing every batch's content, same as before Batch
-// existed — it's an additive narrowing filter, not something that
-// hides content by default (see this file's own filter useMemo).
-const ALL_BATCHES = "all";
 
 // One search box, matched against title, description, and the date as
 // displayed (so typing "Aug" or "2026" works the same as a title
@@ -45,47 +39,25 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
   );
 }
 
-// Relative to the year, not the absolute semester_number — see PYQs'
-// identical helper for why.
-function ordinalSemesterLabel(indexInYear: number) {
-  return indexInYear === 0 ? "1st Semester" : indexInYear === 1 ? "2nd Semester" : `${indexInYear + 1}th Semester`;
-}
-
 export default function NotesAndLabPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
-  const { term: termSlug } = useTerm();
-  // The sidebar's coarse, always-resolves-to-current identity — stays
-  // completely untouched. `term` below is what everything downstream
-  // actually uses, and can be overridden to any semester within the
-  // same year via the Semester filter (see semesterOptions).
-  const { data: sidebarTerm } = useTermBySlug(termSlug);
-  const { data: allTerms } = useTerms();
 
-  // Every semester belonging to the sidebar-resolved year — lets a
-  // student browse a semester that isn't CURRENTLY active (e.g. this
-  // year's own Sem 1, months after it ended) without touching the
-  // sidebar's own "pick your year" identity at all.
-  const semesterOptions = useMemo(() => {
-    if (!sidebarTerm || !allTerms) return [];
-    return allTerms
-      .filter((t) => t.year_number === sidebarTerm.year_number)
-      .sort((a, b) => a.semester_number - b.semester_number);
-  }, [sidebarTerm, allTerms]);
-
-  // null = defer to the sidebar-resolved (current) term. Session-local,
-  // not persisted — same as Subject/Type/Date, unlike Branch/Year/Batch.
-  const [semesterTermId, setSemesterTermId] = useState<string | null>(null);
-  const validSemesterIds = useMemo(
-    () => (semesterOptions.length ? [null, ...semesterOptions.map((t) => t.id)] : undefined),
-    [semesterOptions]
-  );
-  // Branch/Year are global (sidebar switchers) — no local onChange to
-  // extend, so this catches a semester pick that no longer belongs to
-  // the sidebar's year (Year changed) and defers back to current.
-  useResetInvalidSelection(semesterTermId, validSemesterIds, null, setSemesterTermId);
-
-  const term = semesterTermId ? allTerms?.find((t) => t.id === semesterTermId) : sidebarTerm;
+  // Batch-primary — same model CRUploadForm already uses: Batch picked
+  // first (or "All batches"), Semester scoped to whichever periods
+  // that batch has actually reached, Year derived from whichever
+  // Semester ends up in effect. The sidebar's own "Switch year" stays
+  // untouched (still used elsewhere) — this page just stops consulting
+  // it for its own scoping, per this exact rewrite's confirmed scope.
+  const {
+    allBatches,
+    batchFilter,
+    setBatchFilter,
+    reachedTerms,
+    effectiveTerm: term,
+    currentTermId,
+    setTermId,
+  } = useBatchSemesterFilter();
 
   const [resourceType, setResourceType] = useState<NotesOrLab>("notes");
   const [dateSort, setDateSort] = useState<DateSort>("newest");
@@ -112,11 +84,10 @@ export default function NotesAndLabPage() {
     setSubjectFilter(ALL_SUBJECTS);
   }
 
-  // Branch/Year are global (set from the sidebar switchers, outside
-  // this component) — there's no local onChange to extend when they
-  // change, so an effect is what catches a Subject that's no longer
-  // valid for the new branch/term and resets it instead of silently
-  // showing zero results.
+  // Batch/Semester live in useBatchSemesterFilter (no local onChange to
+  // extend here) — this catches a Subject that's no longer valid once
+  // either of those change and resets it instead of silently showing
+  // zero results.
   const validSubjectValues = useMemo(
     () => (subjectOptions ? [ALL_SUBJECTS, EXTRA_SUBJECT, ...subjectOptions.map((s) => s.id)] : undefined),
     [subjectOptions]
@@ -128,40 +99,11 @@ export default function NotesAndLabPage() {
     term?.id ?? null,
     resourceType
   );
-  // Every batch's content is already in `resources` (batchId is
-  // deliberately omitted from the query above) — filtered client-side
-  // below like Subject/Date/Search already are, so switching Batch is
-  // instant with no extra fetch, same as every other filter here.
-  // Scoped to the current term (not every batch that's ever existed) —
-  // a batch with no batch_terms row for this term isn't a valid filter
-  // option, same reasoning as CRUploadForm's Batch picker.
-  const { batch: batchLabel, setBatch } = useBatch();
-  const { data: batches } = useBatchesForTerm(term?.id ?? null);
-  // Derived every render (not its own useState) — an invalid batch
-  // (not valid for the newly-selected term) falls back to "all"
-  // automatically, no explicit reset needed, and switching back to a
-  // term where the persisted batch IS valid re-activates it.
-  const batchFilter = useMemo(() => {
-    if (!batchLabel || batchLabel === ALL_BATCHES) return ALL_BATCHES;
-    return batches?.find((b) => b.label === batchLabel)?.id ?? ALL_BATCHES;
-  }, [batchLabel, batches]);
 
-  // useBatch() persists a label, but this Select works in ids (like
-  // every other filter here) — resolve the picked id back to a label
-  // before persisting it.
-  function handleBatchFilterChange(id: string) {
-    if (id === ALL_BATCHES) {
-      setBatch(ALL_BATCHES);
-      return;
-    }
-    const picked = batches?.find((b) => b.id === id);
-    if (picked) setBatch(picked.label);
-  }
-
-  // Newest batch always groups first, regardless of dateSort direction —
-  // built from the same term-scoped batches list already fetched above
-  // for the Batch filter, not a new fetch.
-  const batchStartYear = useMemo(() => new Map((batches ?? []).map((b) => [b.id, b.start_year])), [batches]);
+  // Newest batch always groups first, regardless of dateSort direction
+  // — built from the full batch catalog (Batch is independent of
+  // Semester scoping now), not a new fetch.
+  const batchStartYear = useMemo(() => new Map((allBatches ?? []).map((b) => [b.id, b.start_year])), [allBatches]);
 
   const filtered = useMemo(() => {
     const base = resources ?? [];
@@ -184,9 +126,7 @@ export default function NotesAndLabPage() {
   // above) — this just partitions the already-sorted list into
   // consecutive same-batch runs so each batch's resources can render
   // under its own "Batch 2026-27" heading, making the newest-batch-
-  // first ordering visible instead of implicit. Always shown, even for
-  // a single batch — which batch you're looking at should be visible
-  // everywhere, not just once a second batch exists to compare against.
+  // first ordering visible instead of implicit.
   const groupedByBatch = useMemo(() => {
     const groups: { batchId: string | null; label: string; items: typeof filtered }[] = [];
     for (const resource of filtered) {
@@ -194,12 +134,48 @@ export default function NotesAndLabPage() {
       if (last && last.batchId === resource.batch_id) {
         last.items.push(resource);
       } else {
-        const label = batches?.find((b) => b.id === resource.batch_id)?.label ?? "Other";
+        const label = allBatches?.find((b) => b.id === resource.batch_id)?.label ?? "Other";
         groups.push({ batchId: resource.batch_id, label, items: [resource] });
       }
     }
     return groups;
-  }, [filtered, batches]);
+  }, [filtered, allBatches]);
+
+  // Semester needs more room than Batch (labels run up to "3rd
+  // Semester (current)" vs. just "2025-26") — min-w floors each at
+  // whatever its own longest realistic label needs, so text never
+  // clips; flex-1 lets them share any extra row width beyond that
+  // evenly, and both still shrink together (not stack) if the
+  // viewport is genuinely too narrow to fit both at their minimums.
+  const semesterSelect = () => (
+    <Select
+      value={term?.id ?? ""}
+      onChange={(event) => setTermId(event.target.value)}
+      className="min-w-[110px] sm:min-w-[260px] flex-1"
+    >
+      {reachedTerms.map((bt) => (
+        <option key={bt.term_id} value={bt.term_id}>
+          {ordinalSemesterLabel(bt.term.semester_number)}
+          {bt.term_id === currentTermId ? " (current)" : ""}
+        </option>
+      ))}
+    </Select>
+  );
+
+  const batchSelect = () => (
+    <Select
+      value={batchFilter}
+      onChange={(event) => setBatchFilter(event.target.value)}
+      className="min-w-[90px] sm:min-w-[150px] flex-1"
+    >
+      <option value={ALL_BATCHES}>All batches</option>
+      {allBatches?.map((batch) => (
+        <option key={batch.id} value={batch.id}>
+          {batch.label}
+        </option>
+      ))}
+    </Select>
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -207,7 +183,10 @@ export default function NotesAndLabPage() {
         <h1 className="text-2xl font-medium text-foreground">Notes & lab</h1>
         <p className="text-muted-foreground">
           Notes and lab manuals for {branch?.name ?? "your branch"}
-          {term ? ` — ${term.label}` : ""}.
+          {batchFilter !== ALL_BATCHES && allBatches
+            ? ` — ${allBatches.find((b) => b.id === batchFilter)?.label ?? ""}`
+            : ""}
+          {term ? `, ${term.label}` : ""}.
         </p>
       </div>
 
@@ -251,19 +230,6 @@ export default function NotesAndLabPage() {
           </div>
 
           <Select
-            value={term?.id ?? ""}
-            onChange={(event) => setSemesterTermId(event.target.value)}
-            className="w-[170px] shrink-0"
-          >
-            {semesterOptions.map((t, index) => (
-              <option key={t.id} value={t.id}>
-                {ordinalSemesterLabel(index)}
-                {t.id === sidebarTerm?.id ? " (current)" : ""}
-              </option>
-            ))}
-          </Select>
-
-          <Select
             value={subjectFilter}
             onChange={(event) => setSubjectFilter(event.target.value)}
             className="w-[190px] shrink-0"
@@ -277,18 +243,14 @@ export default function NotesAndLabPage() {
             <option value={EXTRA_SUBJECT}>Extra</option>
           </Select>
 
-          <Select
-            value={batchFilter}
-            onChange={(event) => handleBatchFilterChange(event.target.value)}
-            className="w-[150px] shrink-0"
-          >
-            <option value={ALL_BATCHES}>All batches</option>
-            {batches?.map((batch) => (
-              <option key={batch.id} value={batch.id}>
-                {batch.label}
-              </option>
-            ))}
-          </Select>
+          {/* Semester + Batch, side by side — Semester first. Each has
+              its own min-w floor sized to its longest realistic label
+              (see semesterSelect/batchSelect), so text never clips;
+              flex-1 shares any remaining row width between them. */}
+          <div className="flex shrink-0 gap-2">
+            {semesterSelect()}
+            {batchSelect()}
+          </div>
         </div>
       </div>
 
@@ -316,9 +278,10 @@ export default function NotesAndLabPage() {
       </div>
 
       {/* Mobile/tablet (below lg) — grouped into one visually distinct
-          "Filters" card: type+sort, then subject+date, then search,
-          each on their own row, instead of the desktop's wrapping
-          flex row (which reflows unpredictably at narrow widths). */}
+          "Filters" card: type+sort, then subject, then semester+batch,
+          then search/date, each on their own row, instead of the
+          desktop's wrapping flex row (which reflows unpredictably at
+          narrow widths). */}
       <div className="flex flex-col gap-3 rounded-lg border border-border bg-card/40 p-3 lg:hidden">
         <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">Filters</h2>
 
@@ -358,38 +321,21 @@ export default function NotesAndLabPage() {
           </div>
         </div>
 
-        <Select value={term?.id ?? ""} onChange={(event) => setSemesterTermId(event.target.value)}>
-          {semesterOptions.map((t, index) => (
-            <option key={t.id} value={t.id}>
-              {ordinalSemesterLabel(index)}
-              {t.id === sidebarTerm?.id ? " (current)" : ""}
+        <Select value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)}>
+          <option value={ALL_SUBJECTS}>All subjects</option>
+          {subjectOptions?.map((subject) => (
+            <option key={subject.id} value={subject.id}>
+              {subject.name}
             </option>
           ))}
+          <option value={EXTRA_SUBJECT}>Extra</option>
         </Select>
 
-        <div className="grid grid-cols-2 gap-2">
-          <Select
-            value={subjectFilter}
-            onChange={(event) => setSubjectFilter(event.target.value)}
-            className="min-w-0"
-          >
-            <option value={ALL_SUBJECTS}>All subjects</option>
-            {subjectOptions?.map((subject) => (
-              <option key={subject.id} value={subject.id}>
-                {subject.name}
-              </option>
-            ))}
-            <option value={EXTRA_SUBJECT}>Extra</option>
-          </Select>
-
-          <Select value={batchFilter} onChange={(event) => handleBatchFilterChange(event.target.value)} className="min-w-0">
-            <option value={ALL_BATCHES}>All batches</option>
-            {batches?.map((batch) => (
-              <option key={batch.id} value={batch.id}>
-                {batch.label}
-              </option>
-            ))}
-          </Select>
+        {/* Semester + Batch side by side even on mobile — shrinks
+            proportionally with the viewport rather than stacking. */}
+        <div className="flex gap-2">
+          {semesterSelect()}
+          {batchSelect()}
         </div>
 
         <DateFilterInput value={dateFilter} onChange={setDateFilter} />

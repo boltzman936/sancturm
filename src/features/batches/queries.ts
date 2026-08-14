@@ -91,3 +91,25 @@ export function useBatchTerms(batchId: string | null) {
     staleTime: 5 * 60_000,
   });
 }
+
+/**
+ * Every (batch, term) pairing that exists, across every batch — the
+ * unscoped version of useBatchTerms, for "All batches" contexts (Notes/
+ * PYQs' Batch filter) where Semester options need the UNION of what
+ * every batch has reached, not just one batch's own list.
+ */
+export function useAllBatchTerms() {
+  return useQuery({
+    queryKey: ["batch-terms", "all"],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("batch_terms")
+        .select("*, term:academic_terms(*)")
+        .order("start_date");
+      if (error) throw error;
+      return data as unknown as (BatchTerm & { term: import("@/types/database").AcademicTerm })[];
+    },
+    staleTime: 5 * 60_000,
+  });
+}
