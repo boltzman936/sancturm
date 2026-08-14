@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useBatches, useBatchTerms, useAllBatchTerms } from "@/features/batches/queries";
 import { useTerms } from "@/features/terms/queries";
 import { useBatch } from "@/hooks/useBatch";
+import { useTerm } from "@/hooks/useTerm";
 import { useResetInvalidSelection } from "./useResetInvalidSelection";
 import { localDateKey } from "@/lib/date";
 import type { BatchTerm, AcademicTerm } from "@/types/database";
@@ -90,6 +91,19 @@ export function useBatchSemesterFilter() {
 
   const { data: allTerms } = useTerms();
   const effectiveTerm = allTerms?.find((t) => t.id === effectiveTermId);
+
+  // Keeps the sidebar's "Switch year" display truthful — Batch+Semester
+  // is the real academic scope here, so the sidebar (a separate,
+  // globally-persisted control also used on Notices/onboarding/etc.)
+  // must never show a Year that contradicts what's actually selected
+  // (e.g. sidebar says "1st Year" while this page is showing 2025-26's
+  // 3rd Semester content). One-way only — this pushes the derived Year
+  // out to the sidebar; it does not read the sidebar back in, so
+  // there's no feedback loop.
+  const { setTerm: syncSidebarTerm } = useTerm();
+  useEffect(() => {
+    if (effectiveTerm) syncSidebarTerm(effectiveTerm.slug);
+  }, [effectiveTerm, syncSidebarTerm]);
 
   function setBatchFilter(id: string) {
     if (id === ALL_BATCHES) {
