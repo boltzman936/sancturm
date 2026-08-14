@@ -10,6 +10,7 @@ import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/feature
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
 import { titleFromFileName, looksLikeMeaninglessName } from "@/features/uploads/titleFromFileName";
+import { isDateReached } from "@/features/batches/academicChronology";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
 import { BranchMultiSelect } from "@/components/shared/BranchMultiSelect";
@@ -161,13 +162,20 @@ export function CRUploadForm({
   // through, spanning both years. This is what makes Semester options
   // batch-scoped instead of year-scoped.
   const { data: batchTerms } = useBatchTerms(effectiveBatchId || null);
-  const effectiveTermId = fixedTermId ?? (termId || currentBatchTermId(batchTerms));
+  // Upload must never offer a semester that hasn't started yet, even
+  // though Viewing pages are allowed to (browsing a not-yet-live
+  // period is fine; publishing into one isn't) — filtered here, not
+  // just server-side, so the dropdown itself never lists it.
+  const todayKey = localDateKey(new Date().toISOString());
+  const reachedBatchTerms = batchTerms?.filter((bt) => isDateReached(bt.start_date, todayKey));
+  const effectiveTermId = fixedTermId ?? (termId || currentBatchTermId(reachedBatchTerms));
   // Batch changed underneath an explicit Semester pick that's no
-  // longer one of ITS periods (e.g. was on 2025-26's Sem 3, switched
-  // to 2026-27 which hasn't reached Sem 3 yet) — defer back to
-  // whichever semester is current for the new batch instead of
-  // silently submitting a stale/invalid pairing.
-  const validTermIds = batchTerms ? batchTerms.map((bt) => bt.term_id) : undefined;
+  // longer one of ITS reached periods (e.g. was on 2025-26's Sem 3,
+  // switched to 2026-27 which hasn't reached Sem 3 yet, or the picked
+  // semester's own start date just moved into the future) — defer
+  // back to whichever semester is current for the new batch instead of
+  // silently submitting a stale/invalid/future pairing.
+  const validTermIds = reachedBatchTerms ? reachedBatchTerms.map((bt) => bt.term_id) : undefined;
   useResetInvalidSelection(termId, validTermIds, "", setTermId);
 
   // Whichever branch the Subject list previews against — every branch
@@ -569,7 +577,7 @@ export function CRUploadForm({
                 needs to stay visible per option, not just in the
                 derived label above (which only reflects whichever one
                 is currently selected). */}
-            {batchTerms?.map((bt) => (
+            {reachedBatchTerms?.map((bt) => (
               <option key={bt.term_id} value={bt.term_id}>
                 {bt.term.label}
               </option>

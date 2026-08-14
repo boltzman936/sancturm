@@ -4,9 +4,36 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
-import { withDateKey } from "@/lib/date";
+import { withDateKey, localDateKey } from "@/lib/date";
+import { isDateReached } from "@/features/batches/academicChronology";
 import { resolveSubjectBranchName } from "./subjectInterchange";
 import type { SubjectStructureConfig } from "./types";
+
+/**
+ * The server-side half of the "never upload into a semester that
+ * hasn't started" rule — the client-side dropdown in CRUploadForm
+ * already hides a future semester, but that's just UX; this is what
+ * actually stops a submission that targets one anyway (a manipulated
+ * request, or a stale form left open across a batch_terms edit).
+ * Reuses the exact same isDateReached comparison the dropdown filters
+ * with, so the two can't silently drift apart.
+ */
+async function assertBatchTermReached(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  batchId: string,
+  termId: string
+) {
+  const { data, error } = await supabase
+    .from("batch_terms")
+    .select("start_date")
+    .eq("batch_id", batchId)
+    .eq("term_id", termId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data || !isDateReached(data.start_date, localDateKey(new Date().toISOString()))) {
+    throw new Error("That semester hasn't started yet, so it can't be uploaded to.");
+  }
+}
 
 /**
  * Takes down an already-published resource — same RLS-enforced
@@ -182,6 +209,8 @@ export async function uploadResourceDirect(formData: FormData) {
   // database's own now() default apply exactly as before.
   const customCreatedAt = (formData.get("customCreatedAt") as string) || null;
 
+  await assertBatchTermReached(supabase, batchId, termId);
+
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
     term_id: termId,
@@ -264,6 +293,8 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
     branchIds = parsed;
   }
   if (!branchIds.length) throw new Error("No branches found.");
+
+  await assertBatchTermReached(supabase, batchId, termId);
 
   // Resolved once for the whole batch, not per-branch — fine to share
   // across every target branch since it only depends on termId, which

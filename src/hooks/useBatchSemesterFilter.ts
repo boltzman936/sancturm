@@ -7,6 +7,7 @@ import { useBatch } from "@/hooks/useBatch";
 import { useTerm } from "@/hooks/useTerm";
 import { useResetInvalidSelection } from "./useResetInvalidSelection";
 import { localDateKey } from "@/lib/date";
+import { isDateReached } from "@/features/batches/academicChronology";
 import type { BatchTerm, AcademicTerm } from "@/types/database";
 
 export const ALL_BATCHES = "all";
@@ -28,7 +29,9 @@ function resolveDefaultBatchIdForYear(
   everyBatchTerms: ReachedTerm[],
   todayKey: string
 ): string | null {
-  const forYear = everyBatchTerms.filter((bt) => bt.term.year_number === yearNumber && bt.start_date <= todayKey);
+  const forYear = everyBatchTerms.filter(
+    (bt) => bt.term.year_number === yearNumber && isDateReached(bt.start_date, todayKey)
+  );
   if (forYear.length === 0) return null;
   const current = forYear.find((bt) => todayKey <= bt.end_date);
   const chosen = current ?? forYear.reduce((latest, bt) => (bt.start_date > latest.start_date ? bt : latest));
@@ -76,7 +79,7 @@ export function useBatchSemesterFilter() {
   const reachedTerms = useMemo<ReachedTerm[]>(() => {
     if (yearNumber === undefined) return [];
     const source: ReachedTerm[] = (batchFilter === ALL_BATCHES ? everyBatchTerms : oneBatchTerms) ?? [];
-    const reached = source.filter((bt) => bt.term.year_number === yearNumber && bt.start_date <= todayKey);
+    const reached = source.filter((bt) => bt.term.year_number === yearNumber && isDateReached(bt.start_date, todayKey));
     if (batchFilter !== ALL_BATCHES) return reached;
     // "All batches": union across every batch (within this year),
     // deduped by term_id — if ANY batch has reached a period, it's a
@@ -140,7 +143,8 @@ export function useBatchSemesterFilter() {
     const currentlyValid =
       !!pickedBatch &&
       everyBatchTerms.some(
-        (bt) => bt.batch_id === pickedBatch.id && bt.term.year_number === yearNumber && bt.start_date <= todayKey
+        (bt) =>
+          bt.batch_id === pickedBatch.id && bt.term.year_number === yearNumber && isDateReached(bt.start_date, todayKey)
       );
     if (currentlyValid) return;
 
