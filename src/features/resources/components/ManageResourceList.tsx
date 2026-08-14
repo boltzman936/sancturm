@@ -75,6 +75,7 @@ export type ManageableResource = {
   // three different tables, three different RLS scopes.
   kind: "resource" | "notice" | "update";
   title: string;
+  description: string | null;
   section: string;
   resource_type: string | null;
   uploaded_by_device: string | null;
@@ -256,11 +257,22 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   const [subjectId, setSubjectId] = useState(resource.subject_id ?? "");
   const [dateKey, setDateKey] = useState(localDateKey(resource.created_at));
   const [crOnly, setCrOnly] = useState(resource.cr_only);
+  const [title, setTitle] = useState(resource.title);
+  const [description, setDescription] = useState(resource.description ?? "");
+  // Legacy "pdf" rows (pre-dating the pyq/pyq_solution split) get
+  // normalized to "pyq" here — same equivalence the rest of the app
+  // already treats them as (see usePyqResources/Manage's own PYQ
+  // filter) — so the toggle below always has one of its two real
+  // options selected, and saving naturally cleans the legacy value up.
+  const [resourceType, setResourceType] = useState(
+    resource.resource_type === "pdf" ? "pyq" : resource.resource_type ?? "notes"
+  );
 
   const { data: branches } = useBranches();
   const { data: terms } = useTerms();
   const { data: validBatches } = useBatchesForTerm(termId || null);
   const isPyq = resource.kind === "resource" && resource.section === "pyq";
+  const isNotesLab = resource.kind === "resource" && resource.section === "notes_lab";
   const { data: subjects } = useSubjects(
     resource.kind === "resource" ? branchId || null : null,
     resource.kind === "resource" ? termId || null : null
@@ -272,6 +284,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
 
   function handleSave() {
     if (!branchId || !termId || !effectiveBatchId || !dateKey) return;
+    if (resource.kind === "resource" && !title.trim()) return;
     setError(null);
     startTransition(async () => {
       try {
@@ -290,6 +303,9 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
             batchId: effectiveBatchId,
             subjectId: subjectId || null,
             dateKey,
+            title: title.trim(),
+            description: description.trim() || null,
+            resourceType,
           });
         }
         setOpen(false);
@@ -312,8 +328,51 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-sm">
-          <div className="flex flex-col gap-3 p-6">
+          <div className="flex max-h-[85vh] flex-col gap-3 overflow-y-auto p-6">
             <h2 className="pr-6 text-lg font-medium text-foreground">Edit</h2>
+
+            {resource.kind === "resource" && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-xs text-subtle-foreground">Title</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+            )}
+
+            {(isNotesLab || isPyq) && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-xs text-subtle-foreground">Type</label>
+                <div className="flex flex-wrap gap-1 rounded-md border border-border bg-background p-1">
+                  {(isNotesLab ? (["notes", "lab_manual"] as const) : (["pyq", "pyq_solution"] as const)).map(
+                    (kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        onClick={() => setResourceType(kind)}
+                        className={cn(
+                          "min-w-[7rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
+                          resourceType === kind
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:text-foreground active:text-foreground"
+                        )}
+                      >
+                        {kind === "notes"
+                          ? "Notes"
+                          : kind === "lab_manual"
+                            ? "Lab manual"
+                            : kind === "pyq"
+                              ? "Question paper"
+                              : "Solution"}
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col gap-1">
               <label className="font-mono text-xs text-subtle-foreground">Year</label>
@@ -399,6 +458,18 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
               </div>
             )}
 
+            {resource.kind === "resource" && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-xs text-subtle-foreground">Description (optional)</label>
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  rows={2}
+                  className="resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+            )}
+
             <div className="flex flex-col gap-1">
               <label className="font-mono text-xs text-subtle-foreground">Date</label>
               <DateFilterInput value={dateKey} onChange={setDateKey} placeholder="Pick a date" className="bg-background" />
@@ -407,7 +478,14 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
             <button
               type="button"
               onClick={handleSave}
-              disabled={isPending || !branchId || !termId || !effectiveBatchId || !dateKey}
+              disabled={
+                isPending ||
+                !branchId ||
+                !termId ||
+                !effectiveBatchId ||
+                !dateKey ||
+                (resource.kind === "resource" && !title.trim())
+              }
               className="mt-1 self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
             >
               {isPending ? "Saving…" : "Save changes"}

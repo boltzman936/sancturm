@@ -86,6 +86,14 @@ export async function updateResourceFields(
     batchId?: string;
     subjectId?: string | null;
     dateKey?: string;
+    title?: string;
+    description?: string | null;
+    // Kept as one pairing (never set independently) — a "notes_lab"
+    // section item can only become notes/lab_manual, a "pyq" one only
+    // pyq/pyq_solution; switching a row across sections entirely isn't
+    // offered by the edit dialog, so this never needs to move a row
+    // between them.
+    resourceType?: string;
   }
 ) {
   const supabase = await createClient();
@@ -102,6 +110,9 @@ export async function updateResourceFields(
   if (fields.termId !== undefined) update.term_id = fields.termId;
   if (fields.batchId !== undefined) update.batch_id = fields.batchId;
   if (fields.subjectId !== undefined) update.subject_id = fields.subjectId;
+  if (fields.title !== undefined) update.title = fields.title;
+  if (fields.description !== undefined) update.description = fields.description;
+  if (fields.resourceType !== undefined) update.resource_type = fields.resourceType;
 
   if (fields.dateKey !== undefined) {
     const { data: existing, error: fetchError } = await supabase
