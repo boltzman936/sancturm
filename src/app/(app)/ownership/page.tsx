@@ -28,7 +28,18 @@ const LINK_BUTTON_BASE =
   "flex h-12 w-full items-center justify-center gap-2 whitespace-nowrap overflow-hidden rounded-md border border-border bg-card px-3 text-sm text-foreground transition-colors hover:border-primary active:border-primary hover:text-primary active:text-primary sm:h-14 sm:gap-2.5 sm:px-4 sm:text-base";
 
 const LINK_BUTTON_CLASS = LINK_BUTTON_BASE;
-const PORTFOLIO_BUTTON_CLASS = LINK_BUTTON_BASE;
+
+// Portfolio sits in its own full-width grid row (see the grid's own
+// comment below) so it can be centered under BOTH columns, but the
+// button itself must stay exactly one column wide — not stretch to
+// fill that whole row. calc() derives that width directly from the
+// grid's own gap (gap-2 → sm:gap-3), so "one column" here can never
+// drift out of sync with the real grid, at any viewport width,
+// without needing JS measurement or a fixed pixel guess.
+const PORTFOLIO_BUTTON_CLASS = cn(
+  LINK_BUTTON_BASE,
+  "w-[calc((100%-0.5rem)/2)] sm:w-[calc((100%-0.75rem)/2)]"
+);
 
 // Static — one person's profile, edited directly in
 // src/config/ownership.ts rather than through a database/admin UI.
@@ -71,11 +82,12 @@ export default function OwnershipPage() {
           grid-cols-2 on EVERY breakpoint (no lg: override) — desktop,
           tablet, and mobile all get the same 2-column layout; a cell's
           width just scales proportionally with the container instead
-          of the column count changing. Portfolio is a genuine 5th grid
-          item (not a separately-styled standalone row) so it gets the
-          exact same cell width as the 4 social buttons above it,
-          auto-placed into row 3 — the one deliberate way this reads as
-          "5 identical buttons," not "4 buttons plus one special one." */}
+          of the column count changing. Portfolio sits in its own
+          col-span-2 row so it can be CENTERED under the full grid
+          width — not left-aligned under column 1 (auto-placement's
+          default) and not stretched to fill the row (col-span-2 is
+          only on the wrapper; the button itself is pinned to exactly
+          one column's width, see PORTFOLIO_BUTTON_CLASS). */}
       <div className="grid grid-cols-2 gap-2 pb-14 sm:gap-3">
         {activeLinks.map((link) => (
           <a
@@ -90,23 +102,25 @@ export default function OwnershipPage() {
           </a>
         ))}
 
-        {hasPortfolio ? (
-          <a
-            href={OWNER.links.portfolio}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={PORTFOLIO_BUTTON_CLASS}
-          >
-            <Briefcase className="h-[18px] w-[18px] shrink-0 sm:h-5 sm:w-5" />
-            Portfolio
-          </a>
-        ) : (
-          <span aria-disabled="true" className={cn(PORTFOLIO_BUTTON_CLASS, "border-dashed text-subtle-foreground opacity-70")}>
-            <Briefcase className="h-[18px] w-[18px] shrink-0 sm:h-5 sm:w-5" />
-            Portfolio
-            <span className="font-mono text-xs">(soon)</span>
-          </span>
-        )}
+        <div className="col-span-2 flex justify-center">
+          {hasPortfolio ? (
+            <a
+              href={OWNER.links.portfolio}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={PORTFOLIO_BUTTON_CLASS}
+            >
+              <Briefcase className="h-[18px] w-[18px] shrink-0 sm:h-5 sm:w-5" />
+              Portfolio
+            </a>
+          ) : (
+            <span aria-disabled="true" className={cn(PORTFOLIO_BUTTON_CLASS, "border-dashed text-subtle-foreground opacity-70")}>
+              <Briefcase className="h-[18px] w-[18px] shrink-0 sm:h-5 sm:w-5" />
+              Portfolio
+              <span className="font-mono text-xs">(soon)</span>
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
