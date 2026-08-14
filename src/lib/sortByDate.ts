@@ -39,6 +39,23 @@ export function sortByAcademicPriority<T extends { created_at: string; is_pinned
   return sorted;
 }
 
+// Pinned -> created_at (direction per `order`), no batch concept —
+// Notices aren't batch-scoped for viewing (see useNotices), just
+// (branch, term), so there's nothing to group by ahead of the pin
+// tier the way resources group by batch first.
+export function sortByPinnedThenDate<T extends { created_at: string; is_pinned: boolean }>(
+  items: T[],
+  order: DateSortOrder
+): T[] {
+  const sorted = [...items];
+  sorted.sort((a, b) => {
+    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+    const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    return order === "newest" ? diff : -diff;
+  });
+  return sorted;
+}
+
 // Same batch-first rule as sortByAcademicPriority, without the pin
 // tier — Manage's rows aren't consistently typed with is_pinned
 // (notice/update rows are built without it), and its flat date-sort

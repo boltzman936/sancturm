@@ -15,6 +15,7 @@ import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { Notice } from "@/features/notices/types";
 import { localDateKey, formatShortDate } from "@/lib/date";
+import { sortByPinnedThenDate, type DateSortOrder } from "@/lib/sortByDate";
 import { cn, downloadFile } from "@/lib/utils";
 
 function matchesSearch(notice: Notice, query: string) {
@@ -51,6 +52,7 @@ export default function NoticesPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("");
+  const [dateSort, setDateSort] = useState<DateSortOrder>("newest");
   const [viewingNotice, setViewingNotice] = useState<Notice | null>(null);
 
   const filtered = useMemo(() => {
@@ -58,8 +60,9 @@ export default function NoticesPage() {
     const byDate = dateFilter
       ? base.filter((notice) => localDateKey(notice.created_at) === dateFilter)
       : base;
-    return byDate.filter((notice) => matchesSearch(notice, searchQuery));
-  }, [notices, dateFilter, searchQuery]);
+    const bySearch = byDate.filter((notice) => matchesSearch(notice, searchQuery));
+    return sortByPinnedThenDate(bySearch, dateSort);
+  }, [notices, dateFilter, searchQuery, dateSort]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -72,6 +75,23 @@ export default function NoticesPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 rounded-md border border-border bg-card p-1">
+          {(["newest", "oldest"] as const).map((option) => (
+            <button
+              key={option}
+              onClick={() => setDateSort(option)}
+              className={cn(
+                "rounded px-3 py-1.5 text-sm capitalize transition-colors",
+                dateSort === option
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground active:text-foreground"
+              )}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+
         <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
           <input
