@@ -102,6 +102,16 @@ export type SubjectStructureConfig = {
   updated_at: string;
 };
 
+// Same singleton pattern — `until` is the sole source of truth for
+// whether maintenance is active (null = not in maintenance).
+export type MaintenanceConfig = {
+  id: true;
+  until: string | null;
+  message: string | null;
+  updated_by: string | null;
+  updated_at: string;
+};
+
 export type Subject = {
   id: string;
   branch_id: string;
