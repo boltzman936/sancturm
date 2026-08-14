@@ -6,7 +6,7 @@ import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
 import { useBranchBySlug, useBranches } from "@/features/branches/queries";
-import { useTermBySlug } from "@/features/terms/queries";
+import { useTermBySlug, useTerms } from "@/features/terms/queries";
 import { usePyqResources, useSubjectsForTerm, type ResourceWithSubject } from "@/features/resources/queries";
 import { pyqSharingBranchNames } from "@/features/resources/pyqSharing";
 import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
@@ -17,7 +17,6 @@ import { ResourceViewerDialog } from "@/features/resources/components/ResourceVi
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
 import { localDateKey, formatShortDate } from "@/lib/date";
-import { shortTermLabel } from "@/lib/termLabel";
 import { matchesQuery } from "@/lib/search";
 import { sortByAcademicPriority } from "@/lib/sortByDate";
 import { cn } from "@/lib/utils";
@@ -39,12 +38,50 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
   );
 }
 
+// Relative to the year, not the absolute semester_number — a 2nd-Year
+// student should see "1st Semester"/"2nd Semester" (their own two),
+// not "3rd Semester"/"4th Semester" (the absolute numbering used
+// internally to keep every academic_terms row unique).
+function ordinalSemesterLabel(indexInYear: number) {
+  return indexInYear === 0 ? "1st Semester" : indexInYear === 1 ? "2nd Semester" : `${indexInYear + 1}th Semester`;
+}
+
 export default function PYQsPage() {
   const { term: termSlug } = useTerm();
-  const { data: term } = useTermBySlug(termSlug);
+  // The sidebar's coarse, always-resolves-to-current identity — stays
+  // completely untouched. `term` below is what everything downstream
+  // actually uses, and can be overridden to any semester within the
+  // same year via the Semester filter (see semesterOptions).
+  const { data: sidebarTerm } = useTermBySlug(termSlug);
+  const { data: allTerms } = useTerms();
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
   const { data: allBranches } = useBranches();
+
+  // Every semester belonging to the sidebar-resolved year — lets a
+  // student browse a semester that isn't CURRENTLY active (e.g. this
+  // year's own Sem 1, months after it ended) without touching the
+  // sidebar's own "pick your year" identity at all.
+  const semesterOptions = useMemo(() => {
+    if (!sidebarTerm || !allTerms) return [];
+    return allTerms
+      .filter((t) => t.year_number === sidebarTerm.year_number)
+      .sort((a, b) => a.semester_number - b.semester_number);
+  }, [sidebarTerm, allTerms]);
+
+  // null = defer to the sidebar-resolved (current) term. Session-local,
+  // not persisted — same as Subject/Type/Date, unlike Branch/Year/Batch.
+  const [semesterTermId, setSemesterTermId] = useState<string | null>(null);
+  const validSemesterIds = useMemo(
+    () => (semesterOptions.length ? [null, ...semesterOptions.map((t) => t.id)] : undefined),
+    [semesterOptions]
+  );
+  // Branch/Year are global (sidebar switchers) — no local onChange to
+  // extend, so this catches a semester pick that no longer belongs to
+  // the sidebar's year (Year changed) and defers back to current.
+  useResetInvalidSelection(semesterTermId, validSemesterIds, null, setSemesterTermId);
+
+  const term = semesterTermId ? allTerms?.find((t) => t.id === semesterTermId) : sidebarTerm;
   // Which branches' PYQs this viewer actually sees together — 1st Year
   // splits Core+AIML from AIDS, 2nd Year stays shared across all
   // three (see pyqSharing.ts). Resolved to real branch ids once both
@@ -190,7 +227,7 @@ export default function PYQsPage() {
         <h1 className="text-2xl font-medium text-foreground">PYQs</h1>
         <p className="text-muted-foreground">
           Previous year questions — {sharingDescription}
-          {term ? ` in ${shortTermLabel(term)}` : " this term"}.
+          {term ? ` in ${term.label}` : " this term"}.
         </p>
       </div>
 
@@ -235,6 +272,19 @@ export default function PYQsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <Select
+            value={term?.id ?? ""}
+            onChange={(event) => setSemesterTermId(event.target.value)}
+            className="w-[170px] shrink-0"
+          >
+            {semesterOptions.map((t, index) => (
+              <option key={t.id} value={t.id}>
+                {ordinalSemesterLabel(index)}
+                {t.id === sidebarTerm?.id ? " (current)" : ""}
+              </option>
+            ))}
+          </Select>
+
           <Select
             value={subjectFilter}
             onChange={(event) => setSubjectFilter(event.target.value)}
@@ -328,6 +378,15 @@ export default function PYQsPage() {
           </div>
         </div>
 
+        <Select value={term?.id ?? ""} onChange={(event) => setSemesterTermId(event.target.value)}>
+          {semesterOptions.map((t, index) => (
+            <option key={t.id} value={t.id}>
+              {ordinalSemesterLabel(index)}
+              {t.id === sidebarTerm?.id ? " (current)" : ""}
+            </option>
+          ))}
+        </Select>
+
         <div className="grid grid-cols-2 gap-2">
           <Select
             value={subjectFilter}
@@ -397,7 +456,7 @@ export default function PYQsPage() {
         </div>
       )}
 
-      {filtered.length > 0 && groupedByBatch.length > 1 && (
+      {filtered.length > 0 && (
         <div className="flex flex-col gap-5">
           {groupedByBatch.map((group) => (
             <div key={group.batchId ?? "none"} className="flex flex-col gap-2">
@@ -412,14 +471,6 @@ export default function PYQsPage() {
             </div>
           ))}
         </div>
-      )}
-
-      {filtered.length > 0 && groupedByBatch.length <= 1 && (
-        <ul className="flex flex-col gap-2">
-          {filtered.map((resource) => (
-            <ResourceCard key={resource.id} resource={resource} onView={setViewingResource} />
-          ))}
-        </ul>
       )}
 
       <ResourceViewerDialog

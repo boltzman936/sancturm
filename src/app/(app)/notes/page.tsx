@@ -6,7 +6,7 @@ import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
 import { useBranchBySlug } from "@/features/branches/queries";
-import { useTermBySlug } from "@/features/terms/queries";
+import { useTermBySlug, useTerms } from "@/features/terms/queries";
 import {
   useNotesAndLabResources,
   useSubjects,
@@ -20,7 +20,6 @@ import { ResourceViewerDialog } from "@/features/resources/components/ResourceVi
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
 import { localDateKey, formatShortDate } from "@/lib/date";
-import { shortTermLabel } from "@/lib/termLabel";
 import { matchesQuery } from "@/lib/search";
 import { sortByAcademicPriority } from "@/lib/sortByDate";
 import { cn } from "@/lib/utils";
@@ -46,11 +45,47 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
   );
 }
 
+// Relative to the year, not the absolute semester_number — see PYQs'
+// identical helper for why.
+function ordinalSemesterLabel(indexInYear: number) {
+  return indexInYear === 0 ? "1st Semester" : indexInYear === 1 ? "2nd Semester" : `${indexInYear + 1}th Semester`;
+}
+
 export default function NotesAndLabPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
   const { term: termSlug } = useTerm();
-  const { data: term } = useTermBySlug(termSlug);
+  // The sidebar's coarse, always-resolves-to-current identity — stays
+  // completely untouched. `term` below is what everything downstream
+  // actually uses, and can be overridden to any semester within the
+  // same year via the Semester filter (see semesterOptions).
+  const { data: sidebarTerm } = useTermBySlug(termSlug);
+  const { data: allTerms } = useTerms();
+
+  // Every semester belonging to the sidebar-resolved year — lets a
+  // student browse a semester that isn't CURRENTLY active (e.g. this
+  // year's own Sem 1, months after it ended) without touching the
+  // sidebar's own "pick your year" identity at all.
+  const semesterOptions = useMemo(() => {
+    if (!sidebarTerm || !allTerms) return [];
+    return allTerms
+      .filter((t) => t.year_number === sidebarTerm.year_number)
+      .sort((a, b) => a.semester_number - b.semester_number);
+  }, [sidebarTerm, allTerms]);
+
+  // null = defer to the sidebar-resolved (current) term. Session-local,
+  // not persisted — same as Subject/Type/Date, unlike Branch/Year/Batch.
+  const [semesterTermId, setSemesterTermId] = useState<string | null>(null);
+  const validSemesterIds = useMemo(
+    () => (semesterOptions.length ? [null, ...semesterOptions.map((t) => t.id)] : undefined),
+    [semesterOptions]
+  );
+  // Branch/Year are global (sidebar switchers) — no local onChange to
+  // extend, so this catches a semester pick that no longer belongs to
+  // the sidebar's year (Year changed) and defers back to current.
+  useResetInvalidSelection(semesterTermId, validSemesterIds, null, setSemesterTermId);
+
+  const term = semesterTermId ? allTerms?.find((t) => t.id === semesterTermId) : sidebarTerm;
 
   const [resourceType, setResourceType] = useState<NotesOrLab>("notes");
   const [dateSort, setDateSort] = useState<DateSort>("newest");
@@ -172,7 +207,7 @@ export default function NotesAndLabPage() {
         <h1 className="text-2xl font-medium text-foreground">Notes & lab</h1>
         <p className="text-muted-foreground">
           Notes and lab manuals for {branch?.name ?? "your branch"}
-          {term ? ` — ${shortTermLabel(term)}` : ""}.
+          {term ? ` — ${term.label}` : ""}.
         </p>
       </div>
 
@@ -214,6 +249,19 @@ export default function NotesAndLabPage() {
               </button>
             ))}
           </div>
+
+          <Select
+            value={term?.id ?? ""}
+            onChange={(event) => setSemesterTermId(event.target.value)}
+            className="w-[170px] shrink-0"
+          >
+            {semesterOptions.map((t, index) => (
+              <option key={t.id} value={t.id}>
+                {ordinalSemesterLabel(index)}
+                {t.id === sidebarTerm?.id ? " (current)" : ""}
+              </option>
+            ))}
+          </Select>
 
           <Select
             value={subjectFilter}
@@ -309,6 +357,15 @@ export default function NotesAndLabPage() {
             ))}
           </div>
         </div>
+
+        <Select value={term?.id ?? ""} onChange={(event) => setSemesterTermId(event.target.value)}>
+          {semesterOptions.map((t, index) => (
+            <option key={t.id} value={t.id}>
+              {ordinalSemesterLabel(index)}
+              {t.id === sidebarTerm?.id ? " (current)" : ""}
+            </option>
+          ))}
+        </Select>
 
         <div className="grid grid-cols-2 gap-2">
           <Select
