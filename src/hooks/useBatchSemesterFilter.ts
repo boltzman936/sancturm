@@ -154,16 +154,20 @@ export function useBatchSemesterFilter() {
 
   // Batch DEFAULT recomputation — fires only when actually needed:
   // first-ever visit (batchLabel never persisted), or the persisted/
-  // picked batch has nothing reached at or below the sidebar's
-  // CURRENT year ceiling (most commonly: the sidebar Year just changed
-  // to one this batch hasn't gotten to at all). Same ceiling as
-  // reachedTerms above — a batch that still has older, capped content
-  // to show under the new ceiling stays picked; it's only replaced
-  // once its options under that ceiling would be empty. An explicit
-  // "All batches" choice is always valid for any year and is never
-  // overridden. Never fires on a timer/re-render alone — only reacts
-  // to an actual mismatch, so a student's manual pick survives a
-  // refresh or the calendar date quietly advancing mid-session.
+  // picked batch isn't actually the one progressing through the
+  // sidebar's CURRENT year (an exact year_number match, not the
+  // reachedTerms ceiling above — this answers "is this batch AT this
+  // year", not "does it have any older content still viewable here").
+  // Deliberately exact: a batch that's only reached an EARLIER year
+  // (like a brand-new batch still in Year 1) isn't "the" batch for a
+  // later Year tab just because Year acts as a ceiling for what it
+  // shows once picked — switching Year must visibly jump to that
+  // year's own current batch, not silently keep showing an earlier
+  // one under the hood. An explicit "All batches" choice is always
+  // valid for any year and is never overridden. Never fires on a
+  // timer/re-render alone — only reacts to an actual mismatch, so a
+  // student's manual pick survives a refresh or the calendar date
+  // quietly advancing mid-session.
   useEffect(() => {
     if (yearNumber === undefined || !everyBatchTerms || !allBatches) return;
     if (batchLabel === ALL_BATCHES) return;
@@ -173,7 +177,7 @@ export function useBatchSemesterFilter() {
       !!pickedBatch &&
       everyBatchTerms.some(
         (bt) =>
-          bt.batch_id === pickedBatch.id && bt.term.year_number <= yearNumber && isDateReached(bt.start_date, todayKey)
+          bt.batch_id === pickedBatch.id && bt.term.year_number === yearNumber && isDateReached(bt.start_date, todayKey)
       );
     if (currentlyValid) return;
 
