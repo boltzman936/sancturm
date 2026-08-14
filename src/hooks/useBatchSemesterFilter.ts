@@ -39,19 +39,27 @@ function resolveDefaultBatchIdForYear(
 }
 
 /**
- * Batch+Semester scoping for student browsing (Notes/Lab/PYQ) — the
- * sidebar's "Switch year" (existing, untouched UI) is the real input:
- * Semester options never span years (1st Year only ever offers its
- * own 2 semesters, never a 2nd-Year one), and "the current batch" is
- * always resolved relative to whichever year the sidebar has picked.
+ * Batch+Semester scoping for student browsing (Notes/Lab/PYQ). The
+ * SELECTED BATCH is what determines academic progression — Semester
+ * options are always "whichever periods this batch has reached so
+ * far," per the real batch_terms calendar, never a fixed per-year
+ * list. The sidebar's "Switch year" acts as a ceiling on top of that,
+ * not an equality filter: picking "2nd Year" shows a batch's reached
+ * semesters THROUGH year 2 (which, for a batch that's already gotten
+ * that far, includes its earlier 1st-Year semesters too — a 2nd-Year
+ * student's own 1st-Year notes stay one click away); picking "1st
+ * Year" caps it back down to just that batch's 1st-Year semesters,
+ * even for a batch that's since moved on to 2nd Year. A future
+ * semester never appears regardless of the ceiling.
+ *
  * Batch and Semester DEFAULTS are computed dynamically from the real
  * academic calendar (batch_terms dates) — never hardcoded, never
  * derived from which batch happens to have uploads — but once a
  * student explicitly picks a Batch or Semester, that choice is
  * respected and not silently overwritten; defaults are only
  * recomputed when the current selection actually becomes invalid
- * (typically: the sidebar Year changed to one the picked batch hasn't
- * reached).
+ * (typically: the sidebar Year changed to one the picked batch has no
+ * reached content at or below).
  *
  * A single shared hook so Notes and PYQs can't drift out of sync on
  * this logic the way they already did once this session.
@@ -73,13 +81,18 @@ export function useBatchSemesterFilter() {
 
   const todayKey = localDateKey(new Date().toISOString());
 
-  // Reached AND scoped to the sidebar's Year — even under "All
-  // batches", Semester never spans years: 1st Year never shows
-  // Semester 3, 2nd Year never shows Semester 1.
+  // Reached, capped at the sidebar Year as a CEILING (year_number <=
+  // yearNumber) — not an equality filter. A batch that's progressed
+  // past the selected year still shows its full progress up through
+  // it (2nd Year + an advanced batch includes that batch's own 1st
+  // Year semesters); a batch that hasn't reached the selected year at
+  // all just shows whatever it has reached so far, still capped. A
+  // semester past the ceiling, or not yet started regardless of the
+  // ceiling, never appears.
   const reachedTerms = useMemo<ReachedTerm[]>(() => {
     if (yearNumber === undefined) return [];
     const source: ReachedTerm[] = (batchFilter === ALL_BATCHES ? everyBatchTerms : oneBatchTerms) ?? [];
-    const reached = source.filter((bt) => bt.term.year_number === yearNumber && isDateReached(bt.start_date, todayKey));
+    const reached = source.filter((bt) => bt.term.year_number <= yearNumber && isDateReached(bt.start_date, todayKey));
     if (batchFilter !== ALL_BATCHES) return reached;
     // "All batches": union across every batch (within this year),
     // deduped by term_id — if ANY batch has reached a period, it's a
@@ -105,13 +118,26 @@ export function useBatchSemesterFilter() {
     yearNumber === undefined ||
     (batchFilter === ALL_BATCHES ? everyBatchTerms === undefined : oneBatchTerms === undefined);
 
-  // null = defer to whichever period is calendar-current.
+  // Genuinely mid-period right now (start_date <= today <= end_date) —
+  // "" when nothing in the (possibly ceiling-capped) list is actually
+  // active, e.g. every reached semester in view has already finished.
+  // This — not currentTermId below — is what the "(current)" badge
+  // should be keyed on; conflating the two would badge a semester
+  // that's merely the most-recently-finished one.
+  const liveCurrentTermId = useMemo(() => {
+    const live = reachedTerms.find((bt) => bt.start_date <= todayKey && todayKey <= bt.end_date);
+    return live?.term_id ?? "";
+  }, [reachedTerms, todayKey]);
+
+  // null = defer to whichever period is calendar-current, or — if
+  // nothing in view is actually active — the most recently reached
+  // one. Purely a default-selection fallback, not a "this is live"
+  // claim; see liveCurrentTermId for that.
   const [termId, setTermIdState] = useState<string | null>(null);
   const currentTermId = useMemo(() => {
     if (reachedTerms.length === 0) return "";
-    const current = reachedTerms.find((bt) => bt.start_date <= todayKey && todayKey <= bt.end_date);
-    return (current ?? reachedTerms[reachedTerms.length - 1]).term_id;
-  }, [reachedTerms, todayKey]);
+    return liveCurrentTermId || reachedTerms[reachedTerms.length - 1].term_id;
+  }, [reachedTerms, liveCurrentTermId]);
   const effectiveTermId = termId ?? currentTermId;
 
   // Batch or Year changed underneath an explicit Semester pick that's
@@ -128,10 +154,13 @@ export function useBatchSemesterFilter() {
 
   // Batch DEFAULT recomputation — fires only when actually needed:
   // first-ever visit (batchLabel never persisted), or the persisted/
-  // picked batch no longer has a reached row for the sidebar's
-  // CURRENT year (most commonly: the sidebar Year just changed to one
-  // this batch hasn't gotten to, or already passed). An explicit "All
-  // batches" choice is always valid for any year and is never
+  // picked batch has nothing reached at or below the sidebar's
+  // CURRENT year ceiling (most commonly: the sidebar Year just changed
+  // to one this batch hasn't gotten to at all). Same ceiling as
+  // reachedTerms above — a batch that still has older, capped content
+  // to show under the new ceiling stays picked; it's only replaced
+  // once its options under that ceiling would be empty. An explicit
+  // "All batches" choice is always valid for any year and is never
   // overridden. Never fires on a timer/re-render alone — only reacts
   // to an actual mismatch, so a student's manual pick survives a
   // refresh or the calendar date quietly advancing mid-session.
@@ -144,7 +173,7 @@ export function useBatchSemesterFilter() {
       !!pickedBatch &&
       everyBatchTerms.some(
         (bt) =>
-          bt.batch_id === pickedBatch.id && bt.term.year_number === yearNumber && isDateReached(bt.start_date, todayKey)
+          bt.batch_id === pickedBatch.id && bt.term.year_number <= yearNumber && isDateReached(bt.start_date, todayKey)
       );
     if (currentlyValid) return;
 
@@ -178,6 +207,7 @@ export function useBatchSemesterFilter() {
     batchFilter,
     setBatchFilter,
     reachedTerms,
+    liveCurrentTermId,
     effectiveTermId,
     effectiveTerm,
     currentTermId,

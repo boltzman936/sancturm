@@ -37,16 +37,16 @@ export default function PYQsPage() {
   const { data: branch } = useBranchBySlug(branchSlug);
   const { data: allBranches } = useBranches();
 
-  // Batch-primary — same model as Notes & Lab (see its identical
-  // comment). The sidebar's own "Switch year" stays untouched; this
-  // page just stops consulting it for its own scoping.
+  // Selected Batch determines academic progression; the sidebar's
+  // "Switch year" is a ceiling on top of it — see
+  // useBatchSemesterFilter's own doc comment (shared with Notes & Lab).
   const {
     allBatches,
     batchFilter,
     setBatchFilter,
     reachedTerms,
     effectiveTerm: term,
-    currentTermId,
+    liveCurrentTermId,
     setTermId,
   } = useBatchSemesterFilter();
 
@@ -180,7 +180,7 @@ export default function PYQsPage() {
       {reachedTerms.map((bt) => (
         <option key={bt.term_id} value={bt.term_id}>
           {ordinalSemesterLabel(bt.term.semester_number)}
-          {bt.term_id === currentTermId ? " (current)" : ""}
+          {bt.term_id === liveCurrentTermId ? " (current)" : ""}
         </option>
       ))}
     </Select>

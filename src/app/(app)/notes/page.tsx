@@ -43,19 +43,16 @@ export default function NotesAndLabPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
 
-  // Batch-primary — same model CRUploadForm already uses: Batch picked
-  // first (or "All batches"), Semester scoped to whichever periods
-  // that batch has actually reached, Year derived from whichever
-  // Semester ends up in effect. The sidebar's own "Switch year" stays
-  // untouched (still used elsewhere) — this page just stops consulting
-  // it for its own scoping, per this exact rewrite's confirmed scope.
+  // Selected Batch determines academic progression; the sidebar's
+  // "Switch year" is a ceiling on top of it, not an independent
+  // filter — see useBatchSemesterFilter's own doc comment.
   const {
     allBatches,
     batchFilter,
     setBatchFilter,
     reachedTerms,
     effectiveTerm: term,
-    currentTermId,
+    liveCurrentTermId,
     setTermId,
   } = useBatchSemesterFilter();
 
@@ -156,7 +153,7 @@ export default function NotesAndLabPage() {
       {reachedTerms.map((bt) => (
         <option key={bt.term_id} value={bt.term_id}>
           {ordinalSemesterLabel(bt.term.semester_number)}
-          {bt.term_id === currentTermId ? " (current)" : ""}
+          {bt.term_id === liveCurrentTermId ? " (current)" : ""}
         </option>
       ))}
     </Select>
