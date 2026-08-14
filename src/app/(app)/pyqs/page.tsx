@@ -137,12 +137,22 @@ export default function PYQsPage() {
     return sortByDate(bySearch, dateSort);
   }, [resources, pyqKind, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort]);
 
+  // Describes whichever sharing group actually applies right now —
+  // 1st Year genuinely isn't "every CSE branch" anymore (AIDS has its
+  // own separate PYQs there), so this can't be a fixed string.
+  const sharingDescription =
+    term && branch
+      ? pyqSharingBranchNames(term.year_number, branch.name).length > 1
+        ? `shared between ${pyqSharingBranchNames(term.year_number, branch.name).join(" and ")}`
+        : `separate from other branches`
+      : "shared across your branch";
+
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-2xl font-medium text-foreground">PYQs</h1>
         <p className="text-muted-foreground">
-          Previous year questions — shared across every CSE branch
+          Previous year questions — {sharingDescription}
           {term ? ` in ${term.label.split(" - ")[0]}` : " this term"}.
         </p>
       </div>
