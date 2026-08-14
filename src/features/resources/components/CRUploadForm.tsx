@@ -294,15 +294,20 @@ export function CRUploadForm({
         setCustomDate("");
       } catch (err) {
         const cancelled = err instanceof DOMException && err.name === "AbortError";
+        const message = err instanceof Error ? err.message : null;
         setError(
           cancelled
             ? uploadedCount > 0
               ? `Cancelled — ${uploadedCount} of ${filesToUpload.length} file${filesToUpload.length > 1 ? "s" : ""} were already published before you stopped it.`
               : "Cancelled."
             : uploadedCount > 0
-              ? `Published ${uploadedCount} of ${filesToUpload.length} file${filesToUpload.length > 1 ? "s" : ""} — the rest failed. Try again for the ones that didn't go through.`
-              : "Something went wrong. Try again."
+              ? `Published ${uploadedCount} of ${filesToUpload.length} file${filesToUpload.length > 1 ? "s" : ""} — the rest failed${message ? `: ${message}` : ""}. Try again for the ones that didn't go through.`
+              : (message ?? "Something went wrong. Try again.")
         );
+        // Already-published files stay published — dropping them from the
+        // picker so a retry only resubmits what actually failed, instead
+        // of re-publishing duplicates.
+        if (uploadedCount > 0) setFiles(filesToUpload.slice(uploadedCount));
       } finally {
         setUploadProgress(null);
         setUploadingFileIndex(null);
@@ -467,9 +472,18 @@ export function CRUploadForm({
             }}
             className="bg-background"
           >
+            {/* Full label ("1st Year - Semester 1"), not truncated to
+                just "1st Year" — a year can have more than one
+                semester now (Batch), and this picker genuinely needs
+                to distinguish them, unlike onboarding's coarser "pick
+                your year" (which resolves to whichever is current
+                instead of listing every semester at all). Truncating
+                here made two different semesters both read as the
+                literal same "1st Year" text with no way to tell which
+                was which. */}
             {terms.map((term) => (
               <option key={term.id} value={term.id}>
-                {term.label.split(" - ")[0]}
+                {term.label}
               </option>
             ))}
           </Select>

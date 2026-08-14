@@ -90,6 +90,12 @@ export type ManageableResource = {
   term_id: string | null;
   batch_id: string | null;
   subject_id: string | null;
+  // Only ever true for a "notice" row — resources/updates have no
+  // CR-only concept at all. RLS-enforced (see
+  // supabase/add_notice_cr_only.sql), so a student browser never even
+  // receives a cr_only row in the first place; this is purely display
+  // for CR/admin, who DO receive it.
+  cr_only: boolean;
 };
 
 // Terms show as just "1st Year" / "2nd Year" everywhere in the UI —
@@ -252,6 +258,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   const [batchId, setBatchId] = useState(resource.batch_id ?? "");
   const [subjectId, setSubjectId] = useState(resource.subject_id ?? "");
   const [dateKey, setDateKey] = useState(localDateKey(resource.created_at));
+  const [crOnly, setCrOnly] = useState(resource.cr_only);
 
   const { data: branches } = useBranches();
   const { data: terms } = useTerms();
@@ -276,6 +283,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
             branchId,
             termId,
             batchId: effectiveBatchId,
+            crOnly,
             dateKey,
           });
         } else {
@@ -364,6 +372,18 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
               </Select>
             </div>
 
+            {resource.kind === "notice" && (
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={crOnly}
+                  onChange={(event) => setCrOnly(event.target.checked)}
+                  className="h-4 w-4 accent-primary"
+                />
+                Notice for CR only
+              </label>
+            )}
+
             {resource.kind === "resource" && (
               <div className="flex flex-col gap-1">
                 <label className="font-mono text-xs text-subtle-foreground">Subject</label>
@@ -439,7 +459,14 @@ function ResourceRow({
           className="h-4 w-4 shrink-0 accent-primary"
         />
         <div className="min-w-0">
-          <p className="truncate text-foreground">{resource.title}</p>
+          <p className="flex items-center gap-1.5">
+            <span className="truncate text-foreground">{resource.title}</span>
+            {resource.cr_only && (
+              <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                CR only
+              </span>
+            )}
+          </p>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-subtle-foreground">
             {showTerm && (
               <>
@@ -522,7 +549,11 @@ export function ManageResourceList({
   // standard branch order (AIML, Core, AIDS) straight from the query,
   // and alphabetizing here would silently undo that.
   const branchOptions = useMemo(() => branches.map((b) => b.name), [branches]);
-  const termOptions = useMemo(() => terms.map((t) => termShortLabel(t)), [terms]);
+  // Dedupe — Batch/Semester means `terms` can now hold more than one row
+  // per year (e.g. "1st Year - Semester 1" and "1st Year - Semester 2"),
+  // but this filter matches at the coarser termShortLabel() ("1st Year")
+  // granularity, so without this it showed the same option twice.
+  const termOptions = useMemo(() => Array.from(new Set(terms.map((t) => termShortLabel(t)))), [terms]);
   const batchOptions = useMemo(() => batches.map((b) => b.label), [batches]);
 
   // Fixed set, not derived — these are the app's upload types

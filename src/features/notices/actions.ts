@@ -91,6 +91,11 @@ export async function createNoticeAllBranches(formData: FormData) {
 
   const title = formData.get("title") as string;
   const fileUrl = formData.get("fileUrl") as string;
+  // Only reachable at all when the role check above already confirmed
+  // admin, so this is safe to read directly — createNotice (the CR
+  // path) never reads this field at all, forcing it false for anyone
+  // who isn't admin by construction, not by trusting client input.
+  const crOnly = (formData.get("crOnly") as string) === "true";
   const branchIds = JSON.parse(formData.get("branchIds") as string) as string[];
   if (!Array.isArray(branchIds) || !branchIds.every((id) => typeof id === "string") || !branchIds.length) {
     throw new Error("Invalid branch selection.");
@@ -111,6 +116,7 @@ export async function createNoticeAllBranches(formData: FormData) {
         title,
         pdf_url: fileUrl,
         important_dates: [],
+        cr_only: crOnly,
       });
     }
   }
@@ -135,6 +141,7 @@ export async function createCustomNoticeAllBranches(formData: FormData) {
 
   const title = formData.get("title") as string;
   const body = formData.get("body") as string;
+  const crOnly = (formData.get("crOnly") as string) === "true";
   const branchIds = JSON.parse(formData.get("branchIds") as string) as string[];
   if (!Array.isArray(branchIds) || !branchIds.every((id) => typeof id === "string") || !branchIds.length) {
     throw new Error("Invalid branch selection.");
@@ -156,6 +163,7 @@ export async function createCustomNoticeAllBranches(formData: FormData) {
         body,
         pdf_url: null,
         important_dates: [],
+        cr_only: crOnly,
       });
     }
   }
@@ -225,7 +233,7 @@ export async function deleteNotice(noticeId: string) {
  */
 export async function updateNoticeFields(
   noticeId: string,
-  fields: { branchId?: string; termId?: string; batchId?: string; dateKey?: string }
+  fields: { branchId?: string; termId?: string; batchId?: string; crOnly?: boolean; dateKey?: string }
 ) {
   const supabase = await createClient();
   const {
@@ -236,10 +244,11 @@ export async function updateNoticeFields(
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
 
-  const update: Record<string, string> = {};
+  const update: Record<string, string | boolean> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;
   if (fields.termId !== undefined) update.term_id = fields.termId;
   if (fields.batchId !== undefined) update.batch_id = fields.batchId;
+  if (fields.crOnly !== undefined) update.cr_only = fields.crOnly;
 
   if (fields.dateKey !== undefined) {
     const { data: existing, error: fetchError } = await supabase

@@ -129,6 +129,18 @@ export default function NoticesPage() {
                       <Pin className="h-3.5 w-3.5 shrink-0 fill-current text-primary" />
                     )}
                     <p className="text-foreground">{notice.title}</p>
+                    {/* Only ever true here because RLS already kept a
+                        cr_only notice from being fetched at all unless
+                        this viewer is signed in as CR/admin — a
+                        student's browser never receives this row to
+                        begin with (see supabase/add_notice_cr_only.sql),
+                        so no extra role check is needed just to show
+                        the badge. */}
+                    {notice.cr_only && (
+                      <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                        CR only
+                      </span>
+                    )}
                   </div>
                   <p className="mt-1 font-mono text-xs text-subtle-foreground">
                     {formatShortDate(notice.created_at)}

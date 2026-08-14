@@ -163,6 +163,10 @@ export type Notice = {
   branch_id: string;
   term_id: string;
   batch_id: string;
+  // Visible only to signed-in CR/admin when true — RLS-enforced (see
+  // supabase/add_notice_cr_only.sql), not just hidden by the UI.
+  // Admin-only to set (see notices/actions.ts).
+  cr_only: boolean;
   title: string;
   // Exactly one of these is set — pdf_url for an uploaded PDF, body
   // for a notice typed directly in the custom composer.

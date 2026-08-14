@@ -38,7 +38,7 @@ export default async function CRManagePage() {
   let noticesQuery = supabase
     .from("notices")
     .select(
-      "id, title, created_at, branch_id, term_id, batch_id, branch:branches(name), term:academic_terms(label), batch:batches(label)"
+      "id, title, created_at, branch_id, term_id, batch_id, cr_only, branch:branches(name), term:academic_terms(label), batch:batches(label)"
     )
     .order("created_at", { ascending: false });
   if (role.type === "cr") {
@@ -81,6 +81,8 @@ export default async function CRManagePage() {
     kind: "resource",
     term: Array.isArray(resource.term) ? resource.term[0] ?? null : resource.term,
     batch: Array.isArray(resource.batch) ? resource.batch[0] ?? null : resource.batch,
+    // Resources have no CR-only concept — only notices do.
+    cr_only: false,
   }));
 
   const noticeItems: ManageableResource[] = (notices ?? []).map((notice) => ({
@@ -100,6 +102,7 @@ export default async function CRManagePage() {
     term_id: notice.term_id,
     batch_id: notice.batch_id,
     subject_id: null,
+    cr_only: notice.cr_only,
   }));
 
   const updateItems: ManageableResource[] = (updates ?? []).map((update) => ({
@@ -121,6 +124,7 @@ export default async function CRManagePage() {
     term_id: null,
     batch_id: null,
     subject_id: null,
+    cr_only: false,
   }));
 
   return (

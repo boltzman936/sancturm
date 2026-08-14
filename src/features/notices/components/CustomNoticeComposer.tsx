@@ -41,6 +41,8 @@ export function CustomNoticeComposer({
   const [selectedTermIds, setSelectedTermIds] = useState<string[]>(
     fixedTermId ? [fixedTermId] : terms[0] ? [terms[0].id] : []
   );
+  // Admin-only — same reasoning as NoticeComposer's identical field.
+  const [crOnly, setCrOnly] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +70,7 @@ export function CustomNoticeComposer({
         if (isAdmin) {
           formData.set("termIds", JSON.stringify(selectedTermIds));
           formData.set("branchIds", JSON.stringify(selectedBranchIds));
+          formData.set("crOnly", String(crOnly));
           await createCustomNoticeAllBranches(formData);
         } else {
           formData.set("termId", termId);
@@ -78,6 +81,7 @@ export function CustomNoticeComposer({
         queryClient.invalidateQueries({ queryKey: ["notices"] });
         setSuccess(true);
         formRef.current?.reset();
+        setCrOnly(false);
       } catch {
         setError("Something went wrong. Try again.");
       }
@@ -107,9 +111,11 @@ export function CustomNoticeComposer({
               onChange={(event) => setTermId(event.target.value)}
               className="bg-background"
             >
+              {/* Full label, not truncated — see CRUploadForm's
+                  identical comment. */}
               {terms.map((term) => (
                 <option key={term.id} value={term.id}>
-                  {term.label.split(" - ")[0]}
+                  {term.label}
                 </option>
               ))}
             </Select>
@@ -145,6 +151,21 @@ export function CustomNoticeComposer({
             ))}
           </Select>
         </div>
+      )}
+
+      {isAdmin && (
+        <label className="flex items-center gap-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={crOnly}
+            onChange={(event) => setCrOnly(event.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          Notice for CR only
+          <span className="font-mono text-xs normal-case text-subtle-foreground/70">
+            (hidden from students, visible to CR/admin)
+          </span>
+        </label>
       )}
 
       <div className="flex flex-col gap-1">

@@ -47,6 +47,10 @@ export function NoticeComposer({
     fixedTermId ? [fixedTermId] : terms[0] ? [terms[0].id] : []
   );
   const [file, setFile] = useState<File | null>(null);
+  // Admin-only — the checkbox itself only renders for isAdmin, and the
+  // server action only ever reads this field on the admin-only bulk-
+  // publish path, so a CR has no way to set this true either way.
+  const [crOnly, setCrOnly] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
@@ -81,6 +85,7 @@ export function NoticeComposer({
         if (isAdmin) {
           formData.set("termIds", JSON.stringify(selectedTermIds));
           formData.set("branchIds", JSON.stringify(selectedBranchIds));
+          formData.set("crOnly", String(crOnly));
           await createNoticeAllBranches(formData);
         } else {
           formData.set("termId", termId);
@@ -96,6 +101,7 @@ export function NoticeComposer({
         setSuccess(true);
         formRef.current?.reset();
         setFile(null);
+        setCrOnly(false);
       } catch {
         setError("Something went wrong. Try again.");
       } finally {
@@ -127,9 +133,12 @@ export function NoticeComposer({
               onChange={(event) => setTermId(event.target.value)}
               className="bg-background"
             >
+              {/* Full label, not truncated — see CRUploadForm's
+                  identical comment (a year can have more than one
+                  semester now). */}
               {terms.map((term) => (
                 <option key={term.id} value={term.id}>
-                  {term.label.split(" - ")[0]}
+                  {term.label}
                 </option>
               ))}
             </Select>
@@ -165,6 +174,21 @@ export function NoticeComposer({
             ))}
           </Select>
         </div>
+      )}
+
+      {isAdmin && (
+        <label className="flex items-center gap-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={crOnly}
+            onChange={(event) => setCrOnly(event.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          Notice for CR only
+          <span className="font-mono text-xs normal-case text-subtle-foreground/70">
+            (hidden from students, visible to CR/admin)
+          </span>
+        </label>
       )}
 
       <div className="flex flex-col gap-1">

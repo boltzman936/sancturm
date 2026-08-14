@@ -34,15 +34,49 @@ export async function uploadFileToR2(
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", uploadUrl);
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+
+    // Detects a genuinely STUCK upload (no bytes moving at all, ever)
+    // without penalizing a legitimately slow-but-progressing one — a
+    // fixed total-duration timeout would kill a real multi-minute
+    // upload of a large scanned PDF on a slow connection just as
+    // readily as an actually-hung one. Resets on every real progress
+    // event; only fires once nothing has moved for this long straight
+    // through. Without this, a connection that silently drops mid-PUT
+    // (no error event, no progress, just... nothing) left the whole
+    // form stuck on "Uploading…" forever, with no way out except Cancel.
+    const STALL_TIMEOUT_MS = 30_000;
+    let stalledOut = false;
+    let stallTimer: ReturnType<typeof setTimeout>;
+    function resetStallTimer() {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        stalledOut = true;
+        xhr.abort();
+      }, STALL_TIMEOUT_MS);
+    }
+    resetStallTimer();
+
     xhr.upload.onprogress = (event) => {
+      resetStallTimer();
       if (event.lengthComputable) onProgress?.(event.loaded / event.total);
     };
     xhr.onload = () => {
+      clearTimeout(stallTimer);
       if (xhr.status >= 200 && xhr.status < 300) resolve();
       else reject(new Error("Upload to storage failed."));
     };
-    xhr.onerror = () => reject(new Error("Upload to storage failed."));
-    xhr.onabort = () => reject(new DOMException("Upload cancelled.", "AbortError"));
+    xhr.onerror = () => {
+      clearTimeout(stallTimer);
+      reject(new Error("Upload failed — check your connection and try again."));
+    };
+    xhr.onabort = () => {
+      clearTimeout(stallTimer);
+      reject(
+        stalledOut
+          ? new Error("Upload stalled — no progress for 30s. Check your connection and try again.")
+          : new DOMException("Upload cancelled.", "AbortError")
+      );
+    };
     signal?.addEventListener("abort", () => xhr.abort());
     xhr.send(file);
   });

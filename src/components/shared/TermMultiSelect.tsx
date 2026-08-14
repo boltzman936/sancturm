@@ -33,7 +33,7 @@ export function TermMultiSelect({
               : selectedTermIds.length === terms.length
                 ? "All years"
                 : selectedTermIds.length === 1
-                  ? terms.find((t) => t.id === selectedTermIds[0])?.label.split(" - ")[0]
+                  ? terms.find((t) => t.id === selectedTermIds[0])?.label
                   : `${selectedTermIds.length} years selected`}
           </span>
           <ChevronsUpDown className="h-4 w-4 text-subtle-foreground" />
@@ -69,7 +69,7 @@ export function TermMultiSelect({
                 onSelect={(event) => event.preventDefault()}
                 className="flex cursor-pointer items-center justify-between rounded-sm px-2 py-2 text-sm text-foreground outline-none data-[highlighted]:bg-background-secondary"
               >
-                {term.label.split(" - ")[0]}
+                {term.label}
                 {checked && <Check className="h-4 w-4 text-primary" />}
               </DropdownMenu.CheckboxItem>
             );
