@@ -1,49 +1,34 @@
-import { Briefcase, Code } from "lucide-react";
+import { Briefcase } from "lucide-react";
 import { OWNER } from "@/config/ownership";
 import { OwnerPhoto } from "./OwnerPhoto";
-import {
-  WhatsAppIcon,
-  GmailIcon,
-  InstagramIcon,
-  SnapchatIcon,
-  LinkedInIcon,
-  RedditIcon,
-} from "@/components/shared/BrandIcons";
+import { WhatsAppIcon, GmailIcon, InstagramIcon, LinkedInIcon } from "@/components/shared/BrandIcons";
 import { cn } from "@/lib/utils";
 
-// lucide-react dropped brand/logo icons — Code stands in for GitHub
-// (no close brand equivalent exists). WhatsApp, Gmail, Instagram,
-// Snapchat, LinkedIn, and Reddit get real hand-drawn "app icon" badges
-// from BrandIcons — each one carries its own brand color baked in, not
-// driven by `currentColor`, so no color class is needed here for
-// those. Portfolio is handled separately below — it's not a real link
-// yet, so it needs a "coming soon" state, not simple hide.
+// Exactly 4 social links + Portfolio — see this file's own final-layout
+// comment below for why that's a 2x2 grid plus one more cell, not 3
+// columns. Each brand icon carries its own color baked in (not
+// currentColor-driven), so no color class is needed here.
 const LINK_META = [
   { key: "whatsapp", label: "WhatsApp", icon: WhatsAppIcon },
   { key: "email", label: "Email", icon: GmailIcon },
-  { key: "github", label: "GitHub", icon: Code },
   { key: "instagram", label: "Instagram", icon: InstagramIcon },
-  { key: "snapchat", label: "Snapchat", icon: SnapchatIcon },
   { key: "linkedin", label: "LinkedIn", icon: LinkedInIcon },
-  { key: "reddit", label: "Reddit", icon: RedditIcon },
 ] as const;
 
-// Shared by every button below — height, radius, padding, and colors
-// stay identical for the social grid AND Portfolio. `w-full` (not a
-// fixed px width) so each button fills its grid cell exactly — sizing
-// itself to whatever 3 equal columns works out to at the current
-// viewport width, instead of a fixed width that either wraps to a new
-// row or leaves dead space depending on how wide the container is.
+// Shared by every button, Portfolio included — identical height,
+// radius, padding, gap, and text size everywhere, so Portfolio reads
+// as a normal button in the set (just dashed/disabled), not a
+// special-cased one. Slightly larger than before (h-12/h-14, text-sm/
+// text-base) since dropping Snapchat/Reddit left the page feeling
+// empty at the old sizing. `w-full` fills whatever a 2-column grid
+// cell works out to — same fixed 2 columns at every breakpoint (see
+// the grid below), so this never needs a responsive column-count
+// override.
 const LINK_BUTTON_BASE =
-  "flex h-11 w-full items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden rounded-md border border-border bg-card px-2 text-xs text-foreground transition-colors hover:border-primary active:border-primary hover:text-primary active:text-primary sm:h-12 sm:gap-2 sm:px-3 sm:text-sm";
+  "flex h-12 w-full items-center justify-center gap-2 whitespace-nowrap overflow-hidden rounded-md border border-border bg-card px-3 text-sm text-foreground transition-colors hover:border-primary active:border-primary hover:text-primary active:text-primary sm:h-14 sm:gap-2.5 sm:px-4 sm:text-base";
 
 const LINK_BUTTON_CLASS = LINK_BUTTON_BASE;
-
-// Portfolio sits on its own row, centered, at ~2/3 width — capped so
-// it doesn't balloon on wide screens — rather than joining the social
-// grid, since as the one button with a "(soon)" qualifier it reads
-// better as a deliberately wider, standalone row.
-const PORTFOLIO_BUTTON_CLASS = cn(LINK_BUTTON_BASE, "mx-auto w-2/3 max-w-[260px]");
+const PORTFOLIO_BUTTON_CLASS = LINK_BUTTON_BASE;
 
 // Static — one person's profile, edited directly in
 // src/config/ownership.ts rather than through a database/admin UI.
@@ -82,27 +67,28 @@ export default function OwnershipPage() {
 
       {/* A real CSS grid, not flex-wrap — flex-wrap reflows to however
           many columns fit once the container gets wide enough, which is
-          exactly the "arrangement changed" bug this fixes. grid-cols-2
-          (mobile/tablet) and lg:grid-cols-3 (desktop, 1024px+) pin an
-          exact column count at each tier; each button is w-full so it
-          sizes itself to whatever that column works out to, rather than
-          wrapping to a new row or leaving dead space. Only Portfolio
-          sits outside this grid, on its own centered row below. */}
-      <div className="flex flex-col gap-2 pb-14">
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-          {activeLinks.map((link) => (
-            <a
-              key={link.key}
-              href={OWNER.links[link.key]}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={LINK_BUTTON_CLASS}
-            >
-              <link.icon className="h-4 w-4 shrink-0 sm:h-[18px] sm:w-[18px]" />
-              {link.label}
-            </a>
-          ))}
-        </div>
+          exactly the "arrangement changed" bug this fixes. Fixed at
+          grid-cols-2 on EVERY breakpoint (no lg: override) — desktop,
+          tablet, and mobile all get the same 2-column layout; a cell's
+          width just scales proportionally with the container instead
+          of the column count changing. Portfolio is a genuine 5th grid
+          item (not a separately-styled standalone row) so it gets the
+          exact same cell width as the 4 social buttons above it,
+          auto-placed into row 3 — the one deliberate way this reads as
+          "5 identical buttons," not "4 buttons plus one special one." */}
+      <div className="grid grid-cols-2 gap-2 pb-14 sm:gap-3">
+        {activeLinks.map((link) => (
+          <a
+            key={link.key}
+            href={OWNER.links[link.key]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={LINK_BUTTON_CLASS}
+          >
+            <link.icon className="h-[18px] w-[18px] shrink-0 sm:h-5 sm:w-5" />
+            {link.label}
+          </a>
+        ))}
 
         {hasPortfolio ? (
           <a
@@ -111,12 +97,12 @@ export default function OwnershipPage() {
             rel="noopener noreferrer"
             className={PORTFOLIO_BUTTON_CLASS}
           >
-            <Briefcase className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+            <Briefcase className="h-[18px] w-[18px] shrink-0 sm:h-5 sm:w-5" />
             Portfolio
           </a>
         ) : (
           <span aria-disabled="true" className={cn(PORTFOLIO_BUTTON_CLASS, "border-dashed text-subtle-foreground opacity-70")}>
-            <Briefcase className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+            <Briefcase className="h-[18px] w-[18px] shrink-0 sm:h-5 sm:w-5" />
             Portfolio
             <span className="font-mono text-xs">(soon)</span>
           </span>

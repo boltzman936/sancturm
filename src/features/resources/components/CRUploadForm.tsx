@@ -8,7 +8,7 @@ import { useBatchesForTerm } from "@/features/batches/queries";
 import { uploadResourceDirect, uploadResourceDirectAllBranches } from "@/features/resources/actions";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
-import { titleFromFileName } from "@/features/uploads/titleFromFileName";
+import { titleFromFileName, looksLikeMeaninglessName } from "@/features/uploads/titleFromFileName";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
 import { BranchMultiSelect } from "@/components/shared/BranchMultiSelect";
@@ -17,7 +17,7 @@ import { NoticeComposer } from "@/features/notices/components/NoticeComposer";
 import { CustomNoticeComposer } from "@/features/notices/components/CustomNoticeComposer";
 import { UpdateComposer } from "@/features/sancturmUpdates/components/UpdateComposer";
 import { CustomUpdateComposer } from "@/features/sancturmUpdates/components/CustomUpdateComposer";
-import { localDateKey } from "@/lib/date";
+import { localDateKey, formatShortDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 type UploadType = "notes" | "lab_manual" | "pyq" | "notice" | "update";
@@ -190,8 +190,20 @@ export function CRUploadForm({
   // what would actually get inserted.
   function titleForFile(file: File, index: number, total: number) {
     const trimmed = titleValue.trim();
-    if (!trimmed) return titleFromFileName(file.name);
-    return total > 1 ? `${trimmed} (${index + 1})` : trimmed;
+    const base = trimmed ? trimmed : fallbackTitleForFile(file);
+    return total > 1 ? `${base} (${index + 1})` : base;
+  }
+  // A file's own name is only a good fallback title when it's actually
+  // a name someone chose — a screenshot tool's auto-generated hash or
+  // a WhatsApp media id (e.g. "ca9e7d8c-314c-4d4c-9655-a5351133f6c4",
+  // "HO8nBszXgAA4jrq") is meaningless as a title even though it IS the
+  // file's real name. Falls back further to Subject + today's date in
+  // that case, since that's still more useful than the raw hash.
+  function fallbackTitleForFile(file: File) {
+    const fromFileName = titleFromFileName(file.name);
+    if (!looksLikeMeaninglessName(fromFileName)) return fromFileName;
+    const subjectName = subjects?.find((subject) => subject.id === subjectValue)?.name;
+    return subjectName ? `${subjectName} — ${formatShortDate(new Date().toISOString())}` : "Untitled upload";
   }
   const duplicateFileNames = new Set(
     files

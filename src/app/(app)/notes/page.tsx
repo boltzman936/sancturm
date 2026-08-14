@@ -436,7 +436,13 @@ export default function NotesAndLabPage() {
         </div>
       )}
 
-      {filtered.length > 0 && (
+      {/* Grouped-with-headers only when "All batches" is in effect —
+          the grouping is what's actually informative there (could span
+          several batches). Once a specific batch is picked, `filtered`
+          only ever contains that one batch anyway, so a "BATCH X"
+          heading over every card would just repeat what the Batch
+          filter above already says. */}
+      {filtered.length > 0 && batchFilter === ALL_BATCHES && (
         <div className="flex flex-col gap-5">
           {groupedByBatch.map((group) => (
             <div key={group.batchId ?? "none"} className="flex flex-col gap-2">
@@ -451,6 +457,14 @@ export default function NotesAndLabPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {filtered.length > 0 && batchFilter !== ALL_BATCHES && (
+        <ul className="flex flex-col gap-2">
+          {filtered.map((resource) => (
+            <ResourceCard key={resource.id} resource={resource} onView={setViewingResource} />
+          ))}
+        </ul>
       )}
 
       <ResourceViewerDialog

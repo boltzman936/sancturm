@@ -456,7 +456,10 @@ export default function PYQsPage() {
         </div>
       )}
 
-      {filtered.length > 0 && (
+      {/* Grouped-with-headers only when "All batches" is in effect —
+          see Notes & Lab's identical comment for why a specific batch
+          selection shows a plain flat list instead. */}
+      {filtered.length > 0 && batchFilter === ALL_BATCHES && (
         <div className="flex flex-col gap-5">
           {groupedByBatch.map((group) => (
             <div key={group.batchId ?? "none"} className="flex flex-col gap-2">
@@ -471,6 +474,14 @@ export default function PYQsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {filtered.length > 0 && batchFilter !== ALL_BATCHES && (
+        <ul className="flex flex-col gap-2">
+          {filtered.map((resource) => (
+            <ResourceCard key={resource.id} resource={resource} onView={setViewingResource} />
+          ))}
+        </ul>
       )}
 
       <ResourceViewerDialog
