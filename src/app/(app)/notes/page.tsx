@@ -43,11 +43,15 @@ export default function NotesAndLabPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
 
-  // Selected Batch determines academic progression; the sidebar's
-  // "Switch year" is a ceiling on top of it, not an independent
-  // filter — see useBatchSemesterFilter's own doc comment.
+  // Selected Batch + sidebar Year jointly determine which semesters
+  // exist (an exact match, not a cumulative history) — see
+  // useBatchSemesterFilter's own doc comment. eligibleBatches (not
+  // allBatches) drives the Batch <select>'s own options, since only
+  // batches that have actually reached the current Year are pickable
+  // choices there.
   const {
     allBatches,
+    eligibleBatches,
     batchFilter,
     setBatchFilter,
     reachedTerms,
@@ -165,8 +169,12 @@ export default function NotesAndLabPage() {
       onChange={(event) => setBatchFilter(event.target.value)}
       className="min-w-[90px] sm:min-w-[150px] flex-1"
     >
-      <option value={ALL_BATCHES}>All batches</option>
-      {allBatches?.map((batch) => (
+      {/* "All batches" only offered when 2+ batches have actually
+          reached this Year — a single eligible batch makes it
+          redundant, and the hook auto-collapses the selection to that
+          one batch instead (see eligibleBatches). */}
+      {(eligibleBatches?.length ?? 0) > 1 && <option value={ALL_BATCHES}>All batches</option>}
+      {eligibleBatches?.map((batch) => (
         <option key={batch.id} value={batch.id}>
           {batch.label}
         </option>

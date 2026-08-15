@@ -37,11 +37,12 @@ export default function PYQsPage() {
   const { data: branch } = useBranchBySlug(branchSlug);
   const { data: allBranches } = useBranches();
 
-  // Selected Batch determines academic progression; the sidebar's
-  // "Switch year" is a ceiling on top of it — see
-  // useBatchSemesterFilter's own doc comment (shared with Notes & Lab).
+  // Selected Batch + sidebar Year jointly determine which semesters
+  // exist — see useBatchSemesterFilter's own doc comment (shared with
+  // Notes & Lab). eligibleBatches drives the Batch <select>'s options.
   const {
     allBatches,
+    eligibleBatches,
     batchFilter,
     setBatchFilter,
     reachedTerms,
@@ -188,8 +189,8 @@ export default function PYQsPage() {
 
   const batchSelect = () => (
     <Select value={batchFilter} onChange={(event) => setBatchFilter(event.target.value)} className="min-w-[90px] sm:min-w-[150px] flex-1">
-      <option value={ALL_BATCHES}>All batches</option>
-      {allBatches?.map((batch) => (
+      {(eligibleBatches?.length ?? 0) > 1 && <option value={ALL_BATCHES}>All batches</option>}
+      {eligibleBatches?.map((batch) => (
         <option key={batch.id} value={batch.id}>
           {batch.label}
         </option>
