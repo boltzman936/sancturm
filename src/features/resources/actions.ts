@@ -4,38 +4,12 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
-import { withDateKey, localDateKey } from "@/lib/date";
-import { isDateReached } from "@/features/batches/academicChronology";
+import { withDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
+import { assertBatchTermReached } from "@/features/batches/academicValidation";
 import { resolveSubjectBranchName } from "./subjectInterchange";
 import type { SubjectStructureConfig } from "./types";
-
-/**
- * The server-side half of the "never upload into a semester that
- * hasn't started" rule — the client-side dropdown in CRUploadForm
- * already hides a future semester, but that's just UX; this is what
- * actually stops a submission that targets one anyway (a manipulated
- * request, or a stale form left open across a batch_terms edit).
- * Reuses the exact same isDateReached comparison the dropdown filters
- * with, so the two can't silently drift apart.
- */
-async function assertBatchTermReached(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  batchId: string,
-  termId: string
-) {
-  const { data, error } = await supabase
-    .from("batch_terms")
-    .select("start_date")
-    .eq("batch_id", batchId)
-    .eq("term_id", termId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data || !isDateReached(data.start_date, localDateKey(new Date().toISOString()))) {
-    throw new Error("That semester hasn't started yet, so it can't be uploaded to.");
-  }
-}
 
 /**
  * Takes down an already-published resource — same RLS-enforced
@@ -113,6 +87,16 @@ export async function updateResourceFields(
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
   checkRateLimit("updateResourceFields", user.id, 60, 60_000);
+
+  // The Edit dialog's Batch <select> (useBatchesForTerm) isn't itself
+  // date-filtered — Edit deliberately lets an admin retarget a
+  // resource to ANY branch/term/batch, not just the ones it already
+  // had (see EditResourceButton) — so unlike Upload's own dropdown,
+  // nothing before this point already ruled out an unreached pairing.
+  // Same check Upload's own insert uses, so the two can't drift apart.
+  if (fields.termId !== undefined && fields.batchId !== undefined) {
+    await assertBatchTermReached(supabase, fields.batchId, fields.termId);
+  }
 
   const update: Record<string, string | null> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;

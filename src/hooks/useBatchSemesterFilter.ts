@@ -48,34 +48,31 @@ function resolveDefaultBatchIdForYear(
 /**
  * Batch+Semester scoping for student browsing (Notes/Lab/PYQ).
  *
- * A specific Batch's Semester options are a CEILING across that
- * batch's entire run so far — every period it has actually reached,
- * regardless of which sidebar Year happens to be selected right now.
- * A batch doesn't stop having history just because you're looking at
- * it from a lower Year tab: once 2025-26 has reached Semester 3, that
- * shows up as an option for that batch immediately, even under "1st
- * Year" (its own Semester 1/2 remain selectable there too, as
- * history) — see hideSemesterFilter below for why this needs to be
- * genuinely date-driven rather than tied to which Year tab is active.
- * The sidebar Year's real job is picking which Batch to land on by
- * default (resolveDefaultBatchIdForYear) and which Batches are even
- * offered as choices (eligibleBatches, still year-scoped — "was this
- * batch ever AT this year" is a different question from "how far has
- * it gotten since").
+ * Year permanently owns a fixed semester range (1st Year is Semester
+ * 1-2, 2nd Year is 3-4, and so on — see reachedTerms' own comment for
+ * why that's config-driven rather than hardcoded here). Semester
+ * options for a specific Batch are that range intersected with
+ * whichever of those periods the batch has actually reached by date —
+ * NEVER a period from a different Year, no matter how far the batch
+ * has actually progressed. Switching Year for the same Batch shows a
+ * genuinely different set of options, not a superset or a batch's
+ * full history. The sidebar Year also drives which Batch to land on
+ * by default (resolveDefaultBatchIdForYear) and which Batches are
+ * even offered as choices (eligibleBatches) — both already
+ * year-scoped in the same way.
  *
- * "All batches" is the one place that stays scoped to the exact
- * selected Year — it exists specifically to compare PEER batches at
- * the same academic level side by side (e.g. Year 1: a brand-new
- * batch's live Semester 1 next to an older batch's already-finished
- * Semester 2), which is a genuinely different question from "how far
- * along is this one batch." Deduped by term_id (preferring whichever
- * batch's row is actually live, for accurate dates). Because blending
- * distinct batches like that makes "current" ambiguous (whose
- * current?), "All batches" never badges anything "(current)" — only a
- * specific single batch does. "All batches" itself is only offered
- * when 2+ eligible batches exist for this Year — a single eligible
- * batch makes it redundant, so the persisted selection auto-collapses
- * to that one batch instead.
+ * "All batches" unions those same per-year rows across every batch,
+ * deduped by term_id (preferring whichever batch's row is actually
+ * live, for accurate dates) — so it can show MULTIPLE options when
+ * different batches are at different points within the same Year
+ * (e.g. Year 1: a brand-new batch's live Semester 1 AND an older
+ * batch's already-finished Semester 2, side by side). Because
+ * blending distinct batches like that makes "current" ambiguous
+ * (whose current?), "All batches" never badges anything "(current)" —
+ * only a specific single batch does. "All batches" itself is only
+ * offered when 2+ eligible batches exist for this Year — a single
+ * eligible batch makes it redundant, so the persisted selection
+ * auto-collapses to that one batch instead.
  *
  * Batch and Semester DEFAULTS are computed dynamically from the real
  * academic calendar (batch_terms dates) — never hardcoded, never
@@ -107,16 +104,23 @@ export function useBatchSemesterFilter() {
 
   const todayKey = localDateKey(new Date().toISOString());
 
-  // A specific batch: every period it has actually reached, full
-  // ceiling across its whole run — see this hook's own doc comment
-  // for why that's not scoped to the sidebar Year. "All batches"
-  // stays scoped to the exact Year (peer comparison) — see the same
-  // comment.
+  // Year permanently owns a fixed semester range — 1st Year is Sem
+  // 1-2, 2nd Year is Sem 3-4, and so on, encoded by each term's own
+  // year_number column (config-driven: a future "3rd Year" just needs
+  // its academic_terms rows inserted with year_number=3, no code
+  // change). "1st Year + Semester 3" must never be reachable, no
+  // matter how far a batch has actually progressed — so BOTH the
+  // specific-batch and "All batches" cases filter to year_number ===
+  // yearNumber first, and only THEN ask which of those periods the
+  // batch(es) have actually reached by date. Reached-but-wrong-Year
+  // periods (e.g. 2025-26 already being in Semester 3) simply don't
+  // exist in this list while viewing "1st Year" — they show up under
+  // "2nd Year" instead, once that's the selected Year.
   const reachedTerms = useMemo<ReachedTerm[]>(() => {
     if (yearNumber === undefined) return [];
     if (batchFilter !== ALL_BATCHES) {
       return (oneBatchTerms ?? [])
-        .filter((bt) => isDateReached(bt.start_date, todayKey))
+        .filter((bt) => bt.term.year_number === yearNumber && isDateReached(bt.start_date, todayKey))
         .sort((a, b) => a.start_date.localeCompare(b.start_date));
     }
     const reached = (everyBatchTerms ?? []).filter(
@@ -197,15 +201,17 @@ export function useBatchSemesterFilter() {
 
   // Date-conscious, not tied to a specific Year: a Semester picker is
   // only worth showing once there's actually more than one reached
-  // period to pick between. Today that means 1st Year (batch 2026-27
-  // has reached only Semester 1 so far) hides it while 2nd Year
-  // (2025-26 has reached three periods total) shows it — but this is a
-  // live COUNT, not a hardcoded "1st Year never shows it" rule: the
-  // moment 2026-27 reaches its own Semester 2 (per batch_terms'
+  // period, WITHIN this Year's own range, to pick between. Today that
+  // means both Years hide it — 1st Year's 2026-27 has reached only
+  // Semester 1 so far, and 2nd Year's 2025-26 has reached only
+  // Semester 3 of its own Semester 3-4 range (Semester 4 hasn't
+  // started). This is a live COUNT off reachedTerms (already
+  // Year-scoped — see its own comment), not a hardcoded per-Year rule:
+  // the moment 2025-26 reaches its own Semester 4 (per batch_terms'
   // configured start date, no code change needed), reachedTerms.length
-  // becomes 2 and the picker appears on its own. Every page that would
-  // otherwise render a Semester <select> checks this one flag instead
-  // of re-deriving the rule itself.
+  // for 2nd Year becomes 2 and the picker appears on its own. Every
+  // page that would otherwise render a Semester <select> checks this
+  // one flag instead of re-deriving the rule itself.
   const hideSemesterFilter = reachedTerms.length <= 1;
 
   // The list of term ids the resource query should actually fetch —

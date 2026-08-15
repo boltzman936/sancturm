@@ -7,6 +7,7 @@ import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
+import { assertBatchTermReached } from "@/features/batches/academicValidation";
 
 /**
  * Resolves the currently-active batch for one term, server-side — same
@@ -277,6 +278,13 @@ export async function updateNoticeFields(
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
   checkRateLimit("updateNoticeFields", user.id, 60, 60_000);
+
+  // Same reasoning as updateResourceFields' identical check — Edit
+  // lets an admin retarget a notice to ANY branch/term/batch, and
+  // nothing before this point already ruled out an unreached pairing.
+  if (fields.termId !== undefined && fields.batchId !== undefined) {
+    await assertBatchTermReached(supabase, fields.batchId, fields.termId);
+  }
 
   const update: Record<string, string | boolean> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;

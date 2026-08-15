@@ -2,6 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { localDateKey } from "@/lib/date";
+import { isDateReached } from "./academicChronology";
 import type { Batch, BatchTerm } from "./types";
 
 /**
@@ -41,9 +43,16 @@ export function useBatchByLabel(label: string | null) {
 /**
  * Which batches actually offer a given term (year+semester) — the
  * reverse lookup of useBatchTerms, for the Upload form's admin-only
- * Batch picker: given the Year already picked, only offer batches
- * that genuinely have that semester (a brand-new batch with only a
- * 1st-Year-Sem-1 row shouldn't be pickable while Sem 2 is selected).
+ * Batch picker: given the Year/Semester already picked (Edit's own
+ * "Year" field, which is really a direct term picker — see
+ * EditResourceButton), only offer batches that have actually REACHED
+ * that semester yet — a brand-new batch with only a 1st-Year-Sem-1 row
+ * shouldn't be pickable while Sem 2 is selected, and neither should a
+ * batch whose row for this term exists but hasn't started (the same
+ * isDateReached check every other date-filtered dropdown uses). Purely
+ * a UX narrowing — updateResourceFields/updateNoticeFields re-check
+ * this same pairing server-side regardless, since Edit is the one flow
+ * that lets an admin retarget to ANY branch/term/batch.
  */
 export function useBatchesForTerm(termId: string | null) {
   return useQuery({
@@ -52,10 +61,12 @@ export function useBatchesForTerm(termId: string | null) {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("batch_terms")
-        .select("batch:batches(*)")
+        .select("start_date, batch:batches(*)")
         .eq("term_id", termId!);
       if (error) throw error;
+      const todayKey = localDateKey(new Date().toISOString());
       const batches = (data ?? [])
+        .filter((row) => isDateReached(row.start_date, todayKey))
         .map((row) => (Array.isArray(row.batch) ? row.batch[0] : row.batch))
         .filter((b): b is Batch => !!b);
       // Newest first, same reasoning as useBatches().
