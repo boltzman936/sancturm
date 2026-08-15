@@ -6,11 +6,11 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 /**
- * Lets whoever's currently signed in (a CR testing their own account,
- * or the previous CR before they hand the branch off) get back to a
- * clean /login screen for the next person — there was no way to do
- * this before, so a signed-in session on a shared/test device just
- * stuck around indefinitely.
+ * Clears the CR/admin session and drops back into the regular app
+ * (same as any other visitor) instead of a login wall — signing out
+ * doesn't imply someone else is about to log in on this device, so
+ * there's nothing to hand off to a login screen for. Whoever wants to
+ * sign back in can do that from the CR dashboard link like normal.
  */
 export function SignOutButton({ className }: { className?: string }) {
   const router = useRouter();
@@ -23,7 +23,7 @@ export function SignOutButton({ className }: { className?: string }) {
     // Same reasoning as login's router.refresh(): the (app)/cr layout's
     // Server Component check needs to see the now-cleared session
     // cookie, not just a client-side route change.
-    router.push("/login");
+    router.push("/notes");
     router.refresh();
   }
 
