@@ -56,6 +56,7 @@ export default function NotesAndLabPage() {
     batchFilter,
     setBatchFilter,
     reachedTerms,
+    isLoadingReachedTerms,
     effectiveTerm: term,
     effectiveTermId,
     effectiveTermIds,
@@ -167,6 +168,12 @@ export default function NotesAndLabPage() {
       onChange={(event) => setTermId(event.target.value)}
       className="min-w-[110px] sm:min-w-[260px] flex-1"
     >
+      {/* A Batch switch clears reachedTerms back to empty for one
+          render while the new batch's terms are still in flight —
+          without this, the <select>'s value (effectiveTermId, also
+          momentarily "") would match no <option> at all and the
+          browser renders it fully blank instead of just unsettled. */}
+      {isLoadingReachedTerms && <option value="">Loading…</option>}
       {/* Only offered under "All batches" — merging distinct batches
           is the one case where showing every semester in view at once,
           instead of forcing a single pick, is actually meaningful. */}
@@ -391,7 +398,7 @@ export default function NotesAndLabPage() {
         Resources
       </h2>
 
-      {isLoading && (
+      {(isLoading || isLoadingReachedTerms) && (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
           Loading…
         </div>
@@ -403,7 +410,7 @@ export default function NotesAndLabPage() {
         </div>
       )}
 
-      {!isLoading && !isError && filtered.length === 0 && (
+      {!isLoading && !isLoadingReachedTerms && !isError && filtered.length === 0 && (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
           {resources && resources.length > 0 ? "No matches." : "Nothing here yet."}
         </div>

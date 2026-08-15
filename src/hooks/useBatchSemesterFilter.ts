@@ -275,6 +275,7 @@ export function useBatchSemesterFilter() {
     batchFilter,
     setBatchFilter,
     reachedTerms,
+    isLoadingReachedTerms,
     liveCurrentTermId,
     effectiveTermId,
     effectiveTermIds,

@@ -51,6 +51,7 @@ export default function PYQsPage() {
     batchFilter,
     setBatchFilter,
     reachedTerms,
+    isLoadingReachedTerms,
     effectiveTerm: term,
     effectiveTermId,
     effectiveTermIds,
@@ -198,6 +199,11 @@ export default function PYQsPage() {
   // clips; flex-1 shares any extra row width between them.
   const semesterSelect = () => (
     <Select value={effectiveTermId} onChange={(event) => setTermId(event.target.value)} className="min-w-[110px] sm:min-w-[260px] flex-1">
+      {/* See Notes & Lab's identical comment on semesterSelect — avoids
+          the <select> rendering blank for the one render where a Batch
+          switch has cleared reachedTerms but the new batch's terms
+          haven't arrived yet. */}
+      {isLoadingReachedTerms && <option value="">Loading…</option>}
       {/* Only offered under "All batches" — see Notes & Lab's
           identical comment on semesterSelect. */}
       {batchFilter === ALL_BATCHES && <option value={ALL_SEMESTERS}>All semesters</option>}
@@ -412,7 +418,7 @@ export default function PYQsPage() {
         {pyqKind === "pyq" ? "PYQs" : "Solutions"}
       </h2>
 
-      {isLoading && (
+      {(isLoading || isLoadingReachedTerms) && (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
           Loading…
         </div>
@@ -424,7 +430,7 @@ export default function PYQsPage() {
         </div>
       )}
 
-      {!isLoading && !isError && filtered.length === 0 && (
+      {!isLoading && !isLoadingReachedTerms && !isError && filtered.length === 0 && (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
           {resources && resources.length > 0 ? "No matches." : "Nothing here yet."}
         </div>
