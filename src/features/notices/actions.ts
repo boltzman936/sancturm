@@ -51,6 +51,8 @@ export async function createNotice(formData: FormData) {
   if (!user) throw new Error("Not signed in.");
   checkRateLimit("createNotice", user.id, 30, 60_000);
 
+  const role = await getCurrentRole();
+
   const branchId = formData.get("branchId") as string;
   const termId = formData.get("termId") as string;
   const batchId = formData.get("batchId") as string;
@@ -73,6 +75,7 @@ export async function createNotice(formData: FormData) {
     title,
     pdf_url: fileUrl,
     important_dates: [],
+    uploaded_by_name: role?.displayName ?? null,
   });
   if (insertError) throw insertError;
 
@@ -134,6 +137,7 @@ export async function createNoticeAllBranches(formData: FormData) {
         pdf_url: fileUrl,
         important_dates: [],
         cr_only: crOnly,
+        uploaded_by_name: role.displayName,
       });
     }
   }
@@ -182,6 +186,7 @@ export async function createCustomNoticeAllBranches(formData: FormData) {
         pdf_url: null,
         important_dates: [],
         cr_only: crOnly,
+        uploaded_by_name: role.displayName,
       });
     }
   }
@@ -202,6 +207,8 @@ export async function createCustomNotice(formData: FormData) {
   if (!user) throw new Error("Not signed in.");
   checkRateLimit("createCustomNotice", user.id, 30, 60_000);
 
+  const role = await getCurrentRole();
+
   const branchId = formData.get("branchId") as string;
   const termId = formData.get("termId") as string;
   const batchId = formData.get("batchId") as string;
@@ -216,6 +223,7 @@ export async function createCustomNotice(formData: FormData) {
     body,
     pdf_url: null,
     important_dates: [],
+    uploaded_by_name: role?.displayName ?? null,
   });
   if (insertError) throw insertError;
 

@@ -186,6 +186,11 @@ export type Notice = {
   important_dates: ImportantDate[];
   is_pinned: boolean;
   created_at: string;
+  // Server-set only (see notices/actions.ts) — null for every notice
+  // created before this column existed. Used to stop a CR from
+  // editing/deleting a notice an admin created (supabase/
+  // protect_admin_uploads_from_cr.sql); never shown in the UI.
+  uploaded_by_name: string | null;
 };
 
 // Platform-wide announcements about Sancturm itself — not scoped to
