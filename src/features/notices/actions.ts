@@ -6,6 +6,7 @@ import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 
 /**
  * Resolves the currently-active batch for one term, server-side — same
@@ -58,6 +59,13 @@ export async function createNotice(formData: FormData) {
   // actions.ts's uploadResourceDirect for the full reasoning.
   const fileUrl = formData.get("fileUrl") as string;
 
+  // See resources/actions.ts's uploadResourceDirect for why this
+  // exists — confirms the object's actual bytes match its claimed
+  // Content-Type before it can be referenced by a published notice.
+  if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
+    throw new Error("Uploaded file doesn't match its declared type. The file was rejected.");
+  }
+
   const { error: insertError } = await supabase.from("notices").insert({
     branch_id: branchId,
     term_id: termId,
@@ -106,6 +114,12 @@ export async function createNoticeAllBranches(formData: FormData) {
   const termIds = JSON.parse(formData.get("termIds") as string) as string[];
   if (!Array.isArray(termIds) || !termIds.every((id) => typeof id === "string") || !termIds.length) {
     throw new Error("Invalid year selection.");
+  }
+
+  // Verified once — the same uploaded object gets referenced by every
+  // (term, branch) row built below.
+  if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
+    throw new Error("Uploaded file doesn't match its declared type. The file was rejected.");
   }
 
   const rows = [];

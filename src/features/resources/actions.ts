@@ -7,6 +7,7 @@ import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey, localDateKey } from "@/lib/date";
 import { isDateReached } from "@/features/batches/academicChronology";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 import { resolveSubjectBranchName } from "./subjectInterchange";
 import type { SubjectStructureConfig } from "./types";
 
@@ -241,6 +242,15 @@ export async function uploadResourceDirect(formData: FormData) {
 
   await assertBatchTermReached(supabase, batchId, termId);
 
+  // The presigned PUT already constrained WHICH Content-Type header
+  // could be set on this object; this confirms the object's actual
+  // bytes match that claimed type before it can ever be referenced by
+  // a published row — see uploadVerification.ts's own comment for why
+  // the earlier check alone wasn't enough.
+  if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
+    throw new Error("Uploaded file doesn't match its declared type. The file was rejected.");
+  }
+
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
     term_id: termId,
@@ -326,6 +336,13 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   if (!branchIds.length) throw new Error("No branches found.");
 
   await assertBatchTermReached(supabase, batchId, termId);
+
+  // Verified once, not per-branch — it's the same uploaded object
+  // referenced by every branch's row below. See uploadResourceDirect's
+  // identical check for why this exists.
+  if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
+    throw new Error("Uploaded file doesn't match its declared type. The file was rejected.");
+  }
 
   // Resolved once for the whole batch, not per-branch — fine to share
   // across every target branch since it only depends on termId, which

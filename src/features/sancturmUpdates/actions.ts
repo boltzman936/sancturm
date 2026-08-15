@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 
 /**
  * Admin-only, full stop — RLS ("Admin only manages", supabase/
@@ -23,6 +24,10 @@ export async function createSancturmUpdate(formData: FormData) {
   // Uploaded straight to R2 from the browser already — see resources/
   // actions.ts's uploadResourceDirect for the full reasoning.
   const fileUrl = formData.get("fileUrl") as string;
+
+  if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
+    throw new Error("Uploaded file doesn't match its declared type. The file was rejected.");
+  }
 
   const { error: insertError } = await supabase.from("sancturm_updates").insert({
     title,
