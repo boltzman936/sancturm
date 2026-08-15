@@ -124,9 +124,20 @@ export function useBatchSemesterFilter() {
   // This — not currentTermId below — is what the "(current)" badge
   // should be keyed on; conflating the two would badge a semester
   // that's merely the most-recently-finished one.
+  //
+  // Under "All batches", more than one batch can be genuinely mid-
+  // semester at the same real-world moment (e.g. today, a brand-new
+  // batch is mid Semester-1 AND an older batch is simultaneously mid
+  // Semester-3) — reachedTerms can contain both as separate rows.
+  // Picking whichever sorts first would badge the LOWER-year one as
+  // "current" even while Year is set to the higher one, which reads as
+  // nonsense ("2nd Year" defaulting to "1st Semester"). Prefer the
+  // live term with the highest year_number instead — the one actually
+  // relevant to whichever Year is in view.
   const liveCurrentTermId = useMemo(() => {
-    const live = reachedTerms.find((bt) => bt.start_date <= todayKey && todayKey <= bt.end_date);
-    return live?.term_id ?? "";
+    const live = reachedTerms.filter((bt) => bt.start_date <= todayKey && todayKey <= bt.end_date);
+    if (live.length === 0) return "";
+    return live.reduce((best, bt) => (bt.term.year_number > best.term.year_number ? bt : best)).term_id;
   }, [reachedTerms, todayKey]);
 
   // null = defer to whichever period is calendar-current, or — if
