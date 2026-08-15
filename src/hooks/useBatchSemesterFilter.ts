@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useBatches, useBatchTerms, useAllBatchTerms } from "@/features/batches/queries";
 import { useTerms, useTermBySlug } from "@/features/terms/queries";
 import { useBatch } from "@/hooks/useBatch";
@@ -65,12 +65,13 @@ function resolveDefaultBatchIdForYear(
  *
  * Batch and Semester DEFAULTS are computed dynamically from the real
  * academic calendar (batch_terms dates) — never hardcoded, never
- * derived from which batch happens to have uploads — but once a
- * student explicitly picks a Batch or Semester, that choice is
- * respected and not silently overwritten; defaults are only
- * recomputed when the current selection actually becomes invalid
- * (typically: the sidebar Year changed to one the picked batch hasn't
- * reached).
+ * derived from which batch happens to have uploads. A Batch pick is
+ * respected across re-renders and page refreshes within the SAME
+ * Year, but a genuine sidebar Year switch always resets Batch to that
+ * year's own default — Year is meant to feel like a real refresh, not
+ * something that can leave a stale batch pick from the previous Year
+ * silently in place just because it happens to still be technically
+ * valid there too.
  *
  * A single shared hook so Notes and PYQs can't drift out of sync on
  * this logic the way they already did once this session.
@@ -184,21 +185,30 @@ export function useBatchSemesterFilter() {
     );
   }, [yearNumber, everyBatchTerms, allBatches, todayKey]);
 
+  // Tracks the last sidebar Year this hook actually reacted to, purely
+  // to distinguish "the page loaded/re-rendered while already on this
+  // Year" (respect whatever's persisted, if still valid) from "the
+  // student just clicked Switch Year to a NEW one" (always jump to
+  // that year's own default batch, even if the old pick would still
+  // technically be valid there too — a genuine Year switch should
+  // read as a real refresh, not silently keep showing a leftover pick
+  // from the previous Year).
+  const lastYearRef = useRef<number | undefined>(undefined);
+
   // Batch DEFAULT recomputation — fires only when actually needed:
-  // first-ever visit (batchLabel never persisted), the persisted/
-  // picked batch isn't actually AT the sidebar's current year (exact
-  // year_number match — switching Year must visibly jump to that
-  // year's own current batch, not silently keep showing an earlier
-  // one), or "All batches" is persisted but only one batch is
-  // eligible for this year (offering "All batches" next to a single
-  // real option is redundant, and the Batch <select> won't even
-  // render it — see eligibleBatches — so the persisted choice needs
-  // to point at something that's actually rendered). Never fires on a
-  // timer/re-render alone — only reacts to an actual mismatch, so a
-  // student's manual pick survives a refresh or the calendar date
-  // quietly advancing mid-session.
+  // first-ever visit (batchLabel never persisted), a genuine Year
+  // switch (see lastYearRef above), the persisted/picked batch isn't
+  // actually AT the sidebar's current year (exact year_number match),
+  // or "All batches" is persisted but only one batch is eligible for
+  // this year (offering "All batches" next to a single real option is
+  // redundant, and the Batch <select> won't even render it — see
+  // eligibleBatches — so the persisted choice needs to point at
+  // something that's actually rendered).
   useEffect(() => {
     if (yearNumber === undefined || !everyBatchTerms || !allBatches || !eligibleBatches) return;
+
+    const yearSwitched = lastYearRef.current !== undefined && lastYearRef.current !== yearNumber;
+    lastYearRef.current = yearNumber;
 
     if (batchLabel === ALL_BATCHES) {
       if (eligibleBatches.length === 1) persistBatch(eligibleBatches[0].label);
@@ -206,7 +216,7 @@ export function useBatchSemesterFilter() {
     }
 
     const pickedBatch = batchLabel ? allBatches.find((b) => b.label === batchLabel) : undefined;
-    const currentlyValid = !!pickedBatch && eligibleBatches.some((b) => b.id === pickedBatch.id);
+    const currentlyValid = !yearSwitched && !!pickedBatch && eligibleBatches.some((b) => b.id === pickedBatch.id);
     if (currentlyValid) return;
 
     // Only writes to the external localStorage-backed store here, not
