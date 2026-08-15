@@ -183,16 +183,37 @@ export function useBatchSemesterFilter() {
   const { data: allTerms } = useTerms();
   const effectiveTerm = allTerms?.find((t) => t.id === effectiveTermId);
 
+  // 1st Year is the one case where Semester genuinely isn't a useful
+  // filter to expose at all — its Semester 2 curriculum runs through
+  // the interchange structure (see subjectInterchange.ts) rather than
+  // needing its own separate browsing split, so there's nothing a
+  // per-semester pick would actually let a student narrow down that
+  // picking a Batch hasn't already. Every page that would otherwise
+  // render a Semester <select> checks this one flag instead of
+  // re-deriving "is this 1st Year" itself — keeps the rule from
+  // drifting the way the batch-header logic already did once this
+  // project. Tied to the year NUMBER, not e.g. reachedTerms.length,
+  // because the reason is curricular (this college's real 1st-Year
+  // structure), not an artifact of how many periods happen to be
+  // reached yet.
+  const hideSemesterFilter = yearNumber === 1;
+
   // The list of term ids the resource query should actually fetch —
-  // everywhere except ALL_SEMESTERS this is just the one effective
-  // term; under ALL_SEMESTERS it's every semester currently in view
-  // (reachedTerms itself, already scoped to "All batches" + this
-  // Year). Pages pass this straight to the resource-fetching hooks
-  // instead of a single term id when in that mode.
-  const effectiveTermIds = useMemo(
-    () => (effectiveTermId === ALL_SEMESTERS ? reachedTerms.map((bt) => bt.term_id) : effectiveTermId ? [effectiveTermId] : []),
-    [effectiveTermId, reachedTerms]
-  );
+  // normally just the one effective term. Two cases widen that to
+  // "every semester currently in view" (reachedTerms itself, already
+  // scoped to this Year — and to "All batches" too when that's also
+  // selected): the user explicitly picked "All semesters", or Semester
+  // isn't exposed as a filter at all (hideSemesterFilter) — 1st Year
+  // browsing always merges its reached semesters, it was never a
+  // per-semester pick to begin with. hideSemesterFilter wins
+  // regardless of whatever effectiveTermId happens to still hold
+  // internally (e.g. a leftover "All semesters" pick from a different
+  // Year) — Semester being hidden always means "show everything
+  // reached," full stop.
+  const effectiveTermIds = useMemo(() => {
+    if (hideSemesterFilter) return reachedTerms.map((bt) => bt.term_id);
+    return effectiveTermId === ALL_SEMESTERS ? reachedTerms.map((bt) => bt.term_id) : effectiveTermId ? [effectiveTermId] : [];
+  }, [hideSemesterFilter, effectiveTermId, reachedTerms]);
 
   // Which batches are actually offerable for the Batch dropdown at
   // this sidebar Year — only ones with a reached row for this EXACT
@@ -276,6 +297,7 @@ export function useBatchSemesterFilter() {
     setBatchFilter,
     reachedTerms,
     isLoadingReachedTerms,
+    hideSemesterFilter,
     liveCurrentTermId,
     effectiveTermId,
     effectiveTermIds,

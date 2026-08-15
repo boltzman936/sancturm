@@ -57,6 +57,7 @@ export default function NotesAndLabPage() {
     setBatchFilter,
     reachedTerms,
     isLoadingReachedTerms,
+    hideSemesterFilter,
     effectiveTerm: term,
     effectiveTermId,
     effectiveTermIds,
@@ -64,6 +65,11 @@ export default function NotesAndLabPage() {
     setTermId,
   } = useBatchSemesterFilter();
   const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
+  // Either widens the query/Subject-list from "one term" to "every
+  // reached term in view" — an explicit "All semesters" pick, or
+  // Semester not being a filter at all for this Year (see
+  // useBatchSemesterFilter's hideSemesterFilter doc comment).
+  const useMultiTermMode = hideSemesterFilter || isAllSemesters;
 
   const [resourceType, setResourceType] = useState<NotesOrLab>("notes");
   const [dateSort, setDateSort] = useState<DateSort>("newest");
@@ -77,12 +83,12 @@ export default function NotesAndLabPage() {
   // union across every semester in view instead (both hooks are always
   // called, per rules of hooks; whichever one applies gets real args,
   // the other's args go null/empty and it's just a no-op query).
-  const { data: singleTermSubjects } = useSubjects(branch?.id ?? null, isAllSemesters ? null : term?.id ?? null);
+  const { data: singleTermSubjects } = useSubjects(branch?.id ?? null, useMultiTermMode ? null : term?.id ?? null);
   const { data: multiTermSubjects } = useSubjectsForBranchAndTerms(
-    isAllSemesters ? branch?.id ?? null : null,
-    isAllSemesters ? effectiveTermIds : []
+    useMultiTermMode ? branch?.id ?? null : null,
+    useMultiTermMode ? effectiveTermIds : []
   );
-  const allSubjects = isAllSemesters ? multiTermSubjects : singleTermSubjects;
+  const allSubjects = useMultiTermMode ? multiTermSubjects : singleTermSubjects;
   // The Subject filter's options depend on which tab is active — Lab
   // only ever applies to the subjects that actually have a lab
   // component, same restriction as the upload form. Notes excludes
@@ -111,7 +117,7 @@ export default function NotesAndLabPage() {
 
   const { data: resources, isLoading, isError } = useNotesAndLabResources(
     branch?.id ?? null,
-    isAllSemesters ? effectiveTermIds : term?.id ?? null,
+    useMultiTermMode ? effectiveTermIds : term?.id ?? null,
     resourceType
   );
 
@@ -215,11 +221,13 @@ export default function NotesAndLabPage() {
           {batchFilter !== ALL_BATCHES && allBatches
             ? ` — ${allBatches.find((b) => b.id === batchFilter)?.label ?? ""}`
             : ""}
-          {isAllSemesters
-            ? `, ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""} - All Semesters`
-            : term
-              ? `, ${term.label}`
-              : ""}
+          {hideSemesterFilter
+            ? `, ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""}`
+            : isAllSemesters
+              ? `, ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""} - All Semesters`
+              : term
+                ? `, ${term.label}`
+                : ""}
           .
         </p>
       </div>
@@ -280,9 +288,12 @@ export default function NotesAndLabPage() {
           {/* Semester + Batch, side by side — Semester first. Each has
               its own min-w floor sized to its longest realistic label
               (see semesterSelect/batchSelect), so text never clips;
-              flex-1 shares any remaining row width between them. */}
+              flex-1 shares any remaining row width between them.
+              Semester genuinely isn't rendered at all for a Year where
+              it isn't a useful filter (see hideSemesterFilter) — Batch
+              alone just takes the row, no empty slot left behind. */}
           <div className="flex shrink-0 gap-2">
-            {semesterSelect()}
+            {!hideSemesterFilter && semesterSelect()}
             {batchSelect()}
           </div>
         </div>
@@ -366,9 +377,12 @@ export default function NotesAndLabPage() {
         </Select>
 
         {/* Semester + Batch side by side even on mobile — shrinks
-            proportionally with the viewport rather than stacking. */}
+            proportionally with the viewport rather than stacking.
+            Semester hidden entirely where it isn't a useful filter
+            (see hideSemesterFilter) — no empty gap left behind, Batch
+            just takes the row. */}
         <div className="flex gap-2">
-          {semesterSelect()}
+          {!hideSemesterFilter && semesterSelect()}
           {batchSelect()}
         </div>
 
