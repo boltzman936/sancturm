@@ -4,11 +4,12 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
-import { useBatchSemesterFilter, ALL_BATCHES } from "@/hooks/useBatchSemesterFilter";
+import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug } from "@/features/branches/queries";
 import {
   useNotesAndLabResources,
   useSubjects,
+  useSubjectsForBranchAndTerms,
   type ResourceWithSubject,
 } from "@/features/resources/queries";
 import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
@@ -56,9 +57,12 @@ export default function NotesAndLabPage() {
     setBatchFilter,
     reachedTerms,
     effectiveTerm: term,
+    effectiveTermId,
+    effectiveTermIds,
     liveCurrentTermId,
     setTermId,
   } = useBatchSemesterFilter();
+  const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
 
   const [resourceType, setResourceType] = useState<NotesOrLab>("notes");
   const [dateSort, setDateSort] = useState<DateSort>("newest");
@@ -68,7 +72,16 @@ export default function NotesAndLabPage() {
   const [dateFilter, setDateFilter] = useState("");
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
-  const { data: allSubjects } = useSubjects(branch?.id ?? null, term?.id ?? null);
+  // Under "All semesters" there's no single term to scope Subject by —
+  // union across every semester in view instead (both hooks are always
+  // called, per rules of hooks; whichever one applies gets real args,
+  // the other's args go null/empty and it's just a no-op query).
+  const { data: singleTermSubjects } = useSubjects(branch?.id ?? null, isAllSemesters ? null : term?.id ?? null);
+  const { data: multiTermSubjects } = useSubjectsForBranchAndTerms(
+    isAllSemesters ? branch?.id ?? null : null,
+    isAllSemesters ? effectiveTermIds : []
+  );
+  const allSubjects = isAllSemesters ? multiTermSubjects : singleTermSubjects;
   // The Subject filter's options depend on which tab is active — Lab
   // only ever applies to the subjects that actually have a lab
   // component, same restriction as the upload form. Notes excludes
@@ -97,7 +110,7 @@ export default function NotesAndLabPage() {
 
   const { data: resources, isLoading, isError } = useNotesAndLabResources(
     branch?.id ?? null,
-    term?.id ?? null,
+    isAllSemesters ? effectiveTermIds : term?.id ?? null,
     resourceType
   );
 
@@ -150,10 +163,14 @@ export default function NotesAndLabPage() {
   // viewport is genuinely too narrow to fit both at their minimums.
   const semesterSelect = () => (
     <Select
-      value={term?.id ?? ""}
+      value={effectiveTermId}
       onChange={(event) => setTermId(event.target.value)}
       className="min-w-[110px] sm:min-w-[260px] flex-1"
     >
+      {/* Only offered under "All batches" — merging distinct batches
+          is the one case where showing every semester in view at once,
+          instead of forcing a single pick, is actually meaningful. */}
+      {batchFilter === ALL_BATCHES && <option value={ALL_SEMESTERS}>All semesters</option>}
       {reachedTerms.map((bt) => (
         <option key={bt.term_id} value={bt.term_id}>
           {ordinalSemesterLabel(bt.term.semester_number)}
@@ -191,7 +208,12 @@ export default function NotesAndLabPage() {
           {batchFilter !== ALL_BATCHES && allBatches
             ? ` — ${allBatches.find((b) => b.id === batchFilter)?.label ?? ""}`
             : ""}
-          {term ? `, ${term.label}` : ""}.
+          {isAllSemesters
+            ? `, ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""} - All Semesters`
+            : term
+              ? `, ${term.label}`
+              : ""}
+          .
         </p>
       </div>
 

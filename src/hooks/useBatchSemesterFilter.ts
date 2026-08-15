@@ -11,6 +11,13 @@ import { isDateReached } from "@/features/batches/academicChronology";
 import type { BatchTerm, AcademicTerm } from "@/types/database";
 
 export const ALL_BATCHES = "all";
+// A pseudo-Semester meaning "every semester currently in view" —
+// only ever a valid pick when Batch is ALSO "All batches" (see
+// validTermIds below): blending multiple batches' semesters together
+// is the one case where showing them all at once, instead of forcing
+// a single pick, actually makes sense. Picking a specific batch always
+// clears back out of this, same as any other now-invalid Semester.
+export const ALL_SEMESTERS = "all";
 
 type ReachedTerm = BatchTerm & { term: AcademicTerm };
 
@@ -160,15 +167,32 @@ export function useBatchSemesterFilter() {
 
   // Batch or Year changed underneath an explicit Semester pick that's
   // no longer reached — defer back to whatever's current instead of
-  // silently querying a stale/invalid pairing.
+  // silently querying a stale/invalid pairing. ALL_SEMESTERS is only
+  // ever a valid pick under "All batches" — picking a specific batch
+  // while it's selected gets caught here exactly like a stale term id
+  // would, resetting back to null (defer to current).
   const validTermIds = useMemo(
-    () => (isLoadingReachedTerms ? undefined : [null, ...reachedTerms.map((bt) => bt.term_id)]),
-    [isLoadingReachedTerms, reachedTerms]
+    () =>
+      isLoadingReachedTerms
+        ? undefined
+        : [null, ...reachedTerms.map((bt) => bt.term_id), ...(batchFilter === ALL_BATCHES ? [ALL_SEMESTERS] : [])],
+    [isLoadingReachedTerms, reachedTerms, batchFilter]
   );
   useResetInvalidSelection(termId, validTermIds, null, setTermIdState);
 
   const { data: allTerms } = useTerms();
   const effectiveTerm = allTerms?.find((t) => t.id === effectiveTermId);
+
+  // The list of term ids the resource query should actually fetch —
+  // everywhere except ALL_SEMESTERS this is just the one effective
+  // term; under ALL_SEMESTERS it's every semester currently in view
+  // (reachedTerms itself, already scoped to "All batches" + this
+  // Year). Pages pass this straight to the resource-fetching hooks
+  // instead of a single term id when in that mode.
+  const effectiveTermIds = useMemo(
+    () => (effectiveTermId === ALL_SEMESTERS ? reachedTerms.map((bt) => bt.term_id) : effectiveTermId ? [effectiveTermId] : []),
+    [effectiveTermId, reachedTerms]
+  );
 
   // Which batches are actually offerable for the Batch dropdown at
   // this sidebar Year — only ones with a reached row for this EXACT
@@ -245,6 +269,7 @@ export function useBatchSemesterFilter() {
   }
 
   return {
+    yearNumber,
     allBatches,
     eligibleBatches,
     batchFilter,
@@ -252,6 +277,7 @@ export function useBatchSemesterFilter() {
     reachedTerms,
     liveCurrentTermId,
     effectiveTermId,
+    effectiveTermIds,
     effectiveTerm,
     currentTermId,
     setTermId,

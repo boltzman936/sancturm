@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -27,6 +29,11 @@ export default function LoginPage() {
       return;
     }
 
+    // Same reasoning as SignOutButton's identical call — without this,
+    // useCurrentRole() could keep serving a stale cached "signed out"
+    // result for up to its 5-minute staleTime after a genuinely
+    // successful sign-in.
+    queryClient.invalidateQueries({ queryKey: ["current-role"] });
     // router.refresh() forces the /cr layout's Server Component to
     // re-check auth against the just-updated session cookie — without
     // it, the redirect can land before the server sees we're signed in.

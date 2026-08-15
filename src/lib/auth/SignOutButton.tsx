@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -14,12 +15,20 @@ import { cn } from "@/lib/utils";
  */
 export function SignOutButton({ className }: { className?: string }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isPending, setIsPending] = useState(false);
 
   async function handleSignOut() {
     setIsPending(true);
     const supabase = createClient();
     await supabase.auth.signOut();
+    // router.refresh() only re-runs Server Components on the current
+    // route — it doesn't touch TanStack Query's client-side cache, so
+    // without this, useCurrentRole() (the Sidebar's "Sign out"/
+    // dashboard-link check) kept serving its stale 5-minute cached
+    // role and showed CR-only UI for up to 5 minutes after actually
+    // signing out.
+    queryClient.invalidateQueries({ queryKey: ["current-role"] });
     // Same reasoning as login's router.refresh(): the (app)/cr layout's
     // Server Component check needs to see the now-cleared session
     // cookie, not just a client-side route change.

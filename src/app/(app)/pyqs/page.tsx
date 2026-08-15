@@ -4,9 +4,14 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
-import { useBatchSemesterFilter, ALL_BATCHES } from "@/hooks/useBatchSemesterFilter";
+import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useBranches } from "@/features/branches/queries";
-import { usePyqResources, useSubjectsForTerm, type ResourceWithSubject } from "@/features/resources/queries";
+import {
+  usePyqResources,
+  useSubjectsForTerm,
+  useSubjectsForTerms,
+  type ResourceWithSubject,
+} from "@/features/resources/queries";
 import { pyqSharingBranchNames } from "@/features/resources/pyqSharing";
 import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
@@ -47,21 +52,28 @@ export default function PYQsPage() {
     setBatchFilter,
     reachedTerms,
     effectiveTerm: term,
+    effectiveTermId,
+    effectiveTermIds,
+    yearNumber,
     liveCurrentTermId,
     setTermId,
   } = useBatchSemesterFilter();
+  const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
 
   // Which branches' PYQs this viewer actually sees together — 1st Year
   // splits Core+AIML from AIDS, 2nd Year stays shared across all
-  // three (see pyqSharing.ts). Resolved to real branch ids once both
-  // the term and the full branch list are loaded; usePyqResources
-  // itself won't fire its query until this is non-null, so there's no
-  // window where it fetches unscoped.
+  // three (see pyqSharing.ts). The sharing rule is per-Year, not
+  // per-Semester, so yearNumber (not term.year_number) is what this
+  // needs — it stays defined even under "All semesters", where there's
+  // no single term to read a year_number off of. Resolved to real
+  // branch ids once the year and full branch list are loaded;
+  // usePyqResources itself won't fire its query until this is
+  // non-null, so there's no window where it fetches unscoped.
   const allowedBranchIds = useMemo(() => {
-    if (!term || !branch || !allBranches) return null;
-    const names = pyqSharingBranchNames(term.year_number, branch.name);
+    if (yearNumber === undefined || !branch || !allBranches) return null;
+    const names = pyqSharingBranchNames(yearNumber, branch.name);
     return allBranches.filter((b) => names.includes(b.name)).map((b) => b.id);
-  }, [term, branch, allBranches]);
+  }, [yearNumber, branch, allBranches]);
 
   // Paper vs. worked solution — the PYQ equivalent of Notes & Lab's
   // Notes/Lab toggle, same pattern: one section, two resource_type
@@ -79,7 +91,10 @@ export default function PYQsPage() {
   const [dateFilter, setDateFilter] = useState("");
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
-  const { data: resources, isLoading, isError } = usePyqResources(term?.id ?? null, allowedBranchIds);
+  const { data: resources, isLoading, isError } = usePyqResources(
+    isAllSemesters ? effectiveTermIds : term?.id ?? null,
+    allowedBranchIds
+  );
 
   // Every branch's subjects for this term, not just the viewer's own
   // branch — a branch's subject list (e.g. AIDS's, which is entirely
@@ -88,8 +103,13 @@ export default function PYQsPage() {
   // every branch WITHIN the viewer's own sharing group. Deduped by
   // name (same subject exists as a separate row per branch) and
   // lab-only subjects excluded, same as Notes — a PYQ is never for a
-  // subject with no theory component.
-  const { data: allTermSubjects } = useSubjectsForTerm(term?.id ?? null);
+  // subject with no theory component. Under "All semesters", union
+  // across every semester in view instead of just one (both hooks
+  // always called, per rules of hooks — whichever doesn't apply gets
+  // empty/null args and is a no-op).
+  const { data: singleTermSubjects } = useSubjectsForTerm(isAllSemesters ? null : term?.id ?? null);
+  const { data: multiTermSubjects } = useSubjectsForTerms(isAllSemesters ? effectiveTermIds : []);
+  const allTermSubjects = isAllSemesters ? multiTermSubjects : singleTermSubjects;
   const subjectOptions = useMemo(() => {
     const names = new Set<string>();
     for (const subject of allTermSubjects ?? []) {
@@ -167,17 +187,20 @@ export default function PYQsPage() {
   // 1st Year genuinely isn't "every CSE branch" anymore (AIDS has its
   // own separate PYQs there), so this can't be a fixed string.
   const sharingDescription = useMemo(() => {
-    if (!term || !branch) return "shared across your branch";
-    const names = pyqSharingBranchNames(term.year_number, branch.name);
+    if (yearNumber === undefined || !branch) return "shared across your branch";
+    const names = pyqSharingBranchNames(yearNumber, branch.name);
     return names.length > 1 ? `shared between ${names.join(" and ")}` : "separate from other branches";
-  }, [term, branch]);
+  }, [yearNumber, branch]);
 
   // Semester needs more room than Batch (labels run up to "3rd
   // Semester (current)" vs. just "2025-26") — min-w floors each at
   // whatever its own longest realistic label needs, so text never
   // clips; flex-1 shares any extra row width between them.
   const semesterSelect = () => (
-    <Select value={term?.id ?? ""} onChange={(event) => setTermId(event.target.value)} className="min-w-[110px] sm:min-w-[260px] flex-1">
+    <Select value={effectiveTermId} onChange={(event) => setTermId(event.target.value)} className="min-w-[110px] sm:min-w-[260px] flex-1">
+      {/* Only offered under "All batches" — see Notes & Lab's
+          identical comment on semesterSelect. */}
+      {batchFilter === ALL_BATCHES && <option value={ALL_SEMESTERS}>All semesters</option>}
       {reachedTerms.map((bt) => (
         <option key={bt.term_id} value={bt.term_id}>
           {ordinalSemesterLabel(bt.term.semester_number)}
@@ -207,7 +230,12 @@ export default function PYQsPage() {
           {batchFilter !== ALL_BATCHES && allBatches
             ? ` in ${allBatches.find((b) => b.id === batchFilter)?.label ?? ""}`
             : ""}
-          {term ? `${batchFilter !== ALL_BATCHES ? "," : " in"} ${term.label}` : " this term"}.
+          {isAllSemesters
+            ? `${batchFilter !== ALL_BATCHES ? "," : " in"} ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""} - All Semesters`
+            : term
+              ? `${batchFilter !== ALL_BATCHES ? "," : " in"} ${term.label}`
+              : " this term"}
+          .
         </p>
       </div>
 

@@ -134,14 +134,67 @@ export function useSubjectsForTerms(termIds: string[]) {
 }
 
 /**
+ * Notes & Lab's own "All semesters" case (see useBatchSemesterFilter's
+ * ALL_SEMESTERS) — the branch-scoped equivalent of useSubjectsForTerms
+ * above, which is deliberately unscoped for Manage's admin-wide filter
+ * and so isn't reusable here as-is. Resolves interchange PER TERM, the
+ * same way useSubjects does for a single term — a union spanning 1st-
+ * Year Sem 1 and Sem 2 needs Sem 2's own resolution, not the requesting
+ * branch's raw id applied to every term uniformly. Shares useSubjects'
+ * exact query key shape per term, so results aren't double-fetched.
+ */
+export function useSubjectsForBranchAndTerms(branchId: string | null, termIds: string[]) {
+  const { data: branches } = useBranches();
+  const { data: terms } = useTerms();
+  const { data: config } = useSubjectStructureConfig();
+  const branch = branches?.find((b) => b.id === branchId);
+  const ready = !!branchId && !!branches && !!terms && !!config;
+
+  const results = useQueries({
+    queries: termIds.map((termId) => {
+      const term = terms?.find((t) => t.id === termId);
+      const effectiveBranchId =
+        ready && branch && term
+          ? branches!.find((b) => b.name === resolveSubjectBranchName(branch.name, term.slug, config!.interchange_active))
+              ?.id ?? branchId
+          : branchId;
+      return {
+        queryKey: ["subjects", effectiveBranchId, termId],
+        queryFn: async () => {
+          const supabase = createClient();
+          const { data, error } = await supabase
+            .from("subjects")
+            .select("*")
+            .eq("branch_id", effectiveBranchId!)
+            .eq("term_id", termId)
+            .order("sort_order", { ascending: true });
+          if (error) throw error;
+          return data as Subject[];
+        },
+        enabled: ready,
+        staleTime: 5 * 60_000,
+      };
+    }),
+  });
+
+  const isLoading = termIds.length > 0 && results.some((r) => r.isLoading);
+  const data = isLoading ? undefined : results.flatMap((r) => r.data ?? []);
+  return { data, isLoading };
+}
+
+/**
  * Approved Notes & Lab resources for one (branch, term) pair + type
  * ('notes' or 'lab_manual'). Returned unsorted-by-intent — the page
  * does the subject-vs-time sort client-side over this same fetched
  * set, so toggling the sort control doesn't cost another round trip.
+ *
+ * termId also accepts an array — Notes/PYQ's "All semesters" pick
+ * (ALL_SEMESTERS in useBatchSemesterFilter) needs every semester
+ * currently in view in one query (.in(...)), not a single .eq(...).
  */
 export function useNotesAndLabResources(
   branchId: string | null,
-  termId: string | null,
+  termId: string | string[] | null,
   resourceType: ResourceType,
   // Optional — a FILTER, not a scoping dimension like branch/term.
   // Omitted (null) shows every batch's content for this (branch,
@@ -149,18 +202,20 @@ export function useNotesAndLabResources(
   // existed and stays the default now.
   batchId?: string | null
 ) {
+  const termKey = Array.isArray(termId) ? [...termId].sort() : termId;
+  const hasTerm = Array.isArray(termId) ? termId.length > 0 : !!termId;
   return useQuery({
-    queryKey: ["resources", "notes_lab", branchId, termId, resourceType, batchId ?? null],
+    queryKey: ["resources", "notes_lab", branchId, termKey, resourceType, batchId ?? null],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase
         .from("resources")
         .select("*, subject:subjects(id, name, sort_order)")
         .eq("branch_id", branchId!)
-        .eq("term_id", termId!)
         .eq("section", "notes_lab")
         .eq("resource_type", resourceType)
         .eq("status", "approved");
+      query = Array.isArray(termId) ? query.in("term_id", termId) : query.eq("term_id", termId!);
       if (batchId) query = query.eq("batch_id", batchId);
       const { data, error } = await query
         .order("is_pinned", { ascending: false })
@@ -168,7 +223,7 @@ export function useNotesAndLabResources(
       if (error) throw error;
       return data as unknown as ResourceWithSubject[];
     },
-    enabled: !!branchId && !!termId,
+    enabled: !!branchId && hasTerm,
     staleTime: 30_000,
   });
 }
@@ -179,9 +234,12 @@ export function useNotesAndLabResources(
  * branch_id, unlike useNotesAndLabResources, but IS filtered by term
  * (a 1st-Year Sem 1 PYQ has nothing to do with a 2nd-Year Sem 3
  * student, even though a same-term PYQ crosses branches freely).
+ *
+ * termId also accepts an array — see useNotesAndLabResources's
+ * identical note for why ("All semesters").
  */
 export function usePyqResources(
-  termId: string | null,
+  termId: string | string[] | null,
   // Which branches' PYQs are actually visible together — resolved by
   // the caller via pyqSharing.ts's pyqSharingBranchNames (1st Year
   // splits Core+AIML from AIDS; 2nd Year stays fully shared). This is
@@ -192,17 +250,19 @@ export function usePyqResources(
   branchIds: string[] | null,
   batchId?: string | null
 ) {
+  const termKey = Array.isArray(termId) ? [...termId].sort() : termId;
+  const hasTerm = Array.isArray(termId) ? termId.length > 0 : !!termId;
   return useQuery({
-    queryKey: ["resources", "pyq", termId, branchIds ? [...branchIds].sort() : null, batchId ?? null],
+    queryKey: ["resources", "pyq", termKey, branchIds ? [...branchIds].sort() : null, batchId ?? null],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase
         .from("resources")
         .select("*, subject:subjects(id, name, sort_order)")
-        .eq("term_id", termId!)
         .eq("section", "pyq")
         .eq("status", "approved")
         .in("branch_id", branchIds!);
+      query = Array.isArray(termId) ? query.in("term_id", termId) : query.eq("term_id", termId!);
       if (batchId) query = query.eq("batch_id", batchId);
       const { data, error } = await query
         .order("is_pinned", { ascending: false })
@@ -210,7 +270,7 @@ export function usePyqResources(
       if (error) throw error;
       return data as unknown as ResourceWithSubject[];
     },
-    enabled: !!termId && !!branchIds && branchIds.length > 0,
+    enabled: hasTerm && !!branchIds && branchIds.length > 0,
     staleTime: 30_000,
   });
 }
