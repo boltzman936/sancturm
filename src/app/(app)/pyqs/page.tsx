@@ -61,11 +61,6 @@ export default function PYQsPage() {
     setTermId,
   } = useBatchSemesterFilter();
   const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
-  // Either widens the query/Subject-list from "one term" to "every
-  // reached term in view" — an explicit "All semesters" pick, or
-  // Semester not being a filter at all for this Year (see
-  // useBatchSemesterFilter's hideSemesterFilter doc comment).
-  const useMultiTermMode = hideSemesterFilter || isAllSemesters;
 
   // Which branches' PYQs this viewer actually sees together — 1st Year
   // splits Core+AIML from AIDS, 2nd Year stays shared across all
@@ -99,7 +94,7 @@ export default function PYQsPage() {
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
   const { data: resources, isLoading, isError } = usePyqResources(
-    useMultiTermMode ? effectiveTermIds : term?.id ?? null,
+    isAllSemesters ? effectiveTermIds : term?.id ?? null,
     allowedBranchIds
   );
 
@@ -114,9 +109,9 @@ export default function PYQsPage() {
   // across every semester in view instead of just one (both hooks
   // always called, per rules of hooks — whichever doesn't apply gets
   // empty/null args and is a no-op).
-  const { data: singleTermSubjects } = useSubjectsForTerm(useMultiTermMode ? null : term?.id ?? null);
-  const { data: multiTermSubjects } = useSubjectsForTerms(useMultiTermMode ? effectiveTermIds : []);
-  const allTermSubjects = useMultiTermMode ? multiTermSubjects : singleTermSubjects;
+  const { data: singleTermSubjects } = useSubjectsForTerm(isAllSemesters ? null : term?.id ?? null);
+  const { data: multiTermSubjects } = useSubjectsForTerms(isAllSemesters ? effectiveTermIds : []);
+  const allTermSubjects = isAllSemesters ? multiTermSubjects : singleTermSubjects;
   const subjectOptions = useMemo(() => {
     const names = new Set<string>();
     for (const subject of allTermSubjects ?? []) {
@@ -242,13 +237,11 @@ export default function PYQsPage() {
           {batchFilter !== ALL_BATCHES && allBatches
             ? ` in ${allBatches.find((b) => b.id === batchFilter)?.label ?? ""}`
             : ""}
-          {hideSemesterFilter
-            ? `${batchFilter !== ALL_BATCHES ? "," : " in"} ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""}`
-            : isAllSemesters
-              ? `${batchFilter !== ALL_BATCHES ? "," : " in"} ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""} - All Semesters`
-              : term
-                ? `${batchFilter !== ALL_BATCHES ? "," : " in"} ${term.label}`
-                : " this term"}
+          {isAllSemesters
+            ? `${batchFilter !== ALL_BATCHES ? "," : " in"} ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""} - All Semesters`
+            : term
+              ? `${batchFilter !== ALL_BATCHES ? "," : " in"} ${term.label}`
+              : " this term"}
           .
         </p>
       </div>

@@ -2,6 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { localDateKey } from "@/lib/date";
+import { isDateReached } from "@/features/batches/academicChronology";
 import type { AcademicTerm } from "@/types/database";
 
 /**
@@ -67,12 +69,12 @@ export function useCurrentTermsByYear() {
         .order("start_date", { ascending: true });
       if (error) throw error;
 
-      const today = new Date().toISOString().slice(0, 10);
+      const todayKey = localDateKey(new Date().toISOString());
       const byYear = new Map<number, AcademicTerm>();
       for (const row of data ?? []) {
         const term = (Array.isArray(row.term) ? row.term[0] : row.term) as AcademicTerm | null;
         if (!term) continue;
-        const alreadyStarted = row.start_date <= today;
+        const alreadyStarted = isDateReached(row.start_date, todayKey);
         // First row seen for a year always fills the slot (so a year
         // with only future semesters still shows its soonest upcoming
         // one) — after that, only a row that's actually started can

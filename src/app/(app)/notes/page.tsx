@@ -65,11 +65,6 @@ export default function NotesAndLabPage() {
     setTermId,
   } = useBatchSemesterFilter();
   const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
-  // Either widens the query/Subject-list from "one term" to "every
-  // reached term in view" — an explicit "All semesters" pick, or
-  // Semester not being a filter at all for this Year (see
-  // useBatchSemesterFilter's hideSemesterFilter doc comment).
-  const useMultiTermMode = hideSemesterFilter || isAllSemesters;
 
   const [resourceType, setResourceType] = useState<NotesOrLab>("notes");
   const [dateSort, setDateSort] = useState<DateSort>("newest");
@@ -83,12 +78,12 @@ export default function NotesAndLabPage() {
   // union across every semester in view instead (both hooks are always
   // called, per rules of hooks; whichever one applies gets real args,
   // the other's args go null/empty and it's just a no-op query).
-  const { data: singleTermSubjects } = useSubjects(branch?.id ?? null, useMultiTermMode ? null : term?.id ?? null);
+  const { data: singleTermSubjects } = useSubjects(branch?.id ?? null, isAllSemesters ? null : term?.id ?? null);
   const { data: multiTermSubjects } = useSubjectsForBranchAndTerms(
-    useMultiTermMode ? branch?.id ?? null : null,
-    useMultiTermMode ? effectiveTermIds : []
+    isAllSemesters ? branch?.id ?? null : null,
+    isAllSemesters ? effectiveTermIds : []
   );
-  const allSubjects = useMultiTermMode ? multiTermSubjects : singleTermSubjects;
+  const allSubjects = isAllSemesters ? multiTermSubjects : singleTermSubjects;
   // The Subject filter's options depend on which tab is active — Lab
   // only ever applies to the subjects that actually have a lab
   // component, same restriction as the upload form. Notes excludes
@@ -117,7 +112,7 @@ export default function NotesAndLabPage() {
 
   const { data: resources, isLoading, isError } = useNotesAndLabResources(
     branch?.id ?? null,
-    useMultiTermMode ? effectiveTermIds : term?.id ?? null,
+    isAllSemesters ? effectiveTermIds : term?.id ?? null,
     resourceType
   );
 
@@ -221,13 +216,11 @@ export default function NotesAndLabPage() {
           {batchFilter !== ALL_BATCHES && allBatches
             ? ` — ${allBatches.find((b) => b.id === batchFilter)?.label ?? ""}`
             : ""}
-          {hideSemesterFilter
-            ? `, ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""}`
-            : isAllSemesters
-              ? `, ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""} - All Semesters`
-              : term
-                ? `, ${term.label}`
-                : ""}
+          {isAllSemesters
+            ? `, ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""} - All Semesters`
+            : term
+              ? `, ${term.label}`
+              : ""}
           .
         </p>
       </div>
