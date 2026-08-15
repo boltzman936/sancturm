@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getPresignedUploadUrl, r2PublicUrl } from "@/lib/r2";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 // Every legitimate caller (CRUploadForm, NoticeComposer, UpdateComposer)
 // builds a path as `<known-prefix>/<uuid>-<original filename>` — and a
@@ -67,6 +68,12 @@ export async function getUploadUrl(path: string, contentType: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
+
+  // Up to MAX_FILES (3) per real submit, but a batch of several
+  // submits in a session is normal — generous enough not to bother a
+  // legitimate CR, tight enough to stop a script minting signed URLs
+  // in a loop.
+  checkRateLimit("getUploadUrl", user.id, 30, 60_000);
 
   if (!isSafeUploadPath(path)) {
     throw new Error("Invalid upload path.");

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey } from "@/lib/date";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 /**
  * Resolves the currently-active batch for one term, server-side — same
@@ -47,6 +48,7 @@ export async function createNotice(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
+  checkRateLimit("createNotice", user.id, 30, 60_000);
 
   const branchId = formData.get("branchId") as string;
   const termId = formData.get("termId") as string;
@@ -88,6 +90,7 @@ export async function createNoticeAllBranches(formData: FormData) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
+  checkRateLimit("createNoticeAllBranches", user.id, 30, 60_000);
 
   const title = formData.get("title") as string;
   const fileUrl = formData.get("fileUrl") as string;
@@ -138,6 +141,7 @@ export async function createCustomNoticeAllBranches(formData: FormData) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
+  checkRateLimit("createCustomNoticeAllBranches", user.id, 30, 60_000);
 
   const title = formData.get("title") as string;
   const body = formData.get("body") as string;
@@ -182,6 +186,7 @@ export async function createCustomNotice(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
+  checkRateLimit("createCustomNotice", user.id, 30, 60_000);
 
   const branchId = formData.get("branchId") as string;
   const termId = formData.get("termId") as string;
@@ -206,6 +211,12 @@ export async function createCustomNotice(formData: FormData) {
 
 export async function deleteNotice(noticeId: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+  checkRateLimit("deleteNotice", user.id, 30, 60_000);
+
   const { data, error } = await supabase
     .from("notices")
     .delete()
@@ -243,6 +254,7 @@ export async function updateNoticeFields(
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
+  checkRateLimit("updateNoticeFields", user.id, 60, 60_000);
 
   const update: Record<string, string | boolean> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;
@@ -272,6 +284,12 @@ export async function updateNoticeFields(
 /** Pin/unpin — same RLS-enforced "CR or admin manages" policy as everything else on notices. */
 export async function toggleNoticePin(noticeId: string, pinned: boolean) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+  checkRateLimit("toggleNoticePin", user.id, 60, 60_000);
+
   const { error } = await supabase.from("notices").update({ is_pinned: pinned }).eq("id", noticeId);
   if (error) throw error;
   revalidatePath("/notices");

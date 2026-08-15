@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 /**
  * Takes the whole site offline for everyone but the admin, for
@@ -21,6 +22,7 @@ export async function takeOffline(message: string, durationMinutes: number) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
+  checkRateLimit("takeOffline", user.id, 10, 60_000);
 
   if (durationMinutes <= 0) throw new Error("Duration must be positive.");
 
@@ -56,6 +58,7 @@ export async function extendMaintenance(additionalMinutes: number) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
+  checkRateLimit("extendMaintenance", user.id, 10, 60_000);
 
   if (additionalMinutes <= 0) throw new Error("Duration must be positive.");
 
@@ -91,6 +94,7 @@ export async function bringOnline() {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
+  checkRateLimit("bringOnline", user.id, 10, 60_000);
 
   const { error } = await supabase
     .from("maintenance_config")

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey } from "@/lib/date";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 /**
  * Admin-only, full stop — RLS ("Admin only manages", supabase/
@@ -16,6 +17,7 @@ export async function createSancturmUpdate(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
+  checkRateLimit("createSancturmUpdate", user.id, 30, 60_000);
 
   const title = formData.get("title") as string;
   // Uploaded straight to R2 from the browser already — see resources/
@@ -38,6 +40,7 @@ export async function createCustomSancturmUpdate(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
+  checkRateLimit("createCustomSancturmUpdate", user.id, 30, 60_000);
 
   const title = formData.get("title") as string;
   const body = formData.get("body") as string;
@@ -54,6 +57,12 @@ export async function createCustomSancturmUpdate(formData: FormData) {
 
 export async function deleteSancturmUpdate(updateId: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+  checkRateLimit("deleteSancturmUpdate", user.id, 30, 60_000);
+
   const { data, error } = await supabase
     .from("sancturm_updates")
     .delete()
@@ -78,6 +87,12 @@ export async function deleteSancturmUpdate(updateId: string) {
  */
 export async function updateSancturmUpdateDate(updateId: string, dateKey: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+  checkRateLimit("updateSancturmUpdateDate", user.id, 60, 60_000);
+
   const { data: existing, error: fetchError } = await supabase
     .from("sancturm_updates")
     .select("created_at")
@@ -98,6 +113,12 @@ export async function updateSancturmUpdateDate(updateId: string, dateKey: string
 /** Pin/unpin — admin-only, same as everything else on this table. */
 export async function toggleSancturmUpdatePin(updateId: string, pinned: boolean) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+  checkRateLimit("toggleSancturmUpdatePin", user.id, 60, 60_000);
+
   const { error } = await supabase.from("sancturm_updates").update({ is_pinned: pinned }).eq("id", updateId);
   if (error) throw error;
   revalidatePath("/sancturm-updates");

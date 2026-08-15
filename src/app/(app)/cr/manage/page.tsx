@@ -28,6 +28,17 @@ export default async function CRManagePage() {
   // their own term (shared content — see supabase/scope_cr_by_term.sql
   // and supabase/add_batches.sql; PYQ stays batch-agnostic there too).
   if (role.type === "cr") {
+    // role.branchId/batchId come from cr_profiles (admin-set, not user
+    // input) so this interpolation isn't attacker-reachable today — but
+    // it's the one PostgREST filter in the codebase built by template
+    // literal instead of the query builder. Guarding the shape here
+    // means a future change that ever let these values drift toward
+    // user-influenced input fails safe instead of opening a filter-
+    // injection hole.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(role.branchId) || !UUID_RE.test(role.batchId)) {
+      throw new Error("Invalid CR profile scope.");
+    }
     query = query
       .eq("term_id", role.termId)
       .or(`section.eq.pyq,and(section.eq.notes_lab,branch_id.eq.${role.branchId},batch_id.eq.${role.batchId})`);

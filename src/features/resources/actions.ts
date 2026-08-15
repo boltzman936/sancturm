@@ -6,6 +6,7 @@ import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey, localDateKey } from "@/lib/date";
 import { isDateReached } from "@/features/batches/academicChronology";
+import { checkRateLimit } from "@/lib/rateLimit";
 import { resolveSubjectBranchName } from "./subjectInterchange";
 import type { SubjectStructureConfig } from "./types";
 
@@ -44,6 +45,12 @@ async function assertBatchTermReached(
  */
 export async function deleteResource(resourceId: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+  checkRateLimit("deleteResource", user.id, 30, 60_000);
+
   const { data, error } = await supabase
     .from("resources")
     .delete()
@@ -104,6 +111,7 @@ export async function updateResourceFields(
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
+  checkRateLimit("updateResourceFields", user.id, 60, 60_000);
 
   const update: Record<string, string | null> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;
@@ -152,6 +160,9 @@ export async function setSubjectInterchange(active: boolean) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
+  // Tight — this is a rare, deliberate system-wide toggle, not
+  // something a legitimate admin flips repeatedly in a short window.
+  checkRateLimit("setSubjectInterchange", user.id, 10, 60_000);
 
   const { error } = await supabase
     .from("subject_structure_config")
@@ -180,6 +191,12 @@ export async function setSubjectInterchange(active: boolean) {
  */
 export async function toggleResourcePin(resourceId: string, pinned: boolean) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+  checkRateLimit("toggleResourcePin", user.id, 60, 60_000);
+
   const { error } = await supabase.from("resources").update({ is_pinned: pinned }).eq("id", resourceId);
   if (error) throw error;
   revalidatePath("/notes");
@@ -199,6 +216,7 @@ export async function uploadResourceDirect(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
+  checkRateLimit("uploadResourceDirect", user.id, 30, 60_000);
 
   const role = await getCurrentRole();
 
@@ -272,6 +290,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
+  checkRateLimit("uploadResourceDirectAllBranches", user.id, 30, 60_000);
 
   const termId = formData.get("termId") as string;
   const batchId = formData.get("batchId") as string;
