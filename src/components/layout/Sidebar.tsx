@@ -81,7 +81,15 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             selectors, nav links and bottom actions all share one
             left/right edge. */}
         <div className="flex shrink-0 flex-col gap-4 p-4 md:gap-5 lg:p-5">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-center">
+            {/* Invisible spacer matching the close button's own box
+                size (h-4 w-4 icon + p-1.5 padding = 28px = h-7/w-7) —
+                mirrors AppLayout's identical hamburger-header spacer
+                trick. Without it, the close button's one-sided weight
+                on mobile would pull "sancturm" left of true center;
+                both vanish together at md+, where justify-center
+                alone correctly centers the logo as the sole item. */}
+            <span className="h-7 w-7 shrink-0 md:hidden" aria-hidden="true" />
             <Link
               href="/"
               onClick={onClose}
@@ -148,11 +156,17 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             desktop/tablet and only grows on devices that need it. */}
         <div className="shrink-0 border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:p-5">
           <div className="flex flex-col gap-1">
+            {/* justify-center: the dashboard link's icon+text center as
+                one group within the link's own full-width row (that
+                row already spans the sidebar's full content width, same
+                as every nav item above) — background/hover/active
+                colors are unaffected, only the inner content's
+                horizontal position changes. */}
             <Link
               href="/cr"
               onClick={onClose}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring md:py-2",
+                "flex items-center justify-center gap-2.5 rounded-md px-3 py-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring md:py-2",
                 pathname.startsWith("/cr")
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
@@ -165,8 +179,12 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             {/* Only shown once someone's actually signed in — a plain
                 student browsing anonymously has no session to end. This
                 is what lets a test login (or the previous CR, handing
-                a branch off) clear the way for the next person. */}
-            {role && <SignOutButton className="px-3 py-1" />}
+                a branch off) clear the way for the next person.
+                text-center: SignOutButton's own button element stretches
+                to the same full-width row as the link above it (flex-col
+                parent's default stretch), so centering its text lines it
+                up directly under the centered dashboard link. */}
+            {role && <SignOutButton className="px-3 py-1 text-center" />}
           </div>
         </div>
       </nav>
