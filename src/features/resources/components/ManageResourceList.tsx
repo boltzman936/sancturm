@@ -115,6 +115,18 @@ function bySubject(a: ManageableResource, b: ManageableResource) {
 // single bulk-publish action. Grouped into one card (see
 // groupByContent below) instead of one repeated card per branch.
 //
+// subject.name, NOT subject_id: subjects are branch-scoped rows in
+// this schema (see add_batches.sql / subjects table) — "Engineering
+// Mechanics" for CSE AIML and "Engineering Mechanics" for CSE Core are
+// two DIFFERENT ids even though a bulk publish resolves each branch to
+// its own matching-named subject on purpose (see
+// uploadResourceDirectAllBranches's resolveSubjectBranchName call).
+// Keying on subject_id meant that resolution step itself defeated the
+// grouping for every subject-tagged upload — the one case that worked
+// before this fix (a Notice) only worked because notices have no
+// subject at all. The name is the one thing that's actually the same
+// concept across branches; the id never is.
+//
 // localDateKey (the calendar day), not the exact timestamp:
 // uploadResourceDirectAllBranches inserts one branch at a time in a
 // loop rather than a single bulk insert, so sibling rows' created_at
@@ -131,7 +143,7 @@ function contentGroupKey(r: ManageableResource): string {
     r.resource_type ?? "",
     r.term_id ?? "",
     r.batch_id ?? "",
-    r.subject_id ?? "",
+    r.subject?.name ?? "",
     r.title,
     r.description ?? "",
     localDateKey(r.created_at),
