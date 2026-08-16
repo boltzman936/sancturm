@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useMaintenanceConfig } from "@/features/maintenance/queries";
 import { takeOffline, extendMaintenance, bringOnline } from "@/features/maintenance/actions";
 
-function isActive(until: string | null | undefined) {
-  return !!until && new Date(until).getTime() > Date.now();
+function isActive(until: string | null | undefined, now: number) {
+  return !!until && new Date(until).getTime() > now;
 }
 
 const QUICK_DURATIONS = [
@@ -40,8 +40,22 @@ export function MaintenanceControl() {
   const [customMinutes, setCustomMinutes] = useState("");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // The DB row itself doesn't change just because time passes — it
+  // still holds the SAME `until` value it always did — so React
+  // Query's structural sharing keeps returning the identical cached
+  // object on every 15s refetch, and this component never re-renders,
+  // never re-evaluating isActive() against the now-current clock. A
+  // manually-ticked `now` is what actually forces the "was offline,
+  // window has since passed" transition to show up here without a
+  // manual page reload — same fix MaintenanceCountdown already needed
+  // for its own live countdown, just applied here too.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const active = isActive(config?.until);
+  const active = isActive(config?.until, now);
 
   function closeDialog() {
     setDialogMode(null);

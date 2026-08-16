@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useMaintenanceConfig } from "@/features/maintenance/queries";
 
 function computeClockOffset(serverNow: string) {
@@ -76,6 +77,19 @@ export function MaintenanceCountdown({
       </p>
       <p className="font-mono text-3xl text-primary">{formatRemaining(remaining)}</p>
       <p className="font-mono text-xs text-subtle-foreground">This page updates automatically.</p>
+      {/* /login is deliberately excluded from middleware's maintenance
+          redirect (see middleware.ts's own matcher comment) so an admin
+          can always sign back in and end/extend the window — but that
+          only actually works if there's a way to REACH it from here.
+          Without this link, a signed-out admin landing on this exact
+          page (a bookmark, a fresh browser) had no visible path to
+          /login short of typing it into the address bar by hand. */}
+      <Link
+        href="/login"
+        className="mt-2 font-mono text-xs text-subtle-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline active:text-foreground active:underline"
+      >
+        Admin sign in
+      </Link>
     </main>
   );
 }
