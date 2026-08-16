@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useBatches, useBatchTerms, useAllBatchTerms } from "@/features/batches/queries";
 import { useTerms, useTermBySlug } from "@/features/terms/queries";
 import { useBatch } from "@/hooks/useBatch";
@@ -9,6 +9,29 @@ import { useResetInvalidSelection } from "./useResetInvalidSelection";
 import { localDateKey } from "@/lib/date";
 import { isDateReached } from "@/features/batches/academicChronology";
 import type { BatchTerm, AcademicTerm } from "@/types/database";
+
+// sessionStorage (not localStorage — see below) key holding the
+// year_number an explicit Batch pick was made for. Plain localStorage
+// can't tell "the student deliberately chose an older batch a minute
+// ago" apart from "this is a leftover pick from a visit eight months
+// back, before that batch ever left this Year" — both look identical,
+// just a persisted label. sessionStorage naturally clears on a new
+// browser session (new tab tomorrow), which is exactly the boundary
+// that matters: within one sitting, an explicit pick sticks across
+// refreshes and Notes<->PYQs navigation; across sittings, the default
+// always gets recomputed against today's real academic calendar.
+const BATCH_EXPLICIT_PICK_YEAR_KEY = "sancturm:batchExplicitYear";
+
+// The other half of that same mechanism: which Year this hook most
+// recently resolved a Batch default for, in THIS browser session.
+// Needed because an explicit pick's year alone isn't enough to tell
+// "still on the same Year visit" apart from "left this Year and came
+// back to it later in the same session" — a 1st Year -> 2nd Year ->
+// 1st Year round trip must land back on 1st Year's own current
+// default, not resurrect whatever batch 2nd Year happened to also
+// default to just because BATCH_EXPLICIT_PICK_YEAR_KEY still said "1"
+// from before the round trip.
+const LAST_YEAR_KEY = "sancturm:batchDefaultLastYear";
 
 export const ALL_BATCHES = "all";
 // A pseudo-Semester meaning "every semester currently in view" —
@@ -76,13 +99,16 @@ function resolveDefaultBatchIdForYear(
  *
  * Batch and Semester DEFAULTS are computed dynamically from the real
  * academic calendar (batch_terms dates) — never hardcoded, never
- * derived from which batch happens to have uploads. A Batch pick is
- * respected across re-renders and page refreshes within the SAME
- * Year, but a genuine sidebar Year switch always resets Batch to that
- * year's own default — Year is meant to feel like a real refresh, not
- * something that can leave a stale batch pick from the previous Year
- * silently in place just because it happens to still be technically
- * valid there too.
+ * derived from which batch happens to have uploads. An explicit Batch
+ * pick is respected across re-renders, page refreshes, and Notes<->PYQ
+ * navigation for the rest of the browser session (see
+ * BATCH_EXPLICIT_PICK_YEAR_KEY) — but a batch pick from an OLDER
+ * session, or a genuine sidebar Year switch, always resolves back to
+ * that Year's real current default. A batch simply having reached this
+ * Year at some point in its history isn't enough to keep it pinned as
+ * the default forever — otherwise a returning student's device stays
+ * stuck on whichever batch was current the last time they explicitly
+ * touched the picker, long after that batch has moved on.
  *
  * A single shared hook so Notes and PYQs can't drift out of sync on
  * this logic the way they already did once this session.
@@ -242,20 +268,12 @@ export function useBatchSemesterFilter() {
     );
   }, [yearNumber, everyBatchTerms, allBatches, todayKey]);
 
-  // Tracks the last sidebar Year this hook actually reacted to, purely
-  // to distinguish "the page loaded/re-rendered while already on this
-  // Year" (respect whatever's persisted, if still valid) from "the
-  // student just clicked Switch Year to a NEW one" (always jump to
-  // that year's own default batch, even if the old pick would still
-  // technically be valid there too — a genuine Year switch should
-  // read as a real refresh, not silently keep showing a leftover pick
-  // from the previous Year).
-  const lastYearRef = useRef<number | undefined>(undefined);
-
   // Batch DEFAULT recomputation — fires only when actually needed:
-  // first-ever visit (batchLabel never persisted), a genuine Year
-  // switch (see lastYearRef above), the persisted/picked batch isn't
-  // actually AT the sidebar's current year (exact year_number match),
+  // first-ever visit (batchLabel never persisted), a persisted batch
+  // that wasn't explicitly picked THIS session for this exact Year
+  // (see BATCH_EXPLICIT_PICK_YEAR_KEY's own comment — this is what
+  // stops a months-old leftover pick from sticking forever just
+  // because that batch technically reached this Year at some point),
   // or "All batches" is persisted but only one batch is eligible for
   // this year (offering "All batches" next to a single real option is
   // redundant, and the Batch <select> won't even render it — see
@@ -264,16 +282,23 @@ export function useBatchSemesterFilter() {
   useEffect(() => {
     if (yearNumber === undefined || !everyBatchTerms || !allBatches || !eligibleBatches) return;
 
-    const yearSwitched = lastYearRef.current !== undefined && lastYearRef.current !== yearNumber;
-    lastYearRef.current = yearNumber;
+    // A genuine Year switch (including a round trip back to a Year
+    // visited earlier this same session) always forces a fresh default
+    // resolution, regardless of what the explicit-pick flag says — see
+    // LAST_YEAR_KEY's own comment.
+    const yearSwitched = window.sessionStorage.getItem(LAST_YEAR_KEY) !== String(yearNumber);
+    window.sessionStorage.setItem(LAST_YEAR_KEY, String(yearNumber));
 
     if (batchLabel === ALL_BATCHES) {
       if (eligibleBatches.length === 1) persistBatch(eligibleBatches[0].label);
       return;
     }
 
+    const explicitlyPickedThisYear =
+      !yearSwitched && window.sessionStorage.getItem(BATCH_EXPLICIT_PICK_YEAR_KEY) === String(yearNumber);
     const pickedBatch = batchLabel ? allBatches.find((b) => b.label === batchLabel) : undefined;
-    const currentlyValid = !yearSwitched && !!pickedBatch && eligibleBatches.some((b) => b.id === pickedBatch.id);
+    const currentlyValid =
+      explicitlyPickedThisYear && !!pickedBatch && eligibleBatches.some((b) => b.id === pickedBatch.id);
     if (currentlyValid) return;
 
     // Only writes to the external localStorage-backed store here, not
@@ -294,6 +319,9 @@ export function useBatchSemesterFilter() {
       const picked = allBatches?.find((b) => b.id === id);
       if (picked) persistBatch(picked.label);
     }
+    // Marks this an explicit, in-session choice for the sessionStorage
+    // check above — see BATCH_EXPLICIT_PICK_YEAR_KEY's comment.
+    if (yearNumber !== undefined) window.sessionStorage.setItem(BATCH_EXPLICIT_PICK_YEAR_KEY, String(yearNumber));
     setTermIdState(null); // defer to the new batch's current period
   }
 
