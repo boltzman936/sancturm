@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Search, Calendar as CalendarIcon, Pencil } from "lucide-react";
+import { Search, Calendar as CalendarIcon, Pencil, ChevronDown } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DeleteResourceButton } from "@/features/resources/components/DeleteResourceButton";
 import { DeleteNoticeButton } from "@/features/notices/components/DeleteNoticeButton";
@@ -603,6 +603,7 @@ function ResourceGroupRow({
   const primary = items[0];
   const isGrouped = items.length > 1;
   const [isDeleting, startDelete] = useTransition();
+  const [expanded, setExpanded] = useState(false);
 
   // Admin sees the branch on every row. A CR only ever manages their
   // own branch's notes_lab items (branch is implied, no need to show
@@ -631,81 +632,127 @@ function ResourceGroupRow({
   return (
     <li
       className={cn(
-        "flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-4",
+        "flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors",
         allSelected ? "border-primary" : "border-border"
       )}
     >
-      <div className="flex min-w-0 items-start gap-3">
-        <input
-          type="checkbox"
-          checked={allSelected}
-          onChange={() => onToggleGroup(items.map((item) => item.id))}
-          aria-label={`Select ${primary.title}`}
-          className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
-        />
-        <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-1.5">
-            <span className="break-words text-foreground">{primary.title}</span>
-            {primary.cr_only && (
-              <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
-                CR only
-              </span>
-            )}
-          </p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-subtle-foreground">
-            {showTerm && (
-              <>
-                <span>{shortTermLabel(primary.term)}</span>
-                <span aria-hidden="true">·</span>
-              </>
-            )}
-            {showBatch && (
-              <>
-                <span>{primary.batch?.label}</span>
-                <span aria-hidden="true">·</span>
-              </>
-            )}
-            {showBranch && branchNames.length > 0 && (
-              <>
-                <span>{branchNames.join(", ")}</span>
-                <span aria-hidden="true">·</span>
-              </>
-            )}
-            <span>{typeGroupLabel(primary)}</span>
-            <span aria-hidden="true">·</span>
-            <span>{primary.subject?.name ?? "Extra"}</span>
-            <span aria-hidden="true">·</span>
-            <span>{formatShortDate(primary.created_at)}</span>
-            <span aria-hidden="true">·</span>
-            <span>{uploaderLabel(primary)}</span>
-          </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={() => onToggleGroup(items.map((item) => item.id))}
+            aria-label={`Select ${primary.title}`}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+          />
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-1.5">
+              <span className="break-words text-foreground">{primary.title}</span>
+              {primary.cr_only && (
+                <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                  CR only
+                </span>
+              )}
+            </p>
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-subtle-foreground">
+              {showTerm && (
+                <>
+                  <span>{shortTermLabel(primary.term)}</span>
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
+              {showBatch && (
+                <>
+                  <span>{primary.batch?.label}</span>
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
+              {showBranch && branchNames.length > 0 && (
+                <>
+                  <span>{branchNames.join(", ")}</span>
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
+              <span>{typeGroupLabel(primary)}</span>
+              <span aria-hidden="true">·</span>
+              <span>{primary.subject?.name ?? "Extra"}</span>
+              <span aria-hidden="true">·</span>
+              <span>{formatShortDate(primary.created_at)}</span>
+              <span aria-hidden="true">·</span>
+              <span>{uploaderLabel(primary)}</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+          {!isGrouped &&
+            isAdmin &&
+            (primary.kind === "update" ? (
+              <EditDateButton id={primary.id} createdAt={primary.created_at} />
+            ) : (
+              <EditResourceButton resource={primary} />
+            ))}
+          {isGrouped ? (
+            <>
+              {/* Per-branch Edit/Remove without collapsing the summary
+                  card back into repeated ones — branch/subject can
+                  genuinely diverge per row (subject interchange), so
+                  there's no single Edit that could apply to the whole
+                  group at once. */}
+              <button
+                type="button"
+                onClick={() => setExpanded((prev) => !prev)}
+                aria-label={expanded ? "Hide branches" : "Show branches"}
+                aria-expanded={expanded}
+                className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
+              >
+                <ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} />
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleGroupDelete}
+                className="rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 active:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
+              >
+                {isDeleting ? "Removing…" : `Remove (${items.length})`}
+              </button>
+            </>
+          ) : primary.kind === "notice" ? (
+            <DeleteNoticeButton noticeId={primary.id} />
+          ) : primary.kind === "update" ? (
+            <DeleteSancturmUpdateButton updateId={primary.id} />
+          ) : (
+            <DeleteResourceButton resourceId={primary.id} />
+          )}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
-        {!isGrouped &&
-          isAdmin &&
-          (primary.kind === "update" ? (
-            <EditDateButton id={primary.id} createdAt={primary.created_at} />
-          ) : (
-            <EditResourceButton resource={primary} />
+
+      {isGrouped && expanded && (
+        <ul className="flex flex-col gap-2 border-t border-border pt-3">
+          {items.map((item) => (
+            <li
+              key={item.id}
+              className="flex flex-col gap-2 rounded-md bg-background-secondary/60 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+            >
+              <span className="font-mono text-xs text-subtle-foreground">{item.branch?.name}</span>
+              <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+                {isAdmin &&
+                  (item.kind === "update" ? (
+                    <EditDateButton id={item.id} createdAt={item.created_at} />
+                  ) : (
+                    <EditResourceButton resource={item} />
+                  ))}
+                {item.kind === "notice" ? (
+                  <DeleteNoticeButton noticeId={item.id} />
+                ) : item.kind === "update" ? (
+                  <DeleteSancturmUpdateButton updateId={item.id} />
+                ) : (
+                  <DeleteResourceButton resourceId={item.id} />
+                )}
+              </div>
+            </li>
           ))}
-        {isGrouped ? (
-          <button
-            type="button"
-            disabled={isDeleting}
-            onClick={handleGroupDelete}
-            className="rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 active:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
-          >
-            {isDeleting ? "Removing…" : `Remove (${items.length})`}
-          </button>
-        ) : primary.kind === "notice" ? (
-          <DeleteNoticeButton noticeId={primary.id} />
-        ) : primary.kind === "update" ? (
-          <DeleteSancturmUpdateButton updateId={primary.id} />
-        ) : (
-          <DeleteResourceButton resourceId={primary.id} />
-        )}
-      </div>
+        </ul>
+      )}
     </li>
   );
 }
