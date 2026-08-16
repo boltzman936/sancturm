@@ -43,12 +43,26 @@ function cursorClassName(typingDone: boolean, cursorVisible: boolean) {
 // usable on a phone held upright.
 const PORTRAIT_QUERY = "(max-aspect-ratio: 0.9)";
 
+// Lazy initializer (not useState(false) + an effect-set value) so the
+// FIRST client render already has the real answer, not a placeholder
+// that flips a moment later. That flip used to matter a lot here: the
+// video <source> below depends on this same class of check
+// (useIsMobileWidth), and briefly rendering the WRONG one meant the
+// browser started fetching the desktop cockpit video, then aborted
+// and re-fetched the actual mobile one once the effect caught up —
+// on a phone, exactly the connection where that wasted round trip
+// hurts most. typeof window guards the one place this still runs
+// without a browser: next build's static-generation pass executes
+// this component in Node to prerender "/" — see isLoaded's own
+// server-snapshot gate just below, which already returns null in
+// that same environment regardless, so this only ever affects a REAL
+// client's first paint, never the prerendered HTML.
 function usePortraitLayout() {
-  const [isPortrait, setIsPortrait] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(() =>
+    typeof window === "undefined" ? false : window.matchMedia(PORTRAIT_QUERY).matches
+  );
   useEffect(() => {
     const mq = window.matchMedia(PORTRAIT_QUERY);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing to matchMedia, an external system
-    setIsPortrait(mq.matches);
     const handler = (e: MediaQueryListEvent) => setIsPortrait(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
@@ -65,11 +79,13 @@ function usePortraitLayout() {
 const MOBILE_WIDTH_QUERY = "(max-width: 640px)";
 
 function useIsMobileWidth() {
-  const [isMobile, setIsMobile] = useState(false);
+  // Same lazy-initializer reasoning as usePortraitLayout above — this
+  // is the one whose first-render value picks the video <src> itself.
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window === "undefined" ? false : window.matchMedia(MOBILE_WIDTH_QUERY).matches
+  );
   useEffect(() => {
     const mq = window.matchMedia(MOBILE_WIDTH_QUERY);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing to matchMedia, an external system
-    setIsMobile(mq.matches);
     const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
@@ -286,6 +302,13 @@ export function IntroExperience() {
           loop
           muted
           playsInline
+          // Some mobile browsers default to metadata-only preloading
+          // on cellular connections as a data-saving heuristic, even
+          // with autoplay present — this is the first thing on the
+          // page and the one thing everything else (the typed
+          // headline, the year/branch cards) is waiting on, so it
+          // shouldn't be left to that heuristic.
+          preload="auto"
           aria-hidden="true"
           tabIndex={-1}
           onLoadedData={() => setVideoReady(true)}
