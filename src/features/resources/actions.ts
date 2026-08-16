@@ -9,7 +9,45 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 import { assertBatchTermReached } from "@/features/batches/academicValidation";
 import { resolveSubjectBranchName } from "./subjectInterchange";
-import type { SubjectStructureConfig } from "./types";
+import type { SubjectStructureConfig, ResourceSection, ResourceType } from "./types";
+import {
+  assertValidId,
+  assertValidIdOrNull,
+  assertValidIdArray,
+  assertValidString,
+  assertValidDateKey,
+  safeDbError,
+  MAX_TITLE_LENGTH,
+  MAX_DESCRIPTION_LENGTH,
+} from "@/lib/validation";
+
+// The database's own CHECK constraints — mirrored here so a malformed
+// resource_type/section can be rejected with a clear error before it
+// ever reaches Postgres, not just relying on the DB to bounce it.
+const RESOURCE_TYPES = new Set<ResourceType>([
+  "notes",
+  "lab_manual",
+  "code",
+  "assignment",
+  "viva",
+  "record_file",
+  "pdf",
+  "pyq",
+  "pyq_solution",
+]);
+const RESOURCE_SECTIONS = new Set<ResourceSection>(["notes_lab", "pyq"]);
+
+function assertValidResourceType(value: unknown): asserts value is ResourceType {
+  if (typeof value !== "string" || !RESOURCE_TYPES.has(value as ResourceType)) {
+    throw new Error("Invalid resource type.");
+  }
+}
+
+function assertValidSection(value: unknown): asserts value is ResourceSection {
+  if (typeof value !== "string" || !RESOURCE_SECTIONS.has(value as ResourceSection)) {
+    throw new Error("Invalid section.");
+  }
+}
 
 /**
  * Takes down an already-published resource — same RLS-enforced
@@ -24,7 +62,8 @@ export async function deleteResource(resourceId: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
-  checkRateLimit("deleteResource", user.id, 30, 60_000);
+  await checkRateLimit("deleteResource", user.id, 30, 60_000);
+  assertValidId(resourceId, "resource");
 
   const { data, error } = await supabase
     .from("resources")
@@ -32,7 +71,7 @@ export async function deleteResource(resourceId: string) {
     .eq("id", resourceId)
     .select("file_url")
     .single();
-  if (error) throw error;
+  if (error) throw safeDbError(error);
 
   // Best-effort: the row is already gone (the outcome that actually
   // matters to whoever clicked delete), so a storage hiccup here
@@ -86,7 +125,23 @@ export async function updateResourceFields(
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
-  checkRateLimit("updateResourceFields", user.id, 60, 60_000);
+  await checkRateLimit("updateResourceFields", user.id, 60, 60_000);
+
+  assertValidId(resourceId, "resource");
+  if (fields.branchId !== undefined) assertValidId(fields.branchId, "branch");
+  if (fields.termId !== undefined) assertValidId(fields.termId, "year");
+  if (fields.batchId !== undefined) assertValidId(fields.batchId, "batch");
+  if (fields.subjectId !== undefined) assertValidIdOrNull(fields.subjectId, "subject");
+  if (fields.dateKey !== undefined) assertValidDateKey(fields.dateKey, "date");
+  if (fields.title !== undefined) assertValidString(fields.title, "Title", { maxLength: MAX_TITLE_LENGTH });
+  if (fields.description !== undefined) {
+    assertValidString(fields.description ?? "", "Description", {
+      maxLength: MAX_DESCRIPTION_LENGTH,
+      required: false,
+    });
+  }
+  if (fields.resourceType !== undefined) assertValidResourceType(fields.resourceType);
+  if (fields.section !== undefined) assertValidSection(fields.section);
 
   // The Edit dialog's Batch <select> (useBatchesForTerm) isn't itself
   // date-filtered — Edit deliberately lets an admin retarget a
@@ -114,13 +169,13 @@ export async function updateResourceFields(
       .select("created_at")
       .eq("id", resourceId)
       .single();
-    if (fetchError) throw fetchError;
+    if (fetchError) throw safeDbError(fetchError);
     update.created_at = withDateKey(existing.created_at, fields.dateKey);
   }
 
   if (Object.keys(update).length > 0) {
     const { error: updateError } = await supabase.from("resources").update(update).eq("id", resourceId);
-    if (updateError) throw updateError;
+    if (updateError) throw safeDbError(updateError);
   }
 
   revalidatePath("/notes");
@@ -147,7 +202,9 @@ export async function setSubjectInterchange(active: boolean) {
   if (role?.type !== "admin") throw new Error("Admin only.");
   // Tight — this is a rare, deliberate system-wide toggle, not
   // something a legitimate admin flips repeatedly in a short window.
-  checkRateLimit("setSubjectInterchange", user.id, 10, 60_000);
+  await checkRateLimit("setSubjectInterchange", user.id, 10, 60_000);
+
+  if (typeof active !== "boolean") throw new Error("Invalid value.");
 
   const { error } = await supabase
     .from("subject_structure_config")
@@ -157,7 +214,7 @@ export async function setSubjectInterchange(active: boolean) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", true);
-  if (error) throw error;
+  if (error) throw safeDbError(error);
 
   // Every page that resolves a subject list needs to see the new
   // value — Notes/PYQs (browsing), Upload, and Manage (admin's own
@@ -180,10 +237,13 @@ export async function toggleResourcePin(resourceId: string, pinned: boolean) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
-  checkRateLimit("toggleResourcePin", user.id, 60, 60_000);
+  await checkRateLimit("toggleResourcePin", user.id, 60, 60_000);
+
+  assertValidId(resourceId, "resource");
+  if (typeof pinned !== "boolean") throw new Error("Invalid pin value.");
 
   const { error } = await supabase.from("resources").update({ is_pinned: pinned }).eq("id", resourceId);
-  if (error) throw error;
+  if (error) throw safeDbError(error);
   revalidatePath("/notes");
   revalidatePath("/pyqs");
   revalidatePath("/cr/manage");
@@ -201,7 +261,7 @@ export async function uploadResourceDirect(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
-  checkRateLimit("uploadResourceDirect", user.id, 30, 60_000);
+  await checkRateLimit("uploadResourceDirect", user.id, 30, 60_000);
 
   const role = await getCurrentRole();
 
@@ -224,6 +284,16 @@ export async function uploadResourceDirect(formData: FormData) {
   // database's own now() default apply exactly as before.
   const customCreatedAt = (formData.get("customCreatedAt") as string) || null;
 
+  assertValidId(branchId, "branch");
+  assertValidId(termId, "year");
+  assertValidId(batchId, "batch");
+  assertValidIdOrNull(subjectId, "subject");
+  assertValidSection(section);
+  assertValidResourceType(resourceType);
+  assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
+  assertValidString(description ?? "", "Description", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
+  if (customCreatedAt !== null) assertValidString(customCreatedAt, "Date", { maxLength: 40 });
+
   await assertBatchTermReached(supabase, batchId, termId);
 
   // The presigned PUT already constrained WHICH Content-Type header
@@ -232,7 +302,7 @@ export async function uploadResourceDirect(formData: FormData) {
   // a published row — see uploadVerification.ts's own comment for why
   // the earlier check alone wasn't enough.
   if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
-    throw new Error("Uploaded file doesn't match its declared type. The file was rejected.");
+    throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
   const { error: insertError } = await supabase.from("resources").insert({
@@ -250,7 +320,7 @@ export async function uploadResourceDirect(formData: FormData) {
     uploaded_by_name: role?.displayName ?? null,
     ...(customCreatedAt ? { created_at: customCreatedAt } : {}),
   });
-  if (insertError) throw insertError;
+  if (insertError) throw safeDbError(insertError);
 
   revalidatePath("/notes");
   revalidatePath("/pyqs");
@@ -284,7 +354,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
-  checkRateLimit("uploadResourceDirectAllBranches", user.id, 30, 60_000);
+  await checkRateLimit("uploadResourceDirectAllBranches", user.id, 30, 60_000);
 
   const termId = formData.get("termId") as string;
   const batchId = formData.get("batchId") as string;
@@ -300,6 +370,15 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   // was why a backdated admin upload silently landed on today anyway.
   const customCreatedAt = (formData.get("customCreatedAt") as string) || null;
 
+  assertValidId(termId, "year");
+  assertValidId(batchId, "batch");
+  assertValidString(subjectName ?? "", "Subject", { maxLength: MAX_TITLE_LENGTH, required: false });
+  assertValidSection(section);
+  assertValidResourceType(resourceType);
+  assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
+  assertValidString(description ?? "", "Description", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
+  if (customCreatedAt !== null) assertValidString(customCreatedAt, "Date", { maxLength: 40 });
+
   // The form's multi-select sends exactly which branches were checked —
   // falls back to every branch that exists only if the field is
   // missing entirely (an older client), never silently on a malformed
@@ -308,13 +387,16 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   let branchIds: string[];
   if (branchIdsRaw === null) {
     const { data: allBranches, error: branchesError } = await supabase.from("branches").select("id");
-    if (branchesError) throw branchesError;
+    if (branchesError) throw safeDbError(branchesError);
     branchIds = (allBranches ?? []).map((b) => b.id);
   } else {
-    const parsed: unknown = JSON.parse(branchIdsRaw);
-    if (!Array.isArray(parsed) || !parsed.every((id) => typeof id === "string")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(branchIdsRaw);
+    } catch {
       throw new Error("Invalid branch selection.");
     }
+    assertValidIdArray(parsed, "branch");
     branchIds = parsed;
   }
   if (!branchIds.length) throw new Error("No branches found.");
@@ -325,7 +407,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   // referenced by every branch's row below. See uploadResourceDirect's
   // identical check for why this exists.
   if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
-    throw new Error("Uploaded file doesn't match its declared type. The file was rejected.");
+    throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
   // Resolved once for the whole batch, not per-branch — fine to share
@@ -381,7 +463,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
       uploaded_by_name: role.displayName,
       ...(customCreatedAt ? { created_at: customCreatedAt } : {}),
     });
-    if (insertError) throw insertError;
+    if (insertError) throw safeDbError(insertError);
   }
 
   revalidatePath("/notes");

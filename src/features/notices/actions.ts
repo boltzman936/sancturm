@@ -8,6 +8,15 @@ import { withDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 import { assertBatchTermReached } from "@/features/batches/academicValidation";
+import {
+  assertValidId,
+  assertValidIdArray,
+  assertValidString,
+  assertValidDateKey,
+  safeDbError,
+  MAX_TITLE_LENGTH,
+  MAX_DESCRIPTION_LENGTH,
+} from "@/lib/validation";
 
 /**
  * Resolves the currently-active batch for one term, server-side — same
@@ -29,7 +38,7 @@ async function resolveCurrentBatchId(
     .select("batch_id, start_date")
     .eq("term_id", termId)
     .order("start_date", { ascending: true });
-  if (error) throw error;
+  if (error) throw safeDbError(error);
   const today = new Date().toISOString().slice(0, 10);
   const started = (data ?? []).filter((row) => row.start_date <= today);
   const chosen = started.length ? started[started.length - 1] : data?.[0];
@@ -50,7 +59,7 @@ export async function createNotice(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
-  checkRateLimit("createNotice", user.id, 30, 60_000);
+  await checkRateLimit("createNotice", user.id, 30, 60_000);
 
   const role = await getCurrentRole();
 
@@ -62,11 +71,16 @@ export async function createNotice(formData: FormData) {
   // actions.ts's uploadResourceDirect for the full reasoning.
   const fileUrl = formData.get("fileUrl") as string;
 
+  assertValidId(branchId, "branch");
+  assertValidId(termId, "year");
+  assertValidId(batchId, "batch");
+  assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
+
   // See resources/actions.ts's uploadResourceDirect for why this
   // exists — confirms the object's actual bytes match its claimed
   // Content-Type before it can be referenced by a published notice.
   if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
-    throw new Error("Uploaded file doesn't match its declared type. The file was rejected.");
+    throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
   const { error: insertError } = await supabase.from("notices").insert({
@@ -78,7 +92,7 @@ export async function createNotice(formData: FormData) {
     important_dates: [],
     uploaded_by_name: role?.displayName ?? null,
   });
-  if (insertError) throw insertError;
+  if (insertError) throw safeDbError(insertError);
 
   revalidatePath("/notices");
   revalidatePath("/cr/manage");
@@ -102,7 +116,7 @@ export async function createNoticeAllBranches(formData: FormData) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
-  checkRateLimit("createNoticeAllBranches", user.id, 30, 60_000);
+  await checkRateLimit("createNoticeAllBranches", user.id, 30, 60_000);
 
   const title = formData.get("title") as string;
   const fileUrl = formData.get("fileUrl") as string;
@@ -111,19 +125,22 @@ export async function createNoticeAllBranches(formData: FormData) {
   // path) never reads this field at all, forcing it false for anyone
   // who isn't admin by construction, not by trusting client input.
   const crOnly = (formData.get("crOnly") as string) === "true";
-  const branchIds = JSON.parse(formData.get("branchIds") as string) as string[];
-  if (!Array.isArray(branchIds) || !branchIds.every((id) => typeof id === "string") || !branchIds.length) {
-    throw new Error("Invalid branch selection.");
+  assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
+  let branchIds: unknown;
+  let termIds: unknown;
+  try {
+    branchIds = JSON.parse(formData.get("branchIds") as string);
+    termIds = JSON.parse(formData.get("termIds") as string);
+  } catch {
+    throw new Error("Invalid branch/year selection.");
   }
-  const termIds = JSON.parse(formData.get("termIds") as string) as string[];
-  if (!Array.isArray(termIds) || !termIds.every((id) => typeof id === "string") || !termIds.length) {
-    throw new Error("Invalid year selection.");
-  }
+  assertValidIdArray(branchIds, "branch");
+  assertValidIdArray(termIds, "year");
 
   // Verified once — the same uploaded object gets referenced by every
   // (term, branch) row built below.
   if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
-    throw new Error("Uploaded file doesn't match its declared type. The file was rejected.");
+    throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
   const rows = [];
@@ -144,7 +161,7 @@ export async function createNoticeAllBranches(formData: FormData) {
   }
 
   const { error: insertError } = await supabase.from("notices").insert(rows);
-  if (insertError) throw insertError;
+  if (insertError) throw safeDbError(insertError);
 
   revalidatePath("/notices");
   revalidatePath("/cr/manage");
@@ -160,19 +177,23 @@ export async function createCustomNoticeAllBranches(formData: FormData) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
-  checkRateLimit("createCustomNoticeAllBranches", user.id, 30, 60_000);
+  await checkRateLimit("createCustomNoticeAllBranches", user.id, 30, 60_000);
 
   const title = formData.get("title") as string;
   const body = formData.get("body") as string;
   const crOnly = (formData.get("crOnly") as string) === "true";
-  const branchIds = JSON.parse(formData.get("branchIds") as string) as string[];
-  if (!Array.isArray(branchIds) || !branchIds.every((id) => typeof id === "string") || !branchIds.length) {
-    throw new Error("Invalid branch selection.");
+  assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
+  assertValidString(body, "Body", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
+  let branchIds: unknown;
+  let termIds: unknown;
+  try {
+    branchIds = JSON.parse(formData.get("branchIds") as string);
+    termIds = JSON.parse(formData.get("termIds") as string);
+  } catch {
+    throw new Error("Invalid branch/year selection.");
   }
-  const termIds = JSON.parse(formData.get("termIds") as string) as string[];
-  if (!Array.isArray(termIds) || !termIds.every((id) => typeof id === "string") || !termIds.length) {
-    throw new Error("Invalid year selection.");
-  }
+  assertValidIdArray(branchIds, "branch");
+  assertValidIdArray(termIds, "year");
 
   const rows = [];
   for (const termId of termIds) {
@@ -193,7 +214,7 @@ export async function createCustomNoticeAllBranches(formData: FormData) {
   }
 
   const { error: insertError } = await supabase.from("notices").insert(rows);
-  if (insertError) throw insertError;
+  if (insertError) throw safeDbError(insertError);
 
   revalidatePath("/notices");
   revalidatePath("/cr/manage");
@@ -206,7 +227,7 @@ export async function createCustomNotice(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
-  checkRateLimit("createCustomNotice", user.id, 30, 60_000);
+  await checkRateLimit("createCustomNotice", user.id, 30, 60_000);
 
   const role = await getCurrentRole();
 
@@ -215,6 +236,12 @@ export async function createCustomNotice(formData: FormData) {
   const batchId = formData.get("batchId") as string;
   const title = formData.get("title") as string;
   const body = formData.get("body") as string;
+
+  assertValidId(branchId, "branch");
+  assertValidId(termId, "year");
+  assertValidId(batchId, "batch");
+  assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
+  assertValidString(body, "Body", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
 
   const { error: insertError } = await supabase.from("notices").insert({
     branch_id: branchId,
@@ -226,7 +253,7 @@ export async function createCustomNotice(formData: FormData) {
     important_dates: [],
     uploaded_by_name: role?.displayName ?? null,
   });
-  if (insertError) throw insertError;
+  if (insertError) throw safeDbError(insertError);
 
   revalidatePath("/notices");
   revalidatePath("/cr/manage");
@@ -238,7 +265,8 @@ export async function deleteNotice(noticeId: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
-  checkRateLimit("deleteNotice", user.id, 30, 60_000);
+  await checkRateLimit("deleteNotice", user.id, 30, 60_000);
+  assertValidId(noticeId, "notice");
 
   const { data, error } = await supabase
     .from("notices")
@@ -246,7 +274,7 @@ export async function deleteNotice(noticeId: string) {
     .eq("id", noticeId)
     .select("pdf_url")
     .single();
-  if (error) throw error;
+  if (error) throw safeDbError(error);
 
   try {
     await deleteFromR2(data?.pdf_url);
@@ -277,7 +305,16 @@ export async function updateNoticeFields(
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
-  checkRateLimit("updateNoticeFields", user.id, 60, 60_000);
+  await checkRateLimit("updateNoticeFields", user.id, 60, 60_000);
+
+  assertValidId(noticeId, "notice");
+  if (fields.branchId !== undefined) assertValidId(fields.branchId, "branch");
+  if (fields.termId !== undefined) assertValidId(fields.termId, "year");
+  if (fields.batchId !== undefined) assertValidId(fields.batchId, "batch");
+  if (fields.crOnly !== undefined && typeof fields.crOnly !== "boolean") {
+    throw new Error("Invalid CR-only value.");
+  }
+  if (fields.dateKey !== undefined) assertValidDateKey(fields.dateKey, "date");
 
   // Same reasoning as updateResourceFields' identical check — Edit
   // lets an admin retarget a notice to ANY branch/term/batch, and
@@ -298,13 +335,13 @@ export async function updateNoticeFields(
       .select("created_at")
       .eq("id", noticeId)
       .single();
-    if (fetchError) throw fetchError;
+    if (fetchError) throw safeDbError(fetchError);
     update.created_at = withDateKey(existing.created_at, fields.dateKey);
   }
 
   if (Object.keys(update).length > 0) {
     const { error: updateError } = await supabase.from("notices").update(update).eq("id", noticeId);
-    if (updateError) throw updateError;
+    if (updateError) throw safeDbError(updateError);
   }
 
   revalidatePath("/notices");
@@ -318,10 +355,12 @@ export async function toggleNoticePin(noticeId: string, pinned: boolean) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
-  checkRateLimit("toggleNoticePin", user.id, 60, 60_000);
+  await checkRateLimit("toggleNoticePin", user.id, 60, 60_000);
+  assertValidId(noticeId, "notice");
+  if (typeof pinned !== "boolean") throw new Error("Invalid pin value.");
 
   const { error } = await supabase.from("notices").update({ is_pinned: pinned }).eq("id", noticeId);
-  if (error) throw error;
+  if (error) throw safeDbError(error);
   revalidatePath("/notices");
   revalidatePath("/cr/manage");
 }

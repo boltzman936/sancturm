@@ -4,6 +4,13 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { assertValidString, safeDbError, MAX_MESSAGE_LENGTH } from "@/lib/validation";
+
+// A week is generously more than any real maintenance window ever
+// needs — this exists purely to reject an absurd/malformed value
+// (e.g. a typo'd extra zero, or a crafted request) rather than to
+// constrain legitimate use.
+const MAX_DURATION_MINUTES = 7 * 24 * 60;
 
 /**
  * Takes the whole site offline for everyone but the admin, for
@@ -22,9 +29,15 @@ export async function takeOffline(message: string, durationMinutes: number) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
-  checkRateLimit("takeOffline", user.id, 10, 60_000);
+  await checkRateLimit("takeOffline", user.id, 10, 60_000);
 
-  if (durationMinutes <= 0) throw new Error("Duration must be positive.");
+  assertValidString(message, "Message", { maxLength: MAX_MESSAGE_LENGTH, required: false });
+  if (typeof durationMinutes !== "number" || !Number.isFinite(durationMinutes)) {
+    throw new Error("Invalid duration.");
+  }
+  if (durationMinutes <= 0 || durationMinutes > MAX_DURATION_MINUTES) {
+    throw new Error(`Duration must be between 1 and ${MAX_DURATION_MINUTES} minutes.`);
+  }
 
   const until = new Date(Date.now() + durationMinutes * 60_000).toISOString();
   const { error } = await supabase
@@ -36,7 +49,7 @@ export async function takeOffline(message: string, durationMinutes: number) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", true);
-  if (error) throw error;
+  if (error) throw safeDbError(error);
 
   revalidatePath("/maintenance");
   revalidatePath("/cr/manage");
@@ -58,16 +71,21 @@ export async function extendMaintenance(additionalMinutes: number) {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
-  checkRateLimit("extendMaintenance", user.id, 10, 60_000);
+  await checkRateLimit("extendMaintenance", user.id, 10, 60_000);
 
-  if (additionalMinutes <= 0) throw new Error("Duration must be positive.");
+  if (typeof additionalMinutes !== "number" || !Number.isFinite(additionalMinutes)) {
+    throw new Error("Invalid duration.");
+  }
+  if (additionalMinutes <= 0 || additionalMinutes > MAX_DURATION_MINUTES) {
+    throw new Error(`Duration must be between 1 and ${MAX_DURATION_MINUTES} minutes.`);
+  }
 
   const { data: current, error: readError } = await supabase
     .from("maintenance_config")
     .select("until")
     .eq("id", true)
     .single();
-  if (readError) throw readError;
+  if (readError) throw safeDbError(readError);
 
   const currentUntil = current.until ? new Date(current.until).getTime() : 0;
   if (currentUntil <= Date.now()) throw new Error("Not currently in maintenance.");
@@ -78,7 +96,7 @@ export async function extendMaintenance(additionalMinutes: number) {
     .from("maintenance_config")
     .update({ until, updated_by: role.displayName, updated_at: new Date().toISOString() })
     .eq("id", true);
-  if (error) throw error;
+  if (error) throw safeDbError(error);
 
   revalidatePath("/maintenance");
   revalidatePath("/cr/manage");
@@ -94,13 +112,13 @@ export async function bringOnline() {
 
   const role = await getCurrentRole();
   if (role?.type !== "admin") throw new Error("Admin only.");
-  checkRateLimit("bringOnline", user.id, 10, 60_000);
+  await checkRateLimit("bringOnline", user.id, 10, 60_000);
 
   const { error } = await supabase
     .from("maintenance_config")
     .update({ until: null, updated_by: role.displayName, updated_at: new Date().toISOString() })
     .eq("id", true);
-  if (error) throw error;
+  if (error) throw safeDbError(error);
 
   revalidatePath("/maintenance");
   revalidatePath("/cr/manage");

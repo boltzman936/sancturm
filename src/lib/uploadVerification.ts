@@ -7,6 +7,13 @@ type SignatureCheck = (bytes: Uint8Array) => boolean;
 // keep these two lists in sync; an allowed type with no signature
 // here would always fail closed (see the `if (!check)` branch below),
 // which is the safe failure mode but would wrongly reject a real file.
+// Generous headroom above any real scanned-notes PDF (even a dense
+// 150+ page scan rarely clears a few tens of MB) while still bounding
+// how much storage/bandwidth one upload can claim — the presigned PUT
+// itself has no size limit (see r2.ts), so this is the only thing
+// standing between "large PDF" and "arbitrarily large object."
+const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+
 const SIGNATURES: Record<string, SignatureCheck> = {
   "application/pdf": (b) => b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46, // %PDF
   "image/png": (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
@@ -35,8 +42,33 @@ const SIGNATURES: Record<string, SignatureCheck> = {
  * false. Callers MUST bail out of the DB insert when this returns
  * false — a rejected file must never end up referenced by a
  * published resource/notice/update row.
+ *
+ * Also enforces MAX_FILE_SIZE_BYTES via a HEAD request before ever
+ * downloading bytes — cheap (no body transferred) and lets an
+ * oversized object get rejected without paying for the Range fetch
+ * below at all.
  */
 export async function verifyUploadedFileOrCleanUp(fileUrl: string): Promise<boolean> {
+  let headResponse: Response;
+  try {
+    headResponse = await fetch(fileUrl, { method: "HEAD" });
+  } catch {
+    return false;
+  }
+  if (!headResponse.ok) return false;
+
+  const contentLength = Number(headResponse.headers.get("content-length"));
+  if (!Number.isFinite(contentLength) || contentLength <= 0) return false;
+  if (contentLength > MAX_FILE_SIZE_BYTES) {
+    try {
+      await deleteFromR2(fileUrl);
+    } catch {
+      // Best-effort cleanup — same accepted tradeoff as every other
+      // orphan-object case already in this codebase.
+    }
+    return false;
+  }
+
   let response: Response;
   try {
     response = await fetch(fileUrl, { headers: { Range: "bytes=0-15" } });

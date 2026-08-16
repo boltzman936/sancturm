@@ -73,7 +73,7 @@ export async function getUploadUrl(path: string, contentType: string) {
   // submits in a session is normal — generous enough not to bother a
   // legitimate CR, tight enough to stop a script minting signed URLs
   // in a loop.
-  checkRateLimit("getUploadUrl", user.id, 30, 60_000);
+  await checkRateLimit("getUploadUrl", user.id, 30, 60_000);
 
   if (!isSafeUploadPath(path)) {
     throw new Error("Invalid upload path.");
