@@ -401,15 +401,29 @@ export function ResourceViewerDialog({
             since flex items get the same content-based auto-minimum
             grid items do. Plain block layout has no such rule, so
             height:100% on the img resolves cleanly against this div's
-            now-properly-bounded height with no equivalent trap. */}
-        <div className="h-[70vh] min-h-0 overflow-hidden px-6 pb-6">
+            now-properly-bounded height with no equivalent trap.
+
+            overflow-y-auto (not overflow-hidden): a scanned notebook
+            photo is very often taller than it is wide, sometimes far
+            taller than a 70vh box on a normal laptop screen —
+            object-contain used to force the WHOLE image to shrink down
+            to fit inside that fixed box, which for a tall photo meant
+            either a barely-legible thumbnail or, depending on how the
+            surrounding grid resolved, the bottom portion clipped
+            outright with no way to reach it. Rendering the image at its
+            natural size (full container width, height auto) and
+            letting this box scroll instead — the same treatment
+            PdfViewer's own wrapper already gives multi-page PDFs — means
+            the whole page is always reachable at a readable size,
+            never shrunk past legibility and never cropped. */}
+        <div className="h-[70vh] min-h-0 overflow-y-auto px-6 pb-6">
           {resource &&
             (isImageUrl(resource.file_url) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={resource.file_url}
                 alt={resource.title}
-                className="h-full w-full rounded-md object-contain"
+                className="mx-auto w-full rounded-md"
               />
             ) : (
               // key={file_url}: a fresh PdfViewer instance per
