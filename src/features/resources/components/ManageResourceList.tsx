@@ -109,6 +109,62 @@ function bySubject(a: ManageableResource, b: ManageableResource) {
   return (a.subject?.name ?? "").localeCompare(b.subject?.name ?? "");
 }
 
+// Same title/subject/term/batch/type published on the same day but to
+// DIFFERENT branches is exactly the shape createNoticeAllBranches /
+// uploadResourceDirectAllBranches produce — one row per branch from a
+// single bulk-publish action. Grouped into one card (see
+// groupByContent below) instead of one repeated card per branch.
+//
+// localDateKey (the calendar day), not the exact timestamp:
+// uploadResourceDirectAllBranches inserts one branch at a time in a
+// loop rather than a single bulk insert, so sibling rows' created_at
+// can differ by the odd millisecond even though they're unmistakably
+// the same publish action. createNoticeAllBranches's own single bulk
+// insert happens to share an identical timestamp already, so the
+// coarser day-level match still groups those correctly too.
+type ResourceGroup = { items: ManageableResource[] };
+
+function contentGroupKey(r: ManageableResource): string {
+  return [
+    r.kind,
+    r.section,
+    r.resource_type ?? "",
+    r.term_id ?? "",
+    r.batch_id ?? "",
+    r.subject_id ?? "",
+    r.title,
+    r.description ?? "",
+    localDateKey(r.created_at),
+  ].join(" ");
+}
+
+// Preserves the caller's own ordering (first-seen position) — this
+// runs AFTER the existing subject/date sort already picked an order,
+// so re-sorting groups here would undo that.
+function groupByContent(items: ManageableResource[]): ResourceGroup[] {
+  const buckets = new Map<string, ManageableResource[]>();
+  const order: string[] = [];
+  for (const item of items) {
+    const key = contentGroupKey(item);
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(item);
+    else {
+      buckets.set(key, [item]);
+      order.push(key);
+    }
+  }
+  return order.map((key) => ({ items: buckets.get(key)! }));
+}
+
+// Shared by both the per-group "Remove (N)" button and the top bulk-
+// delete action, so the three-table kind-routing can't drift between
+// the two call sites.
+function deleteItem(item: ManageableResource) {
+  if (item.kind === "notice") return deleteNotice(item.id);
+  if (item.kind === "update") return deleteSancturmUpdate(item.id);
+  return deleteResource(item.id);
+}
+
 function matchesSearch(resource: ManageableResource, query: string) {
   return matchesQuery(
     [
@@ -511,45 +567,74 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   );
 }
 
-function ResourceRow({
-  resource,
+// Renders one content group — a single card either way, but a
+// multi-branch group (see groupByContent) shows every branch it was
+// published to on one line instead of repeating the whole card once
+// per branch, and its checkbox/Remove act on every row in the group
+// together. Edit only ever applies to a single row (branch/term/batch/
+// subject are genuinely per-row fields, sometimes divergent across
+// branches under subject interchange — see subjectInterchange.ts), so
+// it's hidden for a multi-branch group; ungrouped items (the common
+// case) render and behave exactly as a single row always has.
+function ResourceGroupRow({
+  group,
   isAdmin,
-  selected,
-  onToggleSelect,
+  selectedIds,
+  onToggleGroup,
 }: {
-  resource: ManageableResource;
+  group: ResourceGroup;
   isAdmin: boolean;
-  selected: boolean;
-  onToggleSelect: (id: string) => void;
+  selectedIds: Set<string>;
+  onToggleGroup: (ids: string[]) => void;
 }) {
+  const { items } = group;
+  const primary = items[0];
+  const isGrouped = items.length > 1;
+  const [isDeleting, startDelete] = useTransition();
+
   // Admin sees the branch on every row. A CR only ever manages their
   // own branch's notes_lab items (branch is implied, no need to show
   // it) — but PYQs are shared across branches, so which branch a PYQ
   // came from is genuinely useful context even for a CR. Term is only
   // ever ambiguous for admin (a CR's own term is implied — even a PYQ
   // stays within their own term, never shown to them cross-term).
-  const showBranch = isAdmin || resource.section === "pyq";
-  const showTerm = isAdmin && resource.term;
-  const showBatch = isAdmin && resource.batch;
+  const showBranch = isAdmin || primary.section === "pyq";
+  const showTerm = isAdmin && primary.term;
+  const showBatch = isAdmin && primary.batch;
+  const allSelected = items.every((item) => selectedIds.has(item.id));
+  // Deduped and joined, not just mapped — a bulk publish always fans
+  // out to distinct branches, but this stays correct even if two rows
+  // in the same group somehow shared a branch.
+  const branchNames = Array.from(
+    new Set(items.map((item) => item.branch?.name).filter((name): name is string => !!name))
+  );
+
+  function handleGroupDelete() {
+    if (!confirm(`Remove this from ${items.length} branches? This can't be undone.`)) return;
+    startDelete(async () => {
+      await Promise.all(items.map(deleteItem));
+    });
+  }
+
   return (
     <li
       className={cn(
-        "flex items-center justify-between gap-4 rounded-lg border bg-card p-4 transition-colors",
-        selected ? "border-primary" : "border-border"
+        "flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-4",
+        allSelected ? "border-primary" : "border-border"
       )}
     >
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         <input
           type="checkbox"
-          checked={selected}
-          onChange={() => onToggleSelect(resource.id)}
-          aria-label={`Select ${resource.title}`}
-          className="h-4 w-4 shrink-0 accent-primary"
+          checked={allSelected}
+          onChange={() => onToggleGroup(items.map((item) => item.id))}
+          aria-label={`Select ${primary.title}`}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
         />
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5">
-            <span className="truncate text-foreground">{resource.title}</span>
-            {resource.cr_only && (
+          <p className="flex flex-wrap items-center gap-1.5">
+            <span className="break-words text-foreground">{primary.title}</span>
+            {primary.cr_only && (
               <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
                 CR only
               </span>
@@ -558,45 +643,55 @@ function ResourceRow({
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-subtle-foreground">
             {showTerm && (
               <>
-                <span>{shortTermLabel(resource.term)}</span>
+                <span>{shortTermLabel(primary.term)}</span>
                 <span aria-hidden="true">·</span>
               </>
             )}
             {showBatch && (
               <>
-                <span>{resource.batch?.label}</span>
+                <span>{primary.batch?.label}</span>
                 <span aria-hidden="true">·</span>
               </>
             )}
-            {showBranch && (
+            {showBranch && branchNames.length > 0 && (
               <>
-                <span>{resource.branch?.name}</span>
+                <span>{branchNames.join(", ")}</span>
                 <span aria-hidden="true">·</span>
               </>
             )}
-            <span>{typeGroupLabel(resource)}</span>
+            <span>{typeGroupLabel(primary)}</span>
             <span aria-hidden="true">·</span>
-            <span>{resource.subject?.name ?? "Extra"}</span>
+            <span>{primary.subject?.name ?? "Extra"}</span>
             <span aria-hidden="true">·</span>
-            <span>{formatShortDate(resource.created_at)}</span>
+            <span>{formatShortDate(primary.created_at)}</span>
             <span aria-hidden="true">·</span>
-            <span>{uploaderLabel(resource)}</span>
+            <span>{uploaderLabel(primary)}</span>
           </p>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        {isAdmin &&
-          (resource.kind === "update" ? (
-            <EditDateButton id={resource.id} createdAt={resource.created_at} />
+      <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+        {!isGrouped &&
+          isAdmin &&
+          (primary.kind === "update" ? (
+            <EditDateButton id={primary.id} createdAt={primary.created_at} />
           ) : (
-            <EditResourceButton resource={resource} />
+            <EditResourceButton resource={primary} />
           ))}
-        {resource.kind === "notice" ? (
-          <DeleteNoticeButton noticeId={resource.id} />
-        ) : resource.kind === "update" ? (
-          <DeleteSancturmUpdateButton updateId={resource.id} />
+        {isGrouped ? (
+          <button
+            type="button"
+            disabled={isDeleting}
+            onClick={handleGroupDelete}
+            className="rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 active:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
+          >
+            {isDeleting ? "Removing…" : `Remove (${items.length})`}
+          </button>
+        ) : primary.kind === "notice" ? (
+          <DeleteNoticeButton noticeId={primary.id} />
+        ) : primary.kind === "update" ? (
+          <DeleteSancturmUpdateButton updateId={primary.id} />
         ) : (
-          <DeleteResourceButton resourceId={resource.id} />
+          <DeleteResourceButton resourceId={primary.id} />
         )}
       </div>
     </li>
@@ -764,11 +859,17 @@ export function ManageResourceList({
 
   const isEmpty = visible.length === 0;
 
-  function toggleSelect(id: string) {
+  // Takes an array (not a single id) so a multi-branch group's
+  // checkbox can select/deselect every row it covers as one action —
+  // an ungrouped row just calls this with its own single-id array.
+  function toggleIds(ids: string[]) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const allSelected = ids.every((id) => next.has(id));
+      for (const id of ids) {
+        if (allSelected) next.delete(id);
+        else next.add(id);
+      }
       return next;
     });
   }
@@ -793,16 +894,7 @@ export function ManageResourceList({
     if (!confirm(`Remove ${items.length} item${items.length > 1 ? "s" : ""}? This can't be undone.`)) return;
 
     startBulkDelete(async () => {
-      // Three different tables, three different delete actions —
-      // route each item to the one matching its kind, same as the
-      // per-row buttons do individually.
-      await Promise.all(
-        items.map((item) => {
-          if (item.kind === "notice") return deleteNotice(item.id);
-          if (item.kind === "update") return deleteSancturmUpdate(item.id);
-          return deleteResource(item.id);
-        })
-      );
+      await Promise.all(items.map(deleteItem));
       setSelectedIds(new Set());
     });
   }
@@ -1044,13 +1136,13 @@ export function ManageResourceList({
 
       {!isEmpty && sortedFlat && (
         <ul className="flex flex-col gap-2">
-          {sortedFlat.map((resource) => (
-            <ResourceRow
-              key={resource.id}
-              resource={resource}
+          {groupByContent(sortedFlat).map((group) => (
+            <ResourceGroupRow
+              key={group.items[0].id}
+              group={group}
               isAdmin={isAdmin}
-              selected={selectedIds.has(resource.id)}
-              onToggleSelect={toggleSelect}
+              selectedIds={selectedIds}
+              onToggleGroup={toggleIds}
             />
           ))}
         </ul>
@@ -1058,19 +1150,19 @@ export function ManageResourceList({
 
       {!isEmpty && groups && (
         <div className="flex flex-col gap-5">
-          {groups.map((group) => (
-            <div key={group.label} className="flex flex-col gap-2">
+          {groups.map((typeGroup) => (
+            <div key={typeGroup.label} className="flex flex-col gap-2">
               <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">
-                {group.label.toUpperCase()}
+                {typeGroup.label.toUpperCase()}
               </h2>
               <ul className="flex flex-col gap-2">
-                {group.items.map((resource) => (
-                  <ResourceRow
-                    key={resource.id}
-                    resource={resource}
+                {groupByContent(typeGroup.items).map((group) => (
+                  <ResourceGroupRow
+                    key={group.items[0].id}
+                    group={group}
                     isAdmin={isAdmin}
-                    selected={selectedIds.has(resource.id)}
-                    onToggleSelect={toggleSelect}
+                    selectedIds={selectedIds}
+                    onToggleGroup={toggleIds}
                   />
                 ))}
               </ul>
