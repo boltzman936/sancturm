@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { Wrench } from "lucide-react";
+import { Wrench, Lock } from "lucide-react";
 import { useMaintenanceConfig } from "@/features/maintenance/queries";
 
 function computeClockOffset(serverNow: string) {
@@ -143,7 +143,7 @@ export function MaintenanceCountdown({
           </span>
         </motion.div>
 
-        <motion.div {...reveal(0.24)} className="flex flex-col items-center gap-2">
+        <motion.div {...reveal(0.24)} className="flex flex-col items-center gap-4">
           <p className="font-mono text-xs text-subtle-foreground">This page updates automatically.</p>
           {/* /login is deliberately excluded from middleware's
               maintenance redirect (see middleware.ts's own matcher
@@ -152,11 +152,19 @@ export function MaintenanceCountdown({
               there's a way to REACH it from here. Without this link, a
               signed-out admin landing on this exact page (a bookmark,
               a fresh browser) had no visible path to /login short of
-              typing it into the address bar by hand. */}
+              typing it into the address bar by hand. A real button
+              here (not just a text link) matches the weight this
+              action actually has — it's the one interactive thing on
+              an otherwise read-only page, and the one path back to
+              full control. */}
           <Link
             href="/login"
-            className="font-mono text-xs text-subtle-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline active:text-foreground active:underline"
+            className="group inline-flex items-center gap-2 rounded-full border border-border bg-card px-5 py-2.5 font-mono text-xs font-medium text-foreground transition-all duration-200 hover:border-primary/50 hover:shadow-[0_0_28px_-10px_var(--glow-red)] active:scale-[0.97]"
           >
+            <Lock
+              className="h-3.5 w-3.5 text-subtle-foreground transition-colors duration-200 group-hover:text-primary"
+              strokeWidth={2}
+            />
             Admin sign in
           </Link>
         </motion.div>
