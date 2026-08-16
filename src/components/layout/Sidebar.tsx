@@ -48,85 +48,126 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
       <nav
         className={cn(
-          "fixed left-0 top-0 z-50 flex h-dvh w-72 max-w-[85vw] shrink-0 flex-col gap-6 border-r border-border bg-background-secondary p-4 transition-transform duration-200 ease-out",
+          // 3 fixed-height zones stacked in a column: TOP and BOTTOM
+          // are shrink-0 (their own content sizes them), MIDDLE is the
+          // only one that grows and scrolls — see its own comment
+          // below. min-h-0 here is what lets that middle child actually
+          // shrink instead of forcing the whole nav taller than the
+          // viewport (the classic flex-column overflow gotcha).
+          "fixed left-0 top-0 z-50 flex h-dvh min-h-0 w-72 max-w-[85vw] shrink-0 flex-col border-r border-border bg-background-secondary transition-transform duration-200 ease-out",
           // md:sticky (not md:static) — static let the sidebar scroll
           // away with the page's own scroll, so a long resource list
           // meant scrolling all the way through it just to reach
           // "Controller's dashboard" / "Sign out" at the bottom of the
           // nav. Sticky-to-the-viewport-top plus self-start (so the
           // flex row doesn't stretch it to match main's full scroll
-          // height) keeps it pinned in place instead. Its own h-dvh +
-          // overflow-y-auto is a fallback for a short viewport where
-          // even the sidebar's own content wouldn't otherwise fit.
-          "md:sticky md:top-0 md:z-auto md:h-dvh md:w-60 md:max-w-none md:translate-x-0 md:self-start md:overflow-y-auto md:transition-none",
+          // height) keeps it pinned in place instead.
+          //
+          // Width steps up across all three viewport tiers this
+          // component is meant to feel native at: the mobile drawer
+          // above uses its own w-72, md:w-56 is deliberately a touch
+          // narrower than desktop's lg:w-64 — tablet's a mid-size
+          // canvas where main content still wants the room — and both
+          // stay fixed/stable within their own tier rather than
+          // fluidly resizing.
+          "md:sticky md:top-0 md:z-auto md:h-dvh md:w-56 md:max-w-none md:translate-x-0 md:self-start md:transition-none lg:w-64",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="flex items-center justify-between">
-          <Link
-            href="/"
-            onClick={onClose}
-            className="rounded-sm px-1 font-mono text-base font-medium text-terminal-blue outline-none transition-opacity hover:opacity-80 active:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            sancturm
-          </Link>
-          <button
-            onClick={onClose}
-            aria-label="Close menu"
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-card active:bg-card hover:text-foreground active:text-foreground md:hidden"
-          >
-            <X className="h-4 w-4" />
-          </button>
+        {/* TOP — logo + Year/Branch selectors. shrink-0 so a tall nav
+            list below never compresses it; padding here is the one
+            place that sets the sidebar's left/right inset, and the
+            middle/bottom zones below match it exactly so logo,
+            selectors, nav links and bottom actions all share one
+            left/right edge. */}
+        <div className="flex shrink-0 flex-col gap-4 p-4 md:gap-5 lg:p-5">
+          <div className="flex items-center justify-between">
+            <Link
+              href="/"
+              onClick={onClose}
+              className="rounded-sm px-1 font-mono text-base font-medium text-terminal-blue outline-none transition-opacity hover:opacity-80 active:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              sancturm
+            </Link>
+            <button
+              onClick={onClose}
+              aria-label="Close menu"
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-card active:bg-card hover:text-foreground active:text-foreground md:hidden"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <TermSwitcher />
+            <BranchSwitcher />
+          </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <TermSwitcher />
-          <BranchSwitcher />
+        {/* MIDDLE — the nav links. The only zone that grows (flex-1)
+            and the only one that scrolls (overflow-y-auto) once the
+            viewport's too short for everything to fit — TOP and
+            BOTTOM stay put, fully visible, exactly like a native app
+            sidebar. min-h-0 is required alongside flex-1 for the
+            scroll to ever actually kick in instead of the column just
+            growing taller than the viewport. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 lg:px-5">
+          <ul className="flex flex-col gap-1 py-1">
+            {NAV_LINKS.map((link) => {
+              const isActive = pathname === link.href;
+              return (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    onClick={onClose}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring md:py-2",
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
+                    )}
+                  >
+                    <link.icon className="h-4 w-4 shrink-0" />
+                    {link.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </div>
 
-        <ul className="flex flex-col gap-1">
-          {NAV_LINKS.map((link) => {
-            const isActive = pathname === link.href;
-            return (
-              <li key={link.href}>
-                <Link
-                  href={link.href}
-                  onClick={onClose}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
-                  )}
-                >
-                  <link.icon className="h-4 w-4" />
-                  {link.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        {/* BOTTOM — dashboard link + sign out, grouped as one action
+            cluster. shrink-0 keeps it fully visible above the edge at
+            every viewport; the border reuses the same border-border
+            token as the sidebar's own right edge and the selector
+            buttons above, so the group reads as intentionally set off
+            from the scrollable nav rather than just trailing
+            whitespace. Bottom padding adds the device's safe-area
+            inset (home indicator / gesture bar) on top of the normal
+            padding instead of replacing it, so it's a no-op on
+            desktop/tablet and only grows on devices that need it. */}
+        <div className="shrink-0 border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:p-5">
+          <div className="flex flex-col gap-1">
+            <Link
+              href="/cr"
+              onClick={onClose}
+              className={cn(
+                "flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring md:py-2",
+                pathname.startsWith("/cr")
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
+              )}
+            >
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+              {dashboardLabel}
+            </Link>
 
-        <div className="mt-auto flex flex-col gap-1">
-          <Link
-            href="/cr"
-            onClick={onClose}
-            className={cn(
-              "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-              pathname.startsWith("/cr")
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
-            )}
-          >
-            <ShieldCheck className="h-4 w-4" />
-            {dashboardLabel}
-          </Link>
-
-          {/* Only shown once someone's actually signed in — a plain
-              student browsing anonymously has no session to end. This
-              is what lets a test login (or the previous CR, handing
-              a branch off) clear the way for the next person. */}
-          {role && <SignOutButton className="px-3 py-1" />}
+            {/* Only shown once someone's actually signed in — a plain
+                student browsing anonymously has no session to end. This
+                is what lets a test login (or the previous CR, handing
+                a branch off) clear the way for the next person. */}
+            {role && <SignOutButton className="px-3 py-1" />}
+          </div>
         </div>
       </nav>
     </>
