@@ -81,26 +81,27 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             selectors, nav links and bottom actions all share one
             left/right edge. */}
         <div className="flex shrink-0 flex-col gap-4 p-4 md:gap-5 lg:p-5">
-          <div className="flex items-center justify-center">
-            {/* Invisible spacer matching the close button's own box
-                size (h-4 w-4 icon + p-1.5 padding = 28px = h-7/w-7) —
-                mirrors AppLayout's identical hamburger-header spacer
-                trick. Without it, the close button's one-sided weight
-                on mobile would pull "sancturm" left of true center;
-                both vanish together at md+, where justify-center
-                alone correctly centers the logo as the sole item. */}
-            <span className="h-7 w-7 shrink-0 md:hidden" aria-hidden="true" />
+          {/* -mx-4/lg:-mx-5 cancels this row back out to the sidebar's
+              TRUE edges (undoing the parent's own p-4/lg:p-5), so the
+              two absolutely-positioned children below are each
+              independently placed relative to the FULL sidebar width,
+              not the already-inset content box — left-1/2 is real 50%,
+              and right-6 is real ~24px from the true edge, neither one
+              positioned relative to the other. h-8 gives both an
+              explicit box to center within (position:absolute takes
+              them out of flow, so the row has no other height source). */}
+          <div className="relative -mx-4 h-8 lg:-mx-5">
             <Link
               href="/"
               onClick={onClose}
-              className="rounded-sm px-1 font-mono text-base font-medium text-terminal-blue outline-none transition-opacity hover:opacity-80 active:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm px-1 font-mono text-base font-medium text-terminal-blue outline-none transition-opacity hover:opacity-80 active:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
             >
               sancturm
             </Link>
             <button
               onClick={onClose}
               aria-label="Close menu"
-              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-card active:bg-card hover:text-foreground active:text-foreground md:hidden"
+              className="absolute right-6 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-card active:bg-card hover:text-foreground active:text-foreground md:hidden"
             >
               <X className="h-4 w-4" />
             </button>
