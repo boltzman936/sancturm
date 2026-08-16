@@ -3,12 +3,23 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { Menu } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
 import { useCommandPaletteShortcut } from "@/hooks/useCommandPaletteShortcut";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { CommandPalette } from "@/components/layout/CommandPalette";
+
+// Dynamically imported (not a top-level import) — cmdk's own JS isn't
+// needed until someone actually opens the palette (Ctrl+K or the
+// sidebar's Search button), but a plain top-level import ships it in
+// this layout's own chunk, which loads on every single navigation
+// under (app). ssr: false because the palette is a client-only
+// overlay (nothing here has SEO/content value to render server-side).
+const CommandPalette = dynamic(
+  () => import("@/components/layout/CommandPalette").then((mod) => mod.CommandPalette),
+  { ssr: false }
+);
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
