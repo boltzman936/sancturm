@@ -21,13 +21,40 @@ export default function LoginPage() {
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
     const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    setIsSubmitting(false);
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (signInError) {
+      setIsSubmitting(false);
       setError("Invalid email or password.");
       return;
     }
+
+    // Maintenance mode only ever lets the admin actually DO anything
+    // past this point — middleware redirects a CR away from every
+    // other page regardless of whether they're signed in (see
+    // middleware.ts). Letting their sign-in silently succeed here
+    // anyway would just trade that clear "under maintenance" message
+    // for a confusing "I'm signed in but nothing works" one, so this
+    // checks the exact same two things middleware does and, if this
+    // isn't the admin, immediately reverses the sign-in rather than
+    // leaving a session that can't actually reach anything.
+    const { data: maintenance } = await supabase.from("maintenance_config").select("until").single();
+    const maintenanceActive = !!maintenance?.until && new Date(maintenance.until).getTime() > Date.now();
+
+    if (maintenanceActive) {
+      const userId = signInData.user?.id;
+      const { data: admin } = userId
+        ? await supabase.from("admins").select("id").eq("auth_user_id", userId).maybeSingle()
+        : { data: null };
+      if (!admin) {
+        await supabase.auth.signOut();
+        setIsSubmitting(false);
+        setError("Sancturm is under maintenance right now. Only the Controller can sign in until it's back.");
+        return;
+      }
+    }
+
+    setIsSubmitting(false);
 
     // Same reasoning as SignOutButton's identical call — without this,
     // useCurrentRole() could keep serving a stale cached "signed out"
