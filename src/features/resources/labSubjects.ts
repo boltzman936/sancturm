@@ -10,7 +10,13 @@
 // its subjects are shared vs lab-only vs notes-only), and
 // supabase/add_civil_mechanical_automation_sem1.sql (Civil/Mechanical/
 // Automation & Robotics 1st Year Sem 1 — mirrors AIDS's exact Sem 1
-// shape, just with Mathematics renamed).
+// shape, just with Mathematics renamed),
+// supabase/add_civil_mechanical_automation_sem2.sql (same 3 branches'
+// 1st Year Sem 2 — mirrors AIML/Core's Sem 1 shape, not any CSE Sem 2
+// curriculum, which is empty), and
+// supabase/add_civil_mechanical_automation_sem3.sql (same 3 branches'
+// 2nd Year Sem 3 — a real, distinct curriculum per branch, given
+// directly, not mirrored from anything).
 //
 // These Sets are matched by slug ALONE, with no branch/term scoping —
 // every Biotechnology/Civil/Mechanical/Automation & Robotics slug
@@ -64,6 +70,42 @@ export const LAB_SUBJECT_SLUGS = new Set([
   "automation-robotics-digital-electronics",
   "automation-robotics-manufacturing",
   "automation-robotics-soft-skill",
+  // Civil / Mechanical / Automation & Robotics — 1st Year Semester 2
+  // (mirrors AIML/Core's own Sem 1 shape — Engineering Mechanics/
+  // Electrical Engineering/Engineering Physics shared, notes+lab;
+  // Engineering Graphics lab-only, see below).
+  "civil-s2-engineering-mechanics",
+  "civil-s2-electrical-engineering",
+  "civil-s2-engineering-physics",
+  "civil-s2-engineering-graphics",
+  "mechanical-s2-engineering-mechanics",
+  "mechanical-s2-electrical-engineering",
+  "mechanical-s2-engineering-physics",
+  "mechanical-s2-engineering-graphics",
+  "automation-robotics-s2-engineering-mechanics",
+  "automation-robotics-s2-electrical-engineering",
+  "automation-robotics-s2-engineering-physics",
+  "automation-robotics-s2-engineering-graphics",
+  // Civil — 2nd Year Semester 3. Every given Lab entry has its own
+  // distinct name (always ending "Lab") with no exact-string match in
+  // the given Notes list — e.g. "Fluid Mechanics" (notes) vs "Fluid
+  // Mechanics Lab" (lab) are two different subjects, not one shared
+  // one — so all 4 are lab-only (see LAB_ONLY_SUBJECT_SLUGS below).
+  "civil-s3-fluid-mechanics-lab",
+  "civil-s3-basic-surveying-lab",
+  "civil-s3-building-material-construction-lab",
+  "civil-s3-civil-engineering-drawing-lab",
+  // Mechanical — 2nd Year Semester 3. Same reasoning — every lab
+  // entry's name differs from every notes entry's name.
+  "mechanical-s3-engineering-material-lab",
+  "mechanical-s3-fluid-mechanics-lab",
+  "mechanical-s3-computer-aided-machine-drawing-lab",
+  "mechanical-s3-thermodynamics-lab",
+  // Automation & Robotics — 2nd Year Semester 3. Same reasoning.
+  "automation-robotics-s3-python-lab",
+  "automation-robotics-s3-digital-electronics-lab",
+  "automation-robotics-s3-engineering-materials-lab",
+  "automation-robotics-s3-computer-aided-machine-drawing-lab",
 ]);
 
 // The reverse case: a handful of LAB_SUBJECT_SLUGS entries are lab-ONLY —
@@ -96,6 +138,28 @@ export const LAB_ONLY_SUBJECT_SLUGS = new Set([
   "civil-soft-skill",
   "mechanical-soft-skill",
   "automation-robotics-soft-skill",
+  // Civil / Mechanical / Automation & Robotics — Engineering Graphics
+  // (Sem 2, mirroring AIML/Core's own Sem 1), same as AIML/Core's own,
+  // has no notes counterpart.
+  "civil-s2-engineering-graphics",
+  "mechanical-s2-engineering-graphics",
+  "automation-robotics-s2-engineering-graphics",
+  // Civil / Mechanical / Automation & Robotics — 2nd Year Sem 3: every
+  // given Lab subject has its own distinct name (see
+  // LAB_SUBJECT_SLUGS's identical comment) — none of them are shared
+  // with a notes entry, so all of them are lab-only.
+  "civil-s3-fluid-mechanics-lab",
+  "civil-s3-basic-surveying-lab",
+  "civil-s3-building-material-construction-lab",
+  "civil-s3-civil-engineering-drawing-lab",
+  "mechanical-s3-engineering-material-lab",
+  "mechanical-s3-fluid-mechanics-lab",
+  "mechanical-s3-computer-aided-machine-drawing-lab",
+  "mechanical-s3-thermodynamics-lab",
+  "automation-robotics-s3-python-lab",
+  "automation-robotics-s3-digital-electronics-lab",
+  "automation-robotics-s3-engineering-materials-lab",
+  "automation-robotics-s3-computer-aided-machine-drawing-lab",
 ]);
 
 // Which subjects are valid options for a given resource type — Lab
