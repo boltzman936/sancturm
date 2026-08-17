@@ -4,18 +4,19 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Download, Eye, Pin, Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
-import { useTerm } from "@/hooks/useTerm";
 import { useSpecialization } from "@/hooks/useSpecialization";
+import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
-import { useTermBySlug } from "@/features/terms/queries";
 import { useNotices } from "@/features/notices/queries";
 import { toggleNoticePin } from "@/features/notices/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { Select } from "@/components/shared/Select";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { Notice } from "@/features/notices/types";
 import { localDateKey, formatShortDate } from "@/lib/date";
+import { ordinalSemesterLabel } from "@/lib/termLabel";
 import { sortByPinnedThenDate, type DateSortOrder } from "@/lib/sortByDate";
 import { cn, downloadFile } from "@/lib/utils";
 
@@ -37,13 +38,34 @@ export default function NoticesPage() {
   const specializationId = branch?.has_specializations
     ? branchSpecializations?.find((s) => s.slug === specializationSlug)?.id ?? null
     : null;
-  const { term: termSlug } = useTerm();
-  const { data: term } = useTermBySlug(termSlug);
+
+  // Same Batch-primary, date-gated Semester resolution Notes & Lab and
+  // PYQs already use — a notice posted for a SPECIFIC semester (not
+  // just whichever one the sidebar's Year switcher currently resolves
+  // to) is genuinely reachable/browsable here, not just correctly
+  // scoped in the query underneath.
+  const {
+    allBatches,
+    eligibleBatches,
+    batchFilter,
+    setBatchFilter,
+    reachedTerms,
+    isLoadingReachedTerms,
+    hideSemesterFilter,
+    effectiveTerm: term,
+    effectiveTermId,
+    effectiveTermIds,
+    liveCurrentTermId,
+    setTermId,
+  } = useBatchSemesterFilter();
+  const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
+
   const { data: notices, isLoading, isError } = useNotices(
     branch?.id ?? null,
     specializationId,
     branch?.has_specializations ?? false,
-    term?.id ?? null
+    isAllSemesters ? effectiveTermIds : term?.id ?? null,
+    batchFilter !== ALL_BATCHES ? batchFilter : null
   );
   const { data: role } = useCurrentRole();
   const queryClient = useQueryClient();
@@ -51,7 +73,8 @@ export default function NoticesPage() {
   // A CR can browse another (branch, specialization, term)'s notices
   // like a normal student (no manage powers there) — pinning only
   // works on their own scope, same as everything else in the CR
-  // permission model.
+  // permission model. Never true under "All semesters" (no single
+  // term to match against), same as it'd correctly fail server-side.
   const canManage =
     role?.type === "admin" ||
     (role?.type === "cr" &&
@@ -61,7 +84,7 @@ export default function NoticesPage() {
 
   async function handleTogglePin(notice: Notice) {
     await toggleNoticePin(notice.id, !notice.is_pinned);
-    queryClient.invalidateQueries({ queryKey: ["notices", branch?.id, specializationId, term?.id] });
+    queryClient.invalidateQueries({ queryKey: ["notices"] });
   }
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -78,13 +101,56 @@ export default function NoticesPage() {
     return sortByPinnedThenDate(bySearch, dateSort);
   }, [notices, dateFilter, searchQuery, dateSort]);
 
+  // Same min-w-floored, side-by-side Semester+Batch pair as Notes &
+  // Lab / PYQs — see their identical comment for why each gets its own
+  // floor instead of a shared fixed width.
+  const semesterSelect = () => (
+    <Select
+      value={effectiveTermId}
+      onChange={(event) => setTermId(event.target.value)}
+      className="min-w-[110px] sm:min-w-[260px] flex-1"
+    >
+      {isLoadingReachedTerms && <option value="">Loading…</option>}
+      {batchFilter === ALL_BATCHES && <option value={ALL_SEMESTERS}>All semesters</option>}
+      {reachedTerms.map((bt) => (
+        <option key={bt.term_id} value={bt.term_id}>
+          {ordinalSemesterLabel(bt.term.semester_number)}
+          {bt.term_id === liveCurrentTermId ? " (current)" : ""}
+        </option>
+      ))}
+    </Select>
+  );
+
+  const batchSelect = () => (
+    <Select
+      value={batchFilter}
+      onChange={(event) => setBatchFilter(event.target.value)}
+      className="min-w-[90px] sm:min-w-[150px] flex-1"
+    >
+      {(eligibleBatches?.length ?? 0) > 1 && <option value={ALL_BATCHES}>All batches</option>}
+      {eligibleBatches?.map((batch) => (
+        <option key={batch.id} value={batch.id}>
+          {batch.label}
+        </option>
+      ))}
+    </Select>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-2xl font-medium text-foreground">Notices</h1>
         <p className="text-muted-foreground">
           Official PDFs for {branch?.name ?? "your branch"}
-          {term ? ` — ${term.label.split(" - ")[0]}` : ""}.
+          {batchFilter !== ALL_BATCHES && allBatches
+            ? ` — ${allBatches.find((b) => b.id === batchFilter)?.label ?? ""}`
+            : ""}
+          {isAllSemesters
+            ? `, ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""} - All Semesters`
+            : term
+              ? `, ${term.label}`
+              : ""}
+          .
         </p>
       </div>
 
@@ -116,6 +182,15 @@ export default function NoticesPage() {
           />
         </div>
 
+        {/* Semester + Batch, side by side — Semester first, matching
+            Notes & Lab / PYQs' identical layout. Semester hidden
+            entirely where it isn't a useful filter (see
+            hideSemesterFilter). */}
+        <div className="flex shrink-0 gap-2">
+          {!hideSemesterFilter && semesterSelect()}
+          {batchSelect()}
+        </div>
+
         <DateFilterInput value={dateFilter} onChange={setDateFilter} className="min-w-[160px]" />
 
         {dateFilter && (
@@ -128,7 +203,7 @@ export default function NoticesPage() {
         )}
       </div>
 
-      {isLoading && (
+      {(isLoading || isLoadingReachedTerms) && (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
           Loading…
         </div>
@@ -140,7 +215,7 @@ export default function NoticesPage() {
         </div>
       )}
 
-      {!isLoading && !isError && filtered.length === 0 && (
+      {!isLoading && !isLoadingReachedTerms && !isError && filtered.length === 0 && (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
           {notices && notices.length > 0 ? "No matches." : "Nothing here yet."}
         </div>
