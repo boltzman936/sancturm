@@ -1380,7 +1380,14 @@ export function ManageResourceList({
       )}
 
       {!isEmpty && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        // Sticky, not static — this is the ONLY place the bulk Remove
+        // button lives. Selecting a row/context deep in a long list
+        // (see the per-context checkboxes above) used to leave that
+        // button scrolled out of view above, with no way to tell it
+        // still existed. A solid background + border + shadow so it
+        // reads as a distinct pinned toolbar once stuck, not content
+        // that happens to overlap whatever scrolls underneath it.
+        <div className="sticky top-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-3 shadow-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <label className="flex items-center gap-2 font-mono text-xs text-subtle-foreground">
             <input
               type="checkbox"
