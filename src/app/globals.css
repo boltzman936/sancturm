@@ -118,3 +118,24 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), sans-serif;
 }
+
+/* Skeleton-loading shimmer — a moving highlight sweep instead of a
+   flat opacity pulse, used by SelectCard's loading state (Cockpit's
+   Branch/Specialization/Year cards) so a skeleton bar reads as
+   "actually loading" rather than just blinking. */
+@keyframes shimmer-sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.animate-shimmer {
+  animation: shimmer-sweep 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-shimmer {
+    animation: none;
+  }
+}

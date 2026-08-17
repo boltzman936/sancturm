@@ -13,9 +13,11 @@ import { BranchSelectCard } from "@/features/branches/components/BranchSelectCar
 import { SpecializationSelectCard } from "@/features/branches/components/SpecializationSelectCard";
 import { TermSelectCard } from "@/features/terms/components/TermSelectCard";
 import { createClient } from "@/lib/supabase/client";
+import { localDateKey } from "@/lib/date";
+import { isDateReached } from "@/features/batches/academicChronology";
 import { cn } from "@/lib/utils";
 import type { Branch } from "@/features/branches/types";
-import type { AcademicTerm } from "@/types/database";
+import type { AcademicTerm, Specialization } from "@/types/database";
 
 const HEADLINE = "Welcome to Sancturm";
 const TYPING_SPEED_MS = 70;
@@ -185,7 +187,71 @@ export function IntroExperience() {
       },
       staleTime: 5 * 60_000,
     });
+    // TermSelectCard (the Cockpit's actual "select your year" step)
+    // reads useCurrentTermsByYear, not useTerms() — a different query
+    // key and a client-side reduction over batch_terms, not
+    // academic_terms directly. Without prefetching THIS exact query
+    // too, the Term step always paid for a fresh fetch no matter how
+    // early the intro started warming the cache, since "terms" above
+    // never dedupes against it. Mirrors useCurrentTermsByYear's own
+    // queryFn exactly, same reasoning as this effect's other two
+    // prefetches — sharing the identical key/fn is what lets this
+    // dedupe against the card's own eventual useQuery call instead of
+    // racing it.
+    queryClient.prefetchQuery({
+      queryKey: ["terms", "current-by-year"],
+      queryFn: async () => {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("batch_terms")
+          .select("start_date, term:academic_terms(*)")
+          .order("start_date", { ascending: true });
+        if (error) throw error;
+
+        const todayKey = localDateKey(new Date().toISOString());
+        const byYear = new Map<number, AcademicTerm>();
+        for (const row of data ?? []) {
+          const term = (Array.isArray(row.term) ? row.term[0] : row.term) as AcademicTerm | null;
+          if (!term) continue;
+          const alreadyStarted = isDateReached(row.start_date, todayKey);
+          if (!byYear.has(term.year_number) || alreadyStarted) {
+            byYear.set(term.year_number, term);
+          }
+        }
+        return [...byYear.values()].sort((a, b) => a.year_number - b.year_number);
+      },
+      staleTime: 5 * 60_000,
+    });
   }, [queryClient]);
+
+  // Once the branch list itself resolves, warm the Specialization step
+  // too — CSE is the only has_specializations branch today, but this
+  // stays data-driven (every such branch, not a hardcoded CSE check)
+  // so a second one added later gets the same treatment automatically.
+  // Without this, picking a branch that has specializations always
+  // showed a loading skeleton on the very next step no matter how long
+  // someone lingered on the branch step first, since nothing had ever
+  // asked for that branch's specializations yet.
+  useEffect(() => {
+    if (!branches) return;
+    for (const branch of branches) {
+      if (!branch.has_specializations) continue;
+      queryClient.prefetchQuery({
+        queryKey: ["specializations", branch.id],
+        queryFn: async () => {
+          const supabase = createClient();
+          const { data, error } = await supabase
+            .from("specializations")
+            .select("*")
+            .eq("branch_id", branch.id)
+            .order("sort_order");
+          if (error) throw error;
+          return data as Specialization[];
+        },
+        staleTime: 5 * 60_000,
+      });
+    }
+  }, [branches, queryClient]);
 
   // The typing sequence: 700ms wait after the video is actually ready,
   // then one character at a time. Runs every time this page mounts —

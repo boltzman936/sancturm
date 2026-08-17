@@ -1,7 +1,8 @@
 "use client";
 
 import { useCurrentTermsByYear } from "@/features/terms/queries";
-import { cn } from "@/lib/utils";
+import { SelectCard } from "@/components/shared/SelectCard";
+import type { AcademicTerm } from "@/types/database";
 
 export function TermSelectCard({
   onSelect,
@@ -17,54 +18,28 @@ export function TermSelectCard({
   // useCurrentTermsByYear, not useTerms() — a year can now have
   // multiple terms (Sem 1 and Sem 2, across batches), and this picker
   // still only ever asks "which year", resolving to whichever term is
-  // actually current for it.
+  // actually current for it. IntroExperience prefetches this exact
+  // query during the intro's typing animation, so it's normally
+  // already cached by the time this card appears.
   const { data: terms, isLoading, isError, refetch } = useCurrentTermsByYear();
 
   return (
-    <div
-      className={cn(
-        "w-full max-w-sm rounded-2xl border border-white/10 bg-card/95 p-6 shadow-2xl",
-        className
-      )}
-    >
-      <h2 className="mb-4 text-center font-mono text-xs tracking-[0.08em] text-muted-foreground">
-        select your year
-      </h2>
-      {isLoading && (
-        <div className="flex flex-col gap-2" aria-live="polite" aria-label="Loading years">
-          {[0, 1].map((i) => (
-            <div key={i} className="h-[46px] animate-pulse rounded-lg bg-white/5" />
-          ))}
-        </div>
-      )}
-      {isError && (
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
-          <p className="font-mono text-xs text-subtle-foreground">Couldn&apos;t load years.</p>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-foreground transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-      {!isLoading && !isError && (
-        <div className="flex flex-col gap-2">
-          {terms?.map((term) => (
-            <button
-              key={term.slug}
-              onClick={() => onSelect(term.slug)}
-              className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-left text-foreground transition-all duration-200 hover:border-primary active:border-primary hover:bg-white/10 active:bg-white/10 hover:shadow-[0_0_20px_rgba(255,74,45,0.15)] active:shadow-[0_0_20px_rgba(255,74,45,0.15)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {/* Shown as just "1st Year" — sem isn't asked separately
-                  since each year currently maps to exactly one semester
-                  (Sem 2/4 come later once these cohorts progress). */}
-              {term.label.split(" - ")[0]}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <SelectCard<AcademicTerm>
+      title="select your year"
+      items={terms}
+      isLoading={isLoading}
+      isError={isError}
+      onRetry={refetch}
+      onSelect={(term) => onSelect(term.slug)}
+      getKey={(term) => term.slug}
+      // Shown as just "1st Year" — sem isn't asked separately since
+      // each year currently maps to exactly one semester (Sem 2/4 come
+      // later once these cohorts progress).
+      getLabel={(term) => term.label.split(" - ")[0]}
+      skeletonCount={2}
+      loadingLabel="Loading years"
+      errorLabel="Couldn't load years."
+      className={className}
+    />
   );
 }
