@@ -5,14 +5,18 @@
 // (2nd Year - Semester 3), supabase/seed_year1_subjects.sql (1st Year -
 // Semester 1, AIML/Core), supabase/fix_year1_aids_subjects.sql
 // (1st Year - Semester 1, AIDS — a different subject list from
-// AIML/Core), and supabase/add_biotechnology_subjects.sql (all three
+// AIML/Core), supabase/add_biotechnology_subjects.sql (all three
 // Biotechnology semesters — see that file's own comment on which of
-// its subjects are shared vs lab-only vs notes-only).
+// its subjects are shared vs lab-only vs notes-only), and
+// supabase/add_civil_mechanical_automation_sem1.sql (Civil/Mechanical/
+// Automation & Robotics 1st Year Sem 1 — mirrors AIDS's exact Sem 1
+// shape, just with Mathematics renamed).
 //
 // These Sets are matched by slug ALONE, with no branch/term scoping —
-// every Biotechnology slug below is deliberately prefixed "biotech-"
-// so it can never collide with an existing (or future) slug from a
-// different branch reusing a common subject name.
+// every Biotechnology/Civil/Mechanical/Automation & Robotics slug
+// below is deliberately prefixed with its own branch so it can never
+// collide with an existing (or future) slug from a different branch
+// reusing a common subject name.
 export const LAB_SUBJECT_SLUGS = new Set([
   // 2nd Year - Semester 3
   "dsa",
@@ -44,6 +48,22 @@ export const LAB_SUBJECT_SLUGS = new Set([
   "biotech-cell-and-molecular-biology",
   "biotech-enzyme-engineering",
   "biotech-microbiology",
+  // Civil / Mechanical / Automation & Robotics — 1st Year Semester 1
+  // (mirrors AIDS's own C Programming/Digital Electronics/
+  // Manufacturing — all three shared, notes+lab; see below for the
+  // one lab-only entry, Soft Skill).
+  "civil-c-programming",
+  "civil-digital-electronics",
+  "civil-manufacturing",
+  "civil-soft-skill",
+  "mechanical-c-programming",
+  "mechanical-digital-electronics",
+  "mechanical-manufacturing",
+  "mechanical-soft-skill",
+  "automation-robotics-c-programming",
+  "automation-robotics-digital-electronics",
+  "automation-robotics-manufacturing",
+  "automation-robotics-soft-skill",
 ]);
 
 // The reverse case: a handful of LAB_SUBJECT_SLUGS entries are lab-ONLY —
@@ -70,6 +90,12 @@ export const LAB_ONLY_SUBJECT_SLUGS = new Set([
   // Biotechnology 2nd Year Sem 3's given Lab list is a pure subset of
   // its Notes list — every lab entry there is shared, so nothing from
   // that semester belongs here.
+  //
+  // Civil / Mechanical / Automation & Robotics — Soft Skill, same as
+  // AIDS's own, has no notes counterpart.
+  "civil-soft-skill",
+  "mechanical-soft-skill",
+  "automation-robotics-soft-skill",
 ]);
 
 // Which subjects are valid options for a given resource type — Lab
