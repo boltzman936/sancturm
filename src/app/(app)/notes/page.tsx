@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useSpecialization } from "@/hooks/useSpecialization";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
+import { useSessionPersistedState } from "@/hooks/useSessionPersistedState";
 import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
 import {
@@ -77,7 +78,15 @@ export default function NotesAndLabPage() {
 
   const [resourceType, setResourceType] = useState<NotesOrLab>("notes");
   const [dateSort, setDateSort] = useState<DateSort>("newest");
-  const [subjectFilter, setSubjectFilter] = useState<string>(ALL_SUBJECTS);
+  // Persisted for the session (see useSessionPersistedState) so an
+  // explicit Subject pick survives a route change — Notes -> CR
+  // Dashboard -> Notes — instead of silently resetting to "All
+  // subjects" the moment this page remounts, same bug class as
+  // useBatchSemesterFilter's termId.
+  const [subjectFilter, setSubjectFilter] = useSessionPersistedState<string>(
+    "sancturm:subjectFilter:notes",
+    ALL_SUBJECTS
+  );
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");

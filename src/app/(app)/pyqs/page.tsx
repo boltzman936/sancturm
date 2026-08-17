@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useSpecialization } from "@/hooks/useSpecialization";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
+import { useSessionPersistedState } from "@/hooks/useSessionPersistedState";
 import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
 import {
@@ -93,7 +94,13 @@ export default function PYQsPage() {
   // branch, and each branch has its own subject row (a different id)
   // for the same-named subject. Matching by name is what makes "DSA"
   // mean the same thing regardless of which branch's PYQ it's on.
-  const [subjectFilter, setSubjectFilter] = useState<string>(ALL_SUBJECTS);
+  // Persisted for the session (see useSessionPersistedState) so an
+  // explicit pick survives a route change instead of resetting on
+  // remount — same bug class as useBatchSemesterFilter's termId.
+  const [subjectFilter, setSubjectFilter] = useSessionPersistedState<string>(
+    "sancturm:subjectFilter:pyqs",
+    ALL_SUBJECTS
+  );
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
@@ -148,10 +155,19 @@ export default function PYQsPage() {
 
   // Batch/Semester live in useBatchSemesterFilter (no local onChange to
   // extend here) — this catches a Subject name that's no longer valid
-  // for the new branch/sharing group and resets it.
+  // for the new branch/sharing group and resets it. Gated on
+  // allTermSubjects itself (undefined = still loading), not just
+  // subjectOptions (which is always a real, if possibly still-empty,
+  // array) — matching Notes & Lab's identical guard. Without this, a
+  // persisted Subject pick (see useSessionPersistedState) gets wiped
+  // the instant this page mounts: on the very first render
+  // subjectOptions is legitimately still `[]` because the query hasn't
+  // resolved yet, and useResetInvalidSelection has no way to tell that
+  // apart from "this subject genuinely isn't valid here" unless it's
+  // told to wait.
   const validSubjectValues = useMemo(
-    () => [ALL_SUBJECTS, EXTRA_SUBJECT, ...subjectOptions],
-    [subjectOptions]
+    () => (allTermSubjects ? [ALL_SUBJECTS, EXTRA_SUBJECT, ...subjectOptions] : undefined),
+    [allTermSubjects, subjectOptions]
   );
   useResetInvalidSelection(subjectFilter, validSubjectValues, ALL_SUBJECTS, setSubjectFilter);
 

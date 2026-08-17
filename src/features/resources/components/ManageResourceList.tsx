@@ -17,6 +17,7 @@ import { filterSubjectsForResourceType } from "@/features/resources/labSubjects"
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Calendar } from "@/components/shared/Calendar";
 import { Select } from "@/components/shared/Select";
+import { useSessionPersistedState } from "@/hooks/useSessionPersistedState";
 import { localDateKey, formatShortDate } from "@/lib/date";
 import { shortTermLabel } from "@/lib/termLabel";
 import { matchesQuery } from "@/lib/search";
@@ -849,12 +850,20 @@ export function ManageResourceList({
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
-  const [branchFilter, setBranchFilter] = useState(ALL);
-  const [specializationFilter, setSpecializationFilter] = useState(ALL);
-  const [termFilter, setTermFilter] = useState(ALL);
-  const [batchFilter, setBatchFilter] = useState(ALL);
-  const [typeFilter, setTypeFilter] = useState(ALL);
-  const [subjectFilter, setSubjectFilter] = useState(ALL);
+  // Persisted for the session (see useSessionPersistedState) so an
+  // admin's active filter combination survives a route change — e.g.
+  // Manage -> a resource's own page -> Manage — instead of silently
+  // resetting to "All" the moment this component remounts, same bug
+  // class as Notes/PYQs' Semester and Subject filters.
+  const [branchFilter, setBranchFilter] = useSessionPersistedState<string>("sancturm:manage:branchFilter", ALL);
+  const [specializationFilter, setSpecializationFilter] = useSessionPersistedState<string>(
+    "sancturm:manage:specializationFilter",
+    ALL
+  );
+  const [termFilter, setTermFilter] = useSessionPersistedState<string>("sancturm:manage:termFilter", ALL);
+  const [batchFilter, setBatchFilter] = useSessionPersistedState<string>("sancturm:manage:batchFilter", ALL);
+  const [typeFilter, setTypeFilter] = useSessionPersistedState<string>("sancturm:manage:typeFilter", ALL);
+  const [subjectFilter, setSubjectFilter] = useSessionPersistedState<string>("sancturm:manage:subjectFilter", ALL);
   const [dateSort, setDateSort] = useState<"newest" | "oldest">("newest");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, startBulkDelete] = useTransition();

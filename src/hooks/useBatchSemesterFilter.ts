@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useBatches, useBatchTerms, useAllBatchTerms } from "@/features/batches/queries";
 import { useTerms, useTermBySlug } from "@/features/terms/queries";
 import { useBranch } from "@/hooks/useBranch";
@@ -9,6 +9,7 @@ import { useBranchBySlug, useSpecializationBySlug } from "@/features/branches/qu
 import { useBatch } from "@/hooks/useBatch";
 import { useTerm } from "@/hooks/useTerm";
 import { useResetInvalidSelection } from "./useResetInvalidSelection";
+import { useSessionPersistedState } from "./useSessionPersistedState";
 import { localDateKey } from "@/lib/date";
 import { isDateReached, isBatchTermHiddenForSpecialization } from "@/features/batches/academicChronology";
 import type { BatchTerm, AcademicTerm } from "@/types/database";
@@ -35,6 +36,17 @@ const BATCH_EXPLICIT_PICK_YEAR_KEY = "sancturm:batchExplicitYear";
 // default to just because BATCH_EXPLICIT_PICK_YEAR_KEY still said "1"
 // from before the round trip.
 const LAST_YEAR_KEY = "sancturm:batchDefaultLastYear";
+
+// sessionStorage key for the explicitly-picked Semester itself (not
+// just a flag like the two above — the actual term_id, or "" for "no
+// explicit pick, defer to current"). Session-scoped for the same
+// reason Batch's pick is: a leftover pick from a visit eight months
+// ago shouldn't outlive its own academic relevance forever, but within
+// one sitting it must survive a plain route change (Notes -> CR
+// Dashboard -> Notes) — see useSessionPersistedState's own comment for
+// why a route change alone was silently dropping this before (termId
+// used to be a bare useState, which resets to null on every remount).
+const SEMESTER_PICK_KEY = "sancturm:semesterPick";
 
 export const ALL_BATCHES = "all";
 // A pseudo-Semester meaning "every semester currently in view" —
@@ -228,8 +240,18 @@ export function useBatchSemesterFilter() {
   // null = defer to whichever period is calendar-current, or — if
   // nothing in view is actually active — the most recently reached
   // one. Purely a default-selection fallback, not a "this is live"
-  // claim; see liveCurrentTermId for that.
-  const [termId, setTermIdState] = useState<string | null>(null);
+  // claim; see liveCurrentTermId for that. Persisted for the session
+  // (see SEMESTER_PICK_KEY) so an explicit pick survives a route
+  // change instead of silently reverting to "current" the moment the
+  // page remounts — "" is this hook's own cleared/initial sentinel
+  // (useSessionPersistedState requires a string), mapped to/from null
+  // right here so every other use of termId in this file keeps its
+  // existing string | null meaning unchanged.
+  const [rawTermId, setRawTermId] = useSessionPersistedState<string>(SEMESTER_PICK_KEY, "");
+  const termId = rawTermId === "" ? null : rawTermId;
+  function setTermIdState(id: string | null) {
+    setRawTermId(id ?? "");
+  }
   const currentTermId = useMemo(() => {
     if (reachedTerms.length === 0) return "";
     return liveCurrentTermId || reachedTerms[reachedTerms.length - 1].term_id;
