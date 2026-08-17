@@ -689,11 +689,24 @@ function ResourceGroupRow({
   const showBatch = isAdmin && batchLabels.length > 0;
   const termSummary = termLabels.length === 1 ? termLabels[0] : "Multiple semesters";
   const batchSummary = batchLabels.length === 1 ? batchLabels[0] : "Multiple batches";
+  // Subject and Type are per-row fields too — the same uploaded file
+  // can legitimately sit under a DIFFERENT subject per context (e.g.
+  // a Sem 1 vs Sem 2 mirrored curriculum names its math course
+  // "Engineering Mathematics I" in one context and "...II" in
+  // another, even though every row is content-identical). Showing
+  // just primary's own value here previously mislabeled every other
+  // context's card — same fix as termSummary/batchSummary above.
+  const subjectNames = Array.from(new Set(items.map((item) => item.subject?.name ?? "Extra")));
+  const subjectSummary = subjectNames.length === 1 ? subjectNames[0] : "Multiple subjects";
+  const typeLabels = Array.from(new Set(items.map((item) => typeGroupLabel(item))));
+  const typeSummary = typeLabels.length === 1 ? typeLabels[0] : "Multiple types";
   const allSelected = items.every((item) => selectedIds.has(item.id));
 
   function contextLabel(item: ManageableResource) {
     const parts = [item.branch?.name, item.specialization?.name].filter((part): part is string => !!part);
-    const scope = [item.term?.label, item.batch?.label].filter((part): part is string => !!part).join(" · ");
+    const scope = [item.term?.label, item.batch?.label, item.subject?.name ?? "Extra"]
+      .filter((part): part is string => !!part)
+      .join(" · ");
     return scope ? `${parts.join(" → ")} → ${scope}` : parts.join(" → ");
   }
 
@@ -759,9 +772,9 @@ function ResourceGroupRow({
                   <span aria-hidden="true">·</span>
                 </>
               )}
-              <span>{typeGroupLabel(primary)}</span>
+              <span>{typeSummary}</span>
               <span aria-hidden="true">·</span>
-              <span>{primary.subject?.name ?? "Extra"}</span>
+              <span>{subjectSummary}</span>
               <span aria-hidden="true">·</span>
               <span>{formatShortDate(primary.created_at)}</span>
               <span aria-hidden="true">·</span>
