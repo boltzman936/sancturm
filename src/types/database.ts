@@ -11,16 +11,53 @@
  * types can never silently drift from the real database.
  */
 
-export type Program = {
+// Never surfaced anywhere in the UI (exactly one department exists:
+// "Engineering") — exists so the schema is honest about the real
+// hierarchy, not because any screen needs to ask about it.
+export type Department = {
   id: string;
+  name: string;
+  slug: string;
+  sort_order: number;
+  created_at: string;
+};
+
+// Also never surfaced in the UI (exactly one degree: "B.Tech") — was
+// called `programs` before the branch-expansion migration, when it
+// conflated degree+branch into one row ("B.Tech Computer Science
+// Engineering"). Now Branch is its own dimension below this.
+export type Degree = {
+  id: string;
+  department_id: string;
   name: string;
   slug: string;
   created_at: string;
 };
 
+// A real engineering branch (CSE, Civil, Mechanical, ...) — the
+// Cockpit's 2nd onboarding step. has_specializations gates whether the
+// Specialization step is shown at all (true for CSE, false for every
+// branch without a specialization concept).
 export type Branch = {
   id: string;
-  program_id: string;
+  degree_id: string;
+  name: string;
+  slug: string;
+  has_specializations: boolean;
+  sort_order: number;
+  created_at: string;
+};
+
+// A sub-choice within a branch — today, exclusively CSE's four
+// specializations (Core/AIML/AIDS/Cyber Security). Was literally the
+// `branches` table before the branch-expansion migration; renamed
+// once a real Branch layer was introduced above it, so every existing
+// id/row is unchanged — only the table name and its new branch_id FK
+// are new. Branches with has_specializations=false have zero rows
+// here.
+export type Specialization = {
+  id: string;
+  branch_id: string;
   name: string;
   slug: string;
   sort_order: number;
@@ -30,14 +67,12 @@ export type Branch = {
   created_at: string;
 };
 
-// A branch (AIML/Core/AIDS) doesn't carry year/semester itself — a
-// term is the (year, sem) pair layered on top, and every branch's
-// content is scoped to a specific (branch, term) pair once one
-// exists. Right now each year maps to exactly one semester (1st Year
-// -> Sem 1, 2nd Year -> Sem 3), so the UI only ever needs to ask
-// "which year", never a separate semester question — but the schema
-// supports adding a second term for the same year later without
-// restructuring anything.
+// A branch doesn't carry year/semester itself — a term is the (year,
+// sem) pair layered on top, and every branch's content is scoped to a
+// specific (branch, term) pair once one exists. The full 1st-4th Year
+// / Sem 1-8 range exists as academic_terms rows (global — shared by
+// every branch, not branch-specific), each gated by real calendar
+// dates in batch_terms.
 export type AcademicTerm = {
   id: string;
   year_number: number;
@@ -85,6 +120,9 @@ export type CrProfile = {
   id: string;
   auth_user_id: string;
   branch_id: string;
+  // Nullable — a CR scoped to a branch with no specialization concept
+  // (anything but CSE) has none. A CSE CR always has one.
+  specialization_id: string | null;
   term_id: string;
   batch_id: string;
   display_name: string;
@@ -115,6 +153,9 @@ export type MaintenanceConfig = {
 export type Subject = {
   id: string;
   branch_id: string;
+  // Nullable — CSE's subjects are per-specialization; every other
+  // branch's are scoped by branch alone.
+  specialization_id: string | null;
   term_id: string;
   name: string;
   slug: string;
@@ -143,6 +184,7 @@ export type ResourceStatus = "pending" | "approved" | "rejected";
 export type Resource = {
   id: string;
   branch_id: string;
+  specialization_id: string | null;
   term_id: string;
   batch_id: string;
   subject_id: string | null;
@@ -171,6 +213,7 @@ export type ImportantDate = {
 export type Notice = {
   id: string;
   branch_id: string;
+  specialization_id: string | null;
   term_id: string;
   batch_id: string;
   // Visible only to signed-in CR/admin when true — RLS-enforced (see

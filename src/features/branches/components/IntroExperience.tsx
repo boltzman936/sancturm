@@ -7,7 +7,10 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
+import { useSpecialization } from "@/hooks/useSpecialization";
+import { useBranches } from "@/features/branches/queries";
 import { BranchSelectCard } from "@/features/branches/components/BranchSelectCard";
+import { SpecializationSelectCard } from "@/features/branches/components/SpecializationSelectCard";
 import { TermSelectCard } from "@/features/terms/components/TermSelectCard";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -97,6 +100,8 @@ export function IntroExperience() {
   const router = useRouter();
   const { setBranch, isLoaded: branchLoaded } = useBranch();
   const { setTerm, isLoaded: termLoaded } = useTerm();
+  const { setSpecialization } = useSpecialization();
+  const { data: branches } = useBranches();
   const isLoaded = branchLoaded && termLoaded;
   const queryClient = useQueryClient();
   const prefersReducedMotion = useReducedMotion();
@@ -109,10 +114,12 @@ export function IntroExperience() {
   const [typingDone, setTypingDone] = useState(false);
   const [cursorVisible, setCursorVisible] = useState(true);
   const [showSelector, setShowSelector] = useState(false);
-  // Year first, then branch — mirrors the sidebar switcher's two
-  // independent selectors, and keeps each card asking exactly one
-  // question instead of a single crowded picker.
-  const [step, setStep] = useState<"term" | "branch">("term");
+  // Year, then Branch, then — only for a branch with
+  // has_specializations=true (CSE today) — Specialization. Department
+  // and Degree are never asked here at all: exactly one of each exists,
+  // so there's nothing for a student to choose.
+  const [step, setStep] = useState<"term" | "branch" | "specialization">("term");
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [exiting, setExiting] = useState(false);
   // Gates the typing sequence so the headline never starts animating
   // over a still-black screen on a slow connection — it used to fire
@@ -236,12 +243,27 @@ export function IntroExperience() {
     setStep("branch");
   }
 
-  function handleBranchSelect(slug: string) {
-    setBranch(slug);
+  function enterSancturm() {
     setExiting(true);
     setTimeout(() => {
       router.push("/notes");
     }, EXIT_DURATION_S * 1000);
+  }
+
+  function handleBranchSelect(slug: string) {
+    setBranch(slug);
+    const branch = branches?.find((b) => b.slug === slug);
+    if (branch?.has_specializations) {
+      setSelectedBranchId(branch.id);
+      setStep("specialization");
+      return;
+    }
+    enterSancturm();
+  }
+
+  function handleSpecializationSelect(slug: string) {
+    setSpecialization(slug);
+    enterSancturm();
   }
 
   if (!isLoaded) return null;
@@ -343,9 +365,8 @@ export function IntroExperience() {
               transition={{ duration: 0.6 }}
               className="mt-2 flex flex-col items-center gap-3"
             >
-              {step === "term" ? (
-                <TermSelectCard onSelect={handleTermSelect} />
-              ) : (
+              {step === "term" && <TermSelectCard onSelect={handleTermSelect} />}
+              {step === "branch" && (
                 <>
                   <BranchSelectCard onSelect={handleBranchSelect} />
                   <button
@@ -354,6 +375,18 @@ export function IntroExperience() {
                     className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
                   >
                     ← change year
+                  </button>
+                </>
+              )}
+              {step === "specialization" && selectedBranchId && (
+                <>
+                  <SpecializationSelectCard branchId={selectedBranchId} onSelect={handleSpecializationSelect} />
+                  <button
+                    type="button"
+                    onClick={() => setStep("branch")}
+                    className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
+                  >
+                    ← change branch
                   </button>
                 </>
               )}

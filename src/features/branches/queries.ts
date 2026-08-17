@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import type { Branch } from "./types";
+import type { Branch, Specialization } from "./types";
 
 /**
  * Every branch that exists, straight from the database — this is what
@@ -46,4 +46,36 @@ export function useBranches() {
 export function useBranchBySlug(slug: string | null) {
   const query = useBranches();
   return { ...query, data: slug ? query.data?.find((b) => b.slug === slug) : undefined };
+}
+
+/**
+ * Every specialization for a given branch — empty for any branch with
+ * no specialization concept (has_specializations = false), 4 rows for
+ * CSE today. Scoped by branchId (not fetched all-at-once like
+ * useBranches) since, unlike branches, specializations only ever
+ * matter in the context of one already-chosen branch — nothing needs
+ * "every specialization across every branch" at once.
+ */
+export function useSpecializations(branchId: string | null) {
+  return useQuery({
+    queryKey: ["specializations", branchId],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("specializations")
+        .select("*")
+        .eq("branch_id", branchId as string)
+        .order("sort_order");
+      if (error) throw error;
+      return data as Specialization[];
+    },
+    enabled: !!branchId,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Resolves the slug stored by useSpecialization() into the actual row — same reasoning as useBranchBySlug. */
+export function useSpecializationBySlug(branchId: string | null, slug: string | null) {
+  const query = useSpecializations(branchId);
+  return { ...query, data: slug ? query.data?.find((s) => s.slug === slug) : undefined };
 }

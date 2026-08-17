@@ -3,9 +3,10 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
+import { useSpecialization } from "@/hooks/useSpecialization";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
 import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
-import { useBranchBySlug } from "@/features/branches/queries";
+import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
 import {
   useNotesAndLabResources,
   useSubjects,
@@ -43,6 +44,11 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
 export default function NotesAndLabPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
+  const { specialization: specializationSlug } = useSpecialization();
+  const { data: specializations } = useSpecializations(branch?.has_specializations ? branch.id : null);
+  const specializationId = branch?.has_specializations
+    ? specializations?.find((s) => s.slug === specializationSlug)?.id ?? null
+    : null;
 
   // Selected Batch + sidebar Year jointly determine which semesters
   // exist (an exact match, not a cumulative history) — see
@@ -78,9 +84,14 @@ export default function NotesAndLabPage() {
   // union across every semester in view instead (both hooks are always
   // called, per rules of hooks; whichever one applies gets real args,
   // the other's args go null/empty and it's just a no-op query).
-  const { data: singleTermSubjects } = useSubjects(branch?.id ?? null, isAllSemesters ? null : term?.id ?? null);
+  const { data: singleTermSubjects } = useSubjects(
+    branch?.id ?? null,
+    specializationId,
+    isAllSemesters ? null : term?.id ?? null
+  );
   const { data: multiTermSubjects } = useSubjectsForBranchAndTerms(
     isAllSemesters ? branch?.id ?? null : null,
+    isAllSemesters ? specializationId : null,
     isAllSemesters ? effectiveTermIds : []
   );
   const allSubjects = isAllSemesters ? multiTermSubjects : singleTermSubjects;
@@ -112,6 +123,7 @@ export default function NotesAndLabPage() {
 
   const { data: resources, isLoading, isError } = useNotesAndLabResources(
     branch?.id ?? null,
+    specializationId,
     isAllSemesters ? effectiveTermIds : term?.id ?? null,
     resourceType
   );

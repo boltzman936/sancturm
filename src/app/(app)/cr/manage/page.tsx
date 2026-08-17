@@ -19,29 +19,43 @@ export default async function CRManagePage() {
   const supabase = await createClient();
   let query = supabase
     .from("resources")
-    .select("*, subject:subjects(name), branch:branches(name), term:academic_terms(label), batch:batches(label)")
+    .select(
+      "*, subject:subjects(name), branch:branches(name), specialization:specializations(name), term:academic_terms(label), batch:batches(label)"
+    )
     .eq("status", "approved")
     .order("created_at", { ascending: false });
 
   // Same shape as the approvals queue: a CR manages their own (branch,
-  // term, batch)'s notes_lab items, plus every branch's PYQs within
-  // their own term (shared content — see supabase/scope_cr_by_term.sql
-  // and supabase/add_batches.sql; PYQ stays batch-agnostic there too).
+  // specialization, term, batch)'s notes_lab items, plus every
+  // specialization WITHIN THEIR OWN BRANCH's PYQs within their own term
+  // (shared content within a branch, never across branches — see
+  // supabase/scope_pyq_by_branch.sql). RLS is the real backstop either
+  // way (confirmed by a live cross-branch probe), but this app-level
+  // filter is kept in sync with it rather than asking broader than
+  // what will actually come back.
   if (role.type === "cr") {
-    // role.branchId/batchId come from cr_profiles (admin-set, not user
-    // input) so this interpolation isn't attacker-reachable today — but
-    // it's the one PostgREST filter in the codebase built by template
-    // literal instead of the query builder. Guarding the shape here
-    // means a future change that ever let these values drift toward
-    // user-influenced input fails safe instead of opening a filter-
-    // injection hole.
+    // role.branchId/specializationId/batchId come from cr_profiles
+    // (admin-set, not user input) so this interpolation isn't
+    // attacker-reachable today — but it's the one PostgREST filter in
+    // the codebase built by template literal instead of the query
+    // builder. Guarding the shape here means a future change that ever
+    // let these values drift toward user-influenced input fails safe
+    // instead of opening a filter-injection hole.
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_RE.test(role.branchId) || !UUID_RE.test(role.batchId)) {
+    if (
+      !UUID_RE.test(role.branchId) ||
+      !UUID_RE.test(role.batchId) ||
+      (role.specializationId !== null && !UUID_RE.test(role.specializationId))
+    ) {
       throw new Error("Invalid CR profile scope.");
     }
+    const specializationClause =
+      role.specializationId === null ? "specialization_id.is.null" : `specialization_id.eq.${role.specializationId}`;
     query = query
       .eq("term_id", role.termId)
-      .or(`section.eq.pyq,and(section.eq.notes_lab,branch_id.eq.${role.branchId},batch_id.eq.${role.batchId})`);
+      .or(
+        `and(section.eq.pyq,branch_id.eq.${role.branchId}),and(section.eq.notes_lab,branch_id.eq.${role.branchId},${specializationClause},batch_id.eq.${role.batchId})`
+      );
   }
 
   // Notices are branch-scoped only (no PYQ-style cross-branch exception),
@@ -50,7 +64,7 @@ export default async function CRManagePage() {
   let noticesQuery = supabase
     .from("notices")
     .select(
-      "id, title, created_at, branch_id, term_id, batch_id, cr_only, branch:branches(name), term:academic_terms(label), batch:batches(label)"
+      "id, title, created_at, branch_id, specialization_id, term_id, batch_id, cr_only, branch:branches(name), specialization:specializations(name), term:academic_terms(label), batch:batches(label)"
     )
     .order("created_at", { ascending: false });
   if (role.type === "cr") {
@@ -58,6 +72,10 @@ export default async function CRManagePage() {
       .eq("branch_id", role.branchId)
       .eq("term_id", role.termId)
       .eq("batch_id", role.batchId);
+    noticesQuery =
+      role.specializationId === null
+        ? noticesQuery.is("specialization_id", null)
+        : noticesQuery.eq("specialization_id", role.specializationId);
   }
 
   // Sancturm Updates are admin-only end to end (RLS rejects a CR's
@@ -103,9 +121,11 @@ export default async function CRManagePage() {
     created_at: notice.created_at,
     subject: null,
     branch: Array.isArray(notice.branch) ? notice.branch[0] ?? null : notice.branch,
+    specialization: Array.isArray(notice.specialization) ? notice.specialization[0] ?? null : notice.specialization,
     term: Array.isArray(notice.term) ? notice.term[0] ?? null : notice.term,
     batch: Array.isArray(notice.batch) ? notice.batch[0] ?? null : notice.batch,
     branch_id: notice.branch_id,
+    specialization_id: notice.specialization_id,
     term_id: notice.term_id,
     batch_id: notice.batch_id,
     subject_id: null,
@@ -124,11 +144,13 @@ export default async function CRManagePage() {
     created_at: update.created_at,
     subject: null,
     branch: null,
+    specialization: null,
     term: null,
     // Sancturm Updates has no batch_id (platform-wide, not scoped to a
     // cohort at all) — null here, same as branch/term above.
     batch: null,
     branch_id: null,
+    specialization_id: null,
     term_id: null,
     batch_id: null,
     subject_id: null,

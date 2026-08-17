@@ -8,12 +8,11 @@ import { withDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 import { assertBatchTermReached } from "@/features/batches/academicValidation";
-import { resolveSubjectBranchName } from "./subjectInterchange";
+import { resolveSubjectSpecializationName } from "./subjectInterchange";
 import type { SubjectStructureConfig, ResourceSection, ResourceType } from "./types";
 import {
   assertValidId,
   assertValidIdOrNull,
-  assertValidIdArray,
   assertValidString,
   assertValidDateKey,
   safeDbError,
@@ -103,6 +102,7 @@ export async function updateResourceFields(
   resourceId: string,
   fields: {
     branchId?: string;
+    specializationId?: string | null;
     termId?: string;
     batchId?: string;
     subjectId?: string | null;
@@ -129,6 +129,7 @@ export async function updateResourceFields(
 
   assertValidId(resourceId, "resource");
   if (fields.branchId !== undefined) assertValidId(fields.branchId, "branch");
+  if (fields.specializationId !== undefined) assertValidIdOrNull(fields.specializationId, "specialization");
   if (fields.termId !== undefined) assertValidId(fields.termId, "year");
   if (fields.batchId !== undefined) assertValidId(fields.batchId, "batch");
   if (fields.subjectId !== undefined) assertValidIdOrNull(fields.subjectId, "subject");
@@ -155,6 +156,7 @@ export async function updateResourceFields(
 
   const update: Record<string, string | null> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;
+  if (fields.specializationId !== undefined) update.specialization_id = fields.specializationId;
   if (fields.termId !== undefined) update.term_id = fields.termId;
   if (fields.batchId !== undefined) update.batch_id = fields.batchId;
   if (fields.subjectId !== undefined) update.subject_id = fields.subjectId;
@@ -266,6 +268,7 @@ export async function uploadResourceDirect(formData: FormData) {
   const role = await getCurrentRole();
 
   const branchId = formData.get("branchId") as string;
+  const specializationId = (formData.get("specializationId") as string) || null;
   const termId = formData.get("termId") as string;
   const batchId = formData.get("batchId") as string;
   const subjectId = (formData.get("subjectId") as string) || null;
@@ -285,6 +288,7 @@ export async function uploadResourceDirect(formData: FormData) {
   const customCreatedAt = (formData.get("customCreatedAt") as string) || null;
 
   assertValidId(branchId, "branch");
+  assertValidIdOrNull(specializationId, "specialization");
   assertValidId(termId, "year");
   assertValidId(batchId, "batch");
   assertValidIdOrNull(subjectId, "subject");
@@ -307,6 +311,7 @@ export async function uploadResourceDirect(formData: FormData) {
 
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
+    specialization_id: specializationId,
     term_id: termId,
     batch_id: batchId,
     subject_id: subjectId,
@@ -329,21 +334,25 @@ export async function uploadResourceDirect(formData: FormData) {
 
 /**
  * Admin-only: publishes one Notes/Lab resource to any number of
- * branches WITHIN ONE TERM in a single action, instead of repeating
- * the upload per branch — a 1st-Year note has nothing to do with
- * 2nd-Year branches, so this deliberately doesn't cross terms
- * (confirmed behavior, not "all 6 branch/term combos"). "Every branch"
- * is just what it does when every branch happens to be selected in the
- * form's multi-select — not a separate mode. Uploads the file to R2
- * once, then inserts one `resources` row per selected branch — each
- * branch has its own `subjects` rows with different UUIDs even for
- * identically-named subjects, so the subject is resolved by NAME
- * within each branch rather than reusing one subject_id everywhere
- * (same cross-branch-name-matching approach already used for PYQ).
- * RLS only lets an admin insert outside their own branch scope at all
- * (see supabase/restrict_uploads_to_cr.sql), so a non-admin calling
- * this just gets a database rejection either way — the explicit role
- * check here is just a faster, clearer failure.
+ * SPECIALIZATIONS within one branch WITHIN ONE TERM in a single
+ * action, instead of repeating the upload per specialization — a
+ * 1st-Year note has nothing to do with 2nd-Year specializations, so
+ * this deliberately doesn't cross terms (confirmed behavior, not "all
+ * combos"). "Every specialization" is just what it does when every one
+ * happens to be selected in the form's multi-select — not a separate
+ * mode. For a branch with no specialization concept, specializationIds
+ * is empty and this publishes exactly once, specialization_id null —
+ * there's nothing to fan out across.
+ *
+ * Uploads the file to R2 once, then inserts one `resources` row per
+ * target — each specialization has its own `subjects` rows with
+ * different UUIDs even for identically-named subjects, so the subject
+ * is resolved by NAME within each specialization rather than reusing
+ * one subject_id everywhere (same cross-specialization-name-matching
+ * approach already used for PYQ). RLS only lets an admin insert outside
+ * their own scope at all (see supabase/restrict_uploads_to_cr.sql), so
+ * a non-admin calling this just gets a database rejection either way —
+ * the explicit role check here is just a faster, clearer failure.
  */
 export async function uploadResourceDirectAllBranches(formData: FormData) {
   const supabase = await createClient();
@@ -356,6 +365,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   if (role?.type !== "admin") throw new Error("Admin only.");
   await checkRateLimit("uploadResourceDirectAllBranches", user.id, 30, 60_000);
 
+  const branchId = formData.get("branchId") as string;
   const termId = formData.get("termId") as string;
   const batchId = formData.get("batchId") as string;
   const subjectName = (formData.get("subjectName") as string) || null;
@@ -370,6 +380,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   // was why a backdated admin upload silently landed on today anyway.
   const customCreatedAt = (formData.get("customCreatedAt") as string) || null;
 
+  assertValidId(branchId, "branch");
   assertValidId(termId, "year");
   assertValidId(batchId, "batch");
   assertValidString(subjectName ?? "", "Subject", { maxLength: MAX_TITLE_LENGTH, required: false });
@@ -379,69 +390,91 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   assertValidString(description ?? "", "Description", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
   if (customCreatedAt !== null) assertValidString(customCreatedAt, "Date", { maxLength: 40 });
 
-  // The form's multi-select sends exactly which branches were checked —
-  // falls back to every branch that exists only if the field is
-  // missing entirely (an older client), never silently on a malformed
-  // value, since that would publish somewhere the admin didn't pick.
-  const branchIdsRaw = formData.get("branchIds") as string | null;
-  let branchIds: string[];
-  if (branchIdsRaw === null) {
-    const { data: allBranches, error: branchesError } = await supabase.from("branches").select("id");
-    if (branchesError) throw safeDbError(branchesError);
-    branchIds = (allBranches ?? []).map((b) => b.id);
+  // The form's multi-select sends exactly which specializations were
+  // checked — falls back to every specialization the branch has only
+  // if the field is missing entirely (an older client), never silently
+  // on a malformed value, since that would publish somewhere the admin
+  // didn't pick. Empty array (branch has no specialization concept) is
+  // valid and means "publish once, specialization_id null".
+  const specializationIdsRaw = formData.get("specializationIds") as string | null;
+  let specializationIds: string[];
+  if (specializationIdsRaw === null) {
+    const { data: allSpecializations, error: specializationsError } = await supabase
+      .from("specializations")
+      .select("id")
+      .eq("branch_id", branchId);
+    if (specializationsError) throw safeDbError(specializationsError);
+    specializationIds = (allSpecializations ?? []).map((s) => s.id);
   } else {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(branchIdsRaw);
+      parsed = JSON.parse(specializationIdsRaw);
     } catch {
-      throw new Error("Invalid branch selection.");
+      throw new Error("Invalid specialization selection.");
     }
-    assertValidIdArray(parsed, "branch");
-    branchIds = parsed;
+    if (!Array.isArray(parsed) || !parsed.every((id) => typeof id === "string")) {
+      throw new Error("Invalid specialization selection.");
+    }
+    for (const id of parsed) assertValidId(id, "specialization");
+    specializationIds = parsed;
   }
-  if (!branchIds.length) throw new Error("No branches found.");
 
   await assertBatchTermReached(supabase, batchId, termId);
 
-  // Verified once, not per-branch — it's the same uploaded object
-  // referenced by every branch's row below. See uploadResourceDirect's
-  // identical check for why this exists.
+  // Verified once, not per-target — it's the same uploaded object
+  // referenced by every row below. See uploadResourceDirect's identical
+  // check for why this exists.
   if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
-  // Resolved once for the whole batch, not per-branch — fine to share
-  // across every target branch since it only depends on termId, which
-  // is fixed for this whole call. Same resolveSubjectBranchName
+  // Resolved once for the whole batch, not per-target — fine to share
+  // across every target since it only depends on termId, which is
+  // fixed for this whole call. Same resolveSubjectSpecializationName
   // useSubjects itself calls client-side, so a bulk-publish and a
   // regular upload can never disagree about which subject list is
-  // currently active for a given branch.
+  // currently active for a given specialization.
   let interchangeActive = false;
-  let allBranchNames: { id: string; name: string }[] = [];
+  let allSpecializationNames: { id: string; name: string }[] = [];
   let termSlug: string | null = null;
-  if (subjectName) {
-    const [{ data: config }, { data: branchRows }, { data: termRow }] = await Promise.all([
+  if (subjectName && specializationIds.length > 0) {
+    const [{ data: config }, { data: specializationRows }, { data: termRow }] = await Promise.all([
       supabase.from("subject_structure_config").select("*").single(),
-      supabase.from("branches").select("id, name"),
+      supabase.from("specializations").select("id, name").eq("branch_id", branchId),
       supabase.from("academic_terms").select("slug").eq("id", termId).single(),
     ]);
     interchangeActive = (config as SubjectStructureConfig | null)?.interchange_active ?? false;
-    allBranchNames = branchRows ?? [];
+    allSpecializationNames = specializationRows ?? [];
     termSlug = termRow?.slug ?? null;
   }
 
-  for (const branchId of branchIds) {
+  const targets = specializationIds.length > 0 ? specializationIds : [null];
+
+  for (const specializationId of targets) {
     let subjectId: string | null = null;
-    if (subjectName) {
-      const requestedName = allBranchNames.find((b) => b.id === branchId)?.name;
+    if (subjectName && specializationId) {
+      const requestedName = allSpecializationNames.find((s) => s.id === specializationId)?.name;
       const resolvedName = requestedName
-        ? resolveSubjectBranchName(requestedName, termSlug, interchangeActive)
+        ? resolveSubjectSpecializationName(requestedName, termSlug, interchangeActive)
         : undefined;
-      const resolvedBranchId = resolvedName ? allBranchNames.find((b) => b.name === resolvedName)?.id : branchId;
+      const resolvedSpecializationId = resolvedName
+        ? allSpecializationNames.find((s) => s.name === resolvedName)?.id
+        : specializationId;
       const { data: subject } = await supabase
         .from("subjects")
         .select("id")
-        .eq("branch_id", resolvedBranchId ?? branchId)
+        .eq("branch_id", branchId)
+        .eq("specialization_id", resolvedSpecializationId ?? specializationId)
+        .eq("term_id", termId)
+        .eq("name", subjectName)
+        .maybeSingle();
+      subjectId = subject?.id ?? null;
+    } else if (subjectName) {
+      const { data: subject } = await supabase
+        .from("subjects")
+        .select("id")
+        .eq("branch_id", branchId)
+        .is("specialization_id", null)
         .eq("term_id", termId)
         .eq("name", subjectName)
         .maybeSingle();
@@ -450,6 +483,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
 
     const { error: insertError } = await supabase.from("resources").insert({
       branch_id: branchId,
+      specialization_id: specializationId,
       term_id: termId,
       batch_id: batchId,
       subject_id: subjectId,

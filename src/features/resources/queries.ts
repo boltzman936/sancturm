@@ -3,9 +3,9 @@
 import { useMemo } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { useBranches } from "@/features/branches/queries";
+import { useSpecializations } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
-import { resolveSubjectBranchName } from "./subjectInterchange";
+import { resolveSubjectSpecializationName } from "./subjectInterchange";
 import type { Resource, ResourceType, Subject, SubjectStructureConfig } from "./types";
 
 export type ResourceWithSubject = Resource & {
@@ -31,42 +31,47 @@ export function useSubjectStructureConfig() {
 }
 
 /**
- * Subjects for one (branch, term) pair, ordered the way the CR
- * arranged them. Resolves through resolveSubjectBranchName first —
+ * Subjects for one (branch, specialization, term) combination, ordered
+ * the way the CR arranged them. specializationId is null for any
+ * branch with no specialization concept (everything but CSE) — those
+ * subjects are matched with `specialization_id is null`.
+ *
+ * For CSE, resolves through resolveSubjectSpecializationName first —
  * for every term except 1st-Year Sem 2 (or whenever the interchange
- * toggle is off) this is exactly branchId, unchanged; the swap only
- * ever kicks in for that one semester. Callers never need to know
- * interchange exists at all — they ask for "this branch's subjects"
- * and get the currently-active list back, same call shape as before.
+ * toggle is off) this is exactly specializationId, unchanged; the swap
+ * only ever kicks in for that one semester, and only for Core/AIML/AIDS
+ * (Cyber Security is confirmed independent — untouched regardless of
+ * the toggle). Callers never need to know interchange exists at all —
+ * they ask for "this specialization's subjects" and get the
+ * currently-active list back, same call shape as before.
  */
-export function useSubjects(branchId: string | null, termId: string | null) {
-  const { data: branches } = useBranches();
+export function useSubjects(branchId: string | null, specializationId: string | null, termId: string | null) {
+  const { data: specializations } = useSpecializations(branchId);
   const { data: terms } = useTerms();
   const { data: config } = useSubjectStructureConfig();
 
-  const effectiveBranchId = useMemo(() => {
-    if (!branchId || !termId || !branches || !terms || !config) return branchId;
+  const effectiveSpecializationId = useMemo(() => {
+    if (!specializationId || !termId || !specializations || !terms || !config) return specializationId;
     const term = terms.find((t) => t.id === termId);
-    const branch = branches.find((b) => b.id === branchId);
-    if (!term || !branch) return branchId;
-    const resolvedName = resolveSubjectBranchName(branch.name, term.slug, config.interchange_active);
-    return branches.find((b) => b.name === resolvedName)?.id ?? branchId;
-  }, [branchId, termId, branches, terms, config]);
+    const spec = specializations.find((s) => s.id === specializationId);
+    if (!term || !spec) return specializationId;
+    const resolvedName = resolveSubjectSpecializationName(spec.name, term.slug, config.interchange_active);
+    return specializations.find((s) => s.name === resolvedName)?.id ?? specializationId;
+  }, [specializationId, termId, specializations, terms, config]);
 
   return useQuery({
-    queryKey: ["subjects", effectiveBranchId, termId],
+    queryKey: ["subjects", branchId, effectiveSpecializationId, termId],
     queryFn: async () => {
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from("subjects")
-        .select("*")
-        .eq("branch_id", effectiveBranchId!)
-        .eq("term_id", termId!)
-        .order("sort_order", { ascending: true });
+      let query = supabase.from("subjects").select("*").eq("branch_id", branchId!).eq("term_id", termId!);
+      query = effectiveSpecializationId
+        ? query.eq("specialization_id", effectiveSpecializationId)
+        : query.is("specialization_id", null);
+      const { data, error } = await query.order("sort_order", { ascending: true });
       if (error) throw error;
       return data as Subject[];
     },
-    enabled: !!effectiveBranchId && !!termId,
+    enabled: !!branchId && !!termId,
     // Subjects only change when a CR restructures the syllabus list —
     // near-static reference data, same reasoning as useBranchBySlug.
     staleTime: 5 * 60_000,
@@ -74,12 +79,12 @@ export function useSubjects(branchId: string | null, termId: string | null) {
 }
 
 /**
- * Every subject across every branch for one term — for PYQs, which
- * are shared cross-branch. A branch's own subject list isn't a safe
- * stand-in for "every subject a PYQ could exist under" once branches'
- * lists diverge (AIDS's 1st-Year list is entirely different from
- * AIML/Core's), so this exists instead of reusing useSubjects with
- * just the viewer's own branch.
+ * Every subject across every branch AND specialization for one term —
+ * Manage's admin-wide "All years" filter genuinely wants everything,
+ * since admin manages every branch at once. Not used for PYQ's own
+ * subject filter (see useSubjectsForPyqScope below) — a student's PYQ
+ * view should only ever see subjects from their own branch's sharing
+ * pool, not every branch in the college.
  */
 export function useSubjectsForTerm(termId: string | null) {
   return useQuery({
@@ -134,40 +139,105 @@ export function useSubjectsForTerms(termIds: string[]) {
 }
 
 /**
- * Notes & Lab's own "All semesters" case (see useBatchSemesterFilter's
- * ALL_SEMESTERS) — the branch-scoped equivalent of useSubjectsForTerms
- * above, which is deliberately unscoped for Manage's admin-wide filter
- * and so isn't reusable here as-is. Resolves interchange PER TERM, the
- * same way useSubjects does for a single term — a union spanning 1st-
- * Year Sem 1 and Sem 2 needs Sem 2's own resolution, not the requesting
- * branch's raw id applied to every term uniformly. Shares useSubjects'
- * exact query key shape per term, so results aren't double-fetched.
+ * Every subject in a branch's PYQ sharing pool (see pyqSharing.ts) for
+ * one term — the PYQs page's own Subject filter, scoped to exactly the
+ * same (branch, specializations) set usePyqResources itself queries,
+ * so the filter never offers a subject that couldn't actually appear
+ * in what's shown. specializationIds is the pool from
+ * pyqSharingSpecializationIds — empty means "branch has no
+ * specialization concept", matched as specialization_id is null.
  */
-export function useSubjectsForBranchAndTerms(branchId: string | null, termIds: string[]) {
-  const { data: branches } = useBranches();
+export function useSubjectsForPyqScope(
+  branchId: string | null,
+  specializationIds: string[],
+  hasSpecializations: boolean,
+  termId: string | null
+) {
+  return useQuery({
+    queryKey: ["subjects", "pyq-scope", branchId, [...specializationIds].sort(), termId],
+    queryFn: async () => {
+      const supabase = createClient();
+      let query = supabase.from("subjects").select("*").eq("branch_id", branchId!).eq("term_id", termId!);
+      query = hasSpecializations ? query.in("specialization_id", specializationIds) : query.is("specialization_id", null);
+      const { data, error } = await query.order("sort_order", { ascending: true });
+      if (error) throw error;
+      return data as Subject[];
+    },
+    enabled: !!branchId && !!termId && (!hasSpecializations || specializationIds.length > 0),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Same as useSubjectsForPyqScope, for a SET of terms — PYQs page's own "All semesters" case. */
+export function useSubjectsForPyqScopeTerms(
+  branchId: string | null,
+  specializationIds: string[],
+  hasSpecializations: boolean,
+  termIds: string[]
+) {
+  const results = useQueries({
+    queries: termIds.map((termId) => ({
+      queryKey: ["subjects", "pyq-scope", branchId, [...specializationIds].sort(), termId],
+      queryFn: async () => {
+        const supabase = createClient();
+        let query = supabase.from("subjects").select("*").eq("branch_id", branchId!).eq("term_id", termId);
+        query = hasSpecializations
+          ? query.in("specialization_id", specializationIds)
+          : query.is("specialization_id", null);
+        const { data, error } = await query.order("sort_order", { ascending: true });
+        if (error) throw error;
+        return data as Subject[];
+      },
+      enabled: !!branchId && (!hasSpecializations || specializationIds.length > 0),
+      staleTime: 5 * 60_000,
+    })),
+  });
+
+  const isLoading = termIds.length > 0 && results.some((r) => r.isLoading);
+  const data = isLoading ? undefined : results.flatMap((r) => r.data ?? []);
+  return { data, isLoading };
+}
+
+/**
+ * Notes & Lab's own "All semesters" case (see useBatchSemesterFilter's
+ * ALL_SEMESTERS) — the branch/specialization-scoped equivalent of
+ * useSubjectsForTerms above, which is deliberately unscoped for
+ * Manage's admin-wide filter and so isn't reusable here as-is.
+ * Resolves interchange PER TERM, the same way useSubjects does for a
+ * single term — a union spanning 1st-Year Sem 1 and Sem 2 needs Sem
+ * 2's own resolution, not the requesting specialization's raw id
+ * applied to every term uniformly. Shares useSubjects' exact query key
+ * shape per term, so results aren't double-fetched.
+ */
+export function useSubjectsForBranchAndTerms(
+  branchId: string | null,
+  specializationId: string | null,
+  termIds: string[]
+) {
+  const { data: specializations } = useSpecializations(branchId);
   const { data: terms } = useTerms();
   const { data: config } = useSubjectStructureConfig();
-  const branch = branches?.find((b) => b.id === branchId);
-  const ready = !!branchId && !!branches && !!terms && !!config;
+  const spec = specializations?.find((s) => s.id === specializationId);
+  const ready = !!branchId && (!specializationId || (!!specializations && !!terms && !!config));
 
   const results = useQueries({
     queries: termIds.map((termId) => {
       const term = terms?.find((t) => t.id === termId);
-      const effectiveBranchId =
-        ready && branch && term
-          ? branches!.find((b) => b.name === resolveSubjectBranchName(branch.name, term.slug, config!.interchange_active))
-              ?.id ?? branchId
-          : branchId;
+      const effectiveSpecializationId =
+        specializationId && ready && spec && term
+          ? specializations!.find(
+              (s) => s.name === resolveSubjectSpecializationName(spec.name, term.slug, config!.interchange_active)
+            )?.id ?? specializationId
+          : specializationId;
       return {
-        queryKey: ["subjects", effectiveBranchId, termId],
+        queryKey: ["subjects", branchId, effectiveSpecializationId, termId],
         queryFn: async () => {
           const supabase = createClient();
-          const { data, error } = await supabase
-            .from("subjects")
-            .select("*")
-            .eq("branch_id", effectiveBranchId!)
-            .eq("term_id", termId)
-            .order("sort_order", { ascending: true });
+          let query = supabase.from("subjects").select("*").eq("branch_id", branchId!).eq("term_id", termId);
+          query = effectiveSpecializationId
+            ? query.eq("specialization_id", effectiveSpecializationId)
+            : query.is("specialization_id", null);
+          const { data, error } = await query.order("sort_order", { ascending: true });
           if (error) throw error;
           return data as Subject[];
         },
@@ -183,10 +253,12 @@ export function useSubjectsForBranchAndTerms(branchId: string | null, termIds: s
 }
 
 /**
- * Approved Notes & Lab resources for one (branch, term) pair + type
- * ('notes' or 'lab_manual'). Returned unsorted-by-intent — the page
- * does the subject-vs-time sort client-side over this same fetched
- * set, so toggling the sort control doesn't cost another round trip.
+ * Approved Notes & Lab resources for one (branch, specialization, term)
+ * combination + type ('notes' or 'lab_manual'). specializationId null
+ * matches specialization_id is null (every non-CSE branch). Returned
+ * unsorted-by-intent — the page does the subject-vs-time sort
+ * client-side over this same fetched set, so toggling the sort control
+ * doesn't cost another round trip.
  *
  * termId also accepts an array — Notes/PYQ's "All semesters" pick
  * (ALL_SEMESTERS in useBatchSemesterFilter) needs every semester
@@ -194,18 +266,19 @@ export function useSubjectsForBranchAndTerms(branchId: string | null, termIds: s
  */
 export function useNotesAndLabResources(
   branchId: string | null,
+  specializationId: string | null,
   termId: string | string[] | null,
   resourceType: ResourceType,
   // Optional — a FILTER, not a scoping dimension like branch/term.
-  // Omitted (null) shows every batch's content for this (branch,
-  // term), which is what "browsing your year" meant before Batch
-  // existed and stays the default now.
+  // Omitted (null) shows every batch's content for this scope, which
+  // is what "browsing your year" meant before Batch existed and stays
+  // the default now.
   batchId?: string | null
 ) {
   const termKey = Array.isArray(termId) ? [...termId].sort() : termId;
   const hasTerm = Array.isArray(termId) ? termId.length > 0 : !!termId;
   return useQuery({
-    queryKey: ["resources", "notes_lab", branchId, termKey, resourceType, batchId ?? null],
+    queryKey: ["resources", "notes_lab", branchId, specializationId, termKey, resourceType, batchId ?? null],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase
@@ -215,6 +288,7 @@ export function useNotesAndLabResources(
         .eq("section", "notes_lab")
         .eq("resource_type", resourceType)
         .eq("status", "approved");
+      query = specializationId ? query.eq("specialization_id", specializationId) : query.is("specialization_id", null);
       query = Array.isArray(termId) ? query.in("term_id", termId) : query.eq("term_id", termId!);
       if (batchId) query = query.eq("batch_id", batchId);
       const { data, error } = await query
@@ -229,39 +303,36 @@ export function useNotesAndLabResources(
 }
 
 /**
- * PYQs are shared across every CSE branch WITHIN a term (see
- * supabase/scope_cr_by_term.sql) — deliberately not filtered by
- * branch_id, unlike useNotesAndLabResources, but IS filtered by term
- * (a 1st-Year Sem 1 PYQ has nothing to do with a 2nd-Year Sem 3
- * student, even though a same-term PYQ crosses branches freely).
+ * PYQs are shared within one branch's specialization pool (see
+ * pyqSharing.ts's pyqSharingSpecializationIds) WITHIN a term — never
+ * across different real branches (a Civil PYQ has nothing to do with a
+ * CSE student). hasSpecializations=false (every non-CSE branch) means
+ * "match specialization_id is null" instead of an IN-list.
  *
  * termId also accepts an array — see useNotesAndLabResources's
  * identical note for why ("All semesters").
  */
 export function usePyqResources(
+  branchId: string | null,
+  specializationIds: string[],
+  hasSpecializations: boolean,
   termId: string | string[] | null,
-  // Which branches' PYQs are actually visible together — resolved by
-  // the caller via pyqSharing.ts's pyqSharingBranchNames (1st Year
-  // splits Core+AIML from AIDS; 2nd Year stays fully shared). This is
-  // the actual enforcement point: a student's browser never sees a
-  // PYQ outside their own sharing group, because the query itself
-  // never fetches it — not a client-side filter over an already-
-  // fetched full set.
-  branchIds: string[] | null,
   batchId?: string | null
 ) {
   const termKey = Array.isArray(termId) ? [...termId].sort() : termId;
   const hasTerm = Array.isArray(termId) ? termId.length > 0 : !!termId;
+  const ready = hasSpecializations ? specializationIds.length > 0 : true;
   return useQuery({
-    queryKey: ["resources", "pyq", termKey, branchIds ? [...branchIds].sort() : null, batchId ?? null],
+    queryKey: ["resources", "pyq", branchId, [...specializationIds].sort(), termKey, batchId ?? null],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase
         .from("resources")
         .select("*, subject:subjects(id, name, sort_order)")
+        .eq("branch_id", branchId!)
         .eq("section", "pyq")
-        .eq("status", "approved")
-        .in("branch_id", branchIds!);
+        .eq("status", "approved");
+      query = hasSpecializations ? query.in("specialization_id", specializationIds) : query.is("specialization_id", null);
       query = Array.isArray(termId) ? query.in("term_id", termId) : query.eq("term_id", termId!);
       if (batchId) query = query.eq("batch_id", batchId);
       const { data, error } = await query
@@ -270,7 +341,7 @@ export function usePyqResources(
       if (error) throw error;
       return data as unknown as ResourceWithSubject[];
     },
-    enabled: hasTerm && !!branchIds && branchIds.length > 0,
+    enabled: !!branchId && hasTerm && ready,
     staleTime: 30_000,
   });
 }
@@ -280,11 +351,11 @@ export function usePyqResources(
  * land in — CRUploadForm checks a picked file's would-be title against
  * this before publishing, so re-uploading something from a past
  * session (not just this same browser tab) still gets flagged.
- * branchIds is always applied now, PYQ included — for a PYQ upload the
- * caller passes the full pyqSharing.ts group (not just the one branch
- * on record), since a same-named PYQ in a DIFFERENT sharing group
- * (e.g. AIDS vs. Core/AIML for 1st Year) isn't actually a duplicate
- * anymore, matching what usePyqResources itself now shows.
+ * specializationIds is always applied now, PYQ included — for a PYQ
+ * upload the caller passes the full pyqSharing.ts pool (not just the
+ * one specialization on record), since a same-named PYQ in a DIFFERENT
+ * sharing pool (e.g. AIDS vs. Core/AIML for 1st Year) isn't actually a
+ * duplicate anymore, matching what usePyqResources itself now shows.
  * resourceTypes scopes by the actual resource_type(s), not just
  * section — without this, a PYQ Solution shared the same "already
  * uploaded" check as its question paper (same section, both "pyq"),
@@ -295,7 +366,9 @@ export function usePyqResources(
 export function useExistingResourceTitles(
   section: "notes_lab" | "pyq" | null,
   resourceTypes: string[],
-  branchIds: string[],
+  branchId: string | null,
+  specializationIds: string[],
+  hasSpecializations: boolean,
   termId: string | null,
   subjectId: string | null,
   // Scopes the check to the batch actually being uploaded to — the
@@ -304,24 +377,41 @@ export function useExistingResourceTitles(
   batchId: string | null
 ) {
   return useQuery({
-    queryKey: ["resources", "titles", section, resourceTypes, branchIds, termId, subjectId, batchId],
+    queryKey: [
+      "resources",
+      "titles",
+      section,
+      resourceTypes,
+      branchId,
+      specializationIds,
+      termId,
+      subjectId,
+      batchId,
+    ],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase
         .from("resources")
         .select("title")
+        .eq("branch_id", branchId!)
         .eq("term_id", termId!)
         .eq("batch_id", batchId!)
         .eq("section", section!)
         .eq("status", "approved")
-        .in("resource_type", resourceTypes)
-        .in("branch_id", branchIds);
+        .in("resource_type", resourceTypes);
+      query = hasSpecializations ? query.in("specialization_id", specializationIds) : query.is("specialization_id", null);
       query = subjectId ? query.eq("subject_id", subjectId) : query.is("subject_id", null);
       const { data, error } = await query;
       if (error) throw error;
       return new Set((data ?? []).map((r) => r.title.trim().toLowerCase()));
     },
-    enabled: !!termId && !!batchId && !!section && branchIds.length > 0 && resourceTypes.length > 0,
+    enabled:
+      !!branchId &&
+      !!termId &&
+      !!batchId &&
+      !!section &&
+      (!hasSpecializations || specializationIds.length > 0) &&
+      resourceTypes.length > 0,
     staleTime: 15_000,
   });
 }

@@ -1,2 +1,2 @@
 // TypeScript types for the "branches" feature.
-export type { Branch, Program } from "@/types/database";
+export type { Branch, Degree, Department, Specialization } from "@/types/database";

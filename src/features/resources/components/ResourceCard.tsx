@@ -39,12 +39,16 @@ export function ResourceCard({
   const queryClient = useQueryClient();
 
   // Same scope as everywhere else: admin pins anything, a CR only
-  // within what they can already manage (own branch notes_lab, any
-  // branch pyq) — mirrors the RLS check the server action relies on.
+  // within what they can already manage — own (branch, specialization)
+  // notes_lab, or any specialization within their own branch's PYQ
+  // pool (see supabase/scope_pyq_by_branch.sql: PYQ is cross-
+  // specialization but never cross-branch) — mirrors the RLS check the
+  // server action relies on.
   const canManage =
     role?.type === "admin" ||
     (role?.type === "cr" &&
-      (resource.section === "pyq" || resource.branch_id === role.branchId));
+      resource.branch_id === role.branchId &&
+      (resource.section === "pyq" || resource.specialization_id === role.specializationId));
 
   async function handleTogglePin() {
     await toggleResourcePin(resource.id, !resource.is_pinned);

@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createNotice, createNoticeAllBranches } from "@/features/notices/actions";
+import { useSpecializations } from "@/features/branches/queries";
 import { uploadFileToR2 } from "@/features/uploads/uploadFile";
 import { titleFromFileName } from "@/features/uploads/titleFromFileName";
 import { Select } from "@/components/shared/Select";
@@ -11,13 +12,14 @@ import { TermMultiSelect } from "@/components/shared/TermMultiSelect";
 import { UploadProgress } from "@/components/shared/UploadProgress";
 import { cn } from "@/lib/utils";
 
-type BranchOption = { id: string; name: string };
+type BranchOption = { id: string; name: string; has_specializations: boolean };
 type TermOption = { id: string; label: string };
 
 export function NoticeComposer({
   branches,
   terms,
   fixedBranchId,
+  fixedSpecializationId,
   fixedTermId,
   fixedBatchId,
   isAdmin,
@@ -25,6 +27,10 @@ export function NoticeComposer({
   branches: BranchOption[];
   terms: TermOption[];
   fixedBranchId?: string;
+  // A CR's specialization — null for a branch with no specialization
+  // concept. Notices have no PYQ-style cross-specialization exception,
+  // so unlike CRUploadForm this is never pickable for a CR, only fixed.
+  fixedSpecializationId?: string | null;
   fixedTermId?: string;
   // A CR's batch is fixed to their own cr_profile (always set for a
   // CR) — admin's bulk-publish path resolves the current batch per
@@ -32,16 +38,19 @@ export function NoticeComposer({
   // since there's no practical way to ask "which batch, for each of
   // several years" in this form.
   fixedBatchId?: string;
-  // Only an admin gets to pick more than one branch OR more than one
-  // year — a CR is always scoped to their own single branch/term
-  // (fixedBranchId/fixedTermId), same rule as CRUploadForm's
-  // canBulkPublish.
+  // Only an admin gets to pick more than one specialization OR more
+  // than one year — a CR is always scoped to their own single branch/
+  // specialization/term, same rule as CRUploadForm's canBulkPublish.
   isAdmin: boolean;
 }) {
   const [branchId, setBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
-  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>(
-    fixedBranchId ? [fixedBranchId] : branches[0] ? [branches[0].id] : []
-  );
+  // Admin's ONE target branch — what fans out is the specialization
+  // multi-select within it, never across different real branches, same
+  // reasoning as CRUploadForm's bulkBranchId.
+  const [bulkBranchId, setBulkBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  const [selectedSpecializationIds, setSelectedSpecializationIds] = useState<string[]>([]);
+  const bulkBranch = branches.find((b) => b.id === bulkBranchId);
+  const { data: bulkBranchSpecializations } = useSpecializations(bulkBranch?.has_specializations ? bulkBranchId : null);
   const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
   const [selectedTermIds, setSelectedTermIds] = useState<string[]>(
     fixedTermId ? [fixedTermId] : terms[0] ? [terms[0].id] : []
@@ -62,7 +71,7 @@ export function NoticeComposer({
     event.preventDefault();
     if (!file) return;
     if (isAdmin ? selectedTermIds.length === 0 : !termId) return;
-    if (isAdmin ? selectedBranchIds.length === 0 : !branchId) return;
+    if (isAdmin ? !bulkBranchId : !branchId) return;
     setSuccess(false);
     setError(null);
 
@@ -83,14 +92,18 @@ export function NoticeComposer({
         formData.set("fileUrl", fileUrl);
 
         if (isAdmin) {
+          const targets = bulkBranch?.has_specializations
+            ? selectedSpecializationIds.map((specializationId) => ({ branchId: bulkBranchId, specializationId }))
+            : [{ branchId: bulkBranchId, specializationId: null }];
           formData.set("termIds", JSON.stringify(selectedTermIds));
-          formData.set("branchIds", JSON.stringify(selectedBranchIds));
+          formData.set("targets", JSON.stringify(targets));
           formData.set("crOnly", String(crOnly));
           await createNoticeAllBranches(formData);
         } else {
           formData.set("termId", termId);
           formData.set("batchId", fixedBatchId!);
           formData.set("branchId", branchId);
+          formData.set("specializationId", fixedSpecializationId ?? "");
           await createNotice(formData);
         }
         // revalidatePath (in the server action) refreshes server-rendered
@@ -148,11 +161,35 @@ export function NoticeComposer({
 
       {isAdmin && (
         <div className="flex flex-col gap-1">
-          <label className="font-mono text-xs text-subtle-foreground">Branch</label>
+          <label htmlFor="bulk-notice-branch" className="font-mono text-xs text-subtle-foreground">
+            Branch
+          </label>
+          <Select
+            id="bulk-notice-branch"
+            value={bulkBranchId}
+            onChange={(event) => {
+              setBulkBranchId(event.target.value);
+              setSelectedSpecializationIds([]);
+            }}
+            className="bg-background"
+          >
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+      {isAdmin && bulkBranch?.has_specializations && (
+        <div className="flex flex-col gap-1">
+          <label className="font-mono text-xs text-subtle-foreground">Specialization</label>
           <BranchMultiSelect
-            branches={branches}
-            selectedBranchIds={selectedBranchIds}
-            onChange={setSelectedBranchIds}
+            branches={bulkBranchSpecializations ?? []}
+            selectedBranchIds={selectedSpecializationIds}
+            itemLabel="specialization"
+            itemLabelPlural="specializations"
+            onChange={setSelectedSpecializationIds}
           />
         </div>
       )}
@@ -225,7 +262,7 @@ export function NoticeComposer({
           isPending ||
           !file ||
           (isAdmin ? selectedTermIds.length === 0 : !termId) ||
-          (isAdmin ? selectedBranchIds.length === 0 : !branchId)
+          (isAdmin ? !bulkBranchId : !branchId)
         }
         className={cn(
           "self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
@@ -233,15 +270,15 @@ export function NoticeComposer({
       >
         {isPending
           ? "Publishing…"
-          : isAdmin && (selectedBranchIds.length > 1 || selectedTermIds.length > 1)
-            ? `Publish to ${selectedTermIds.length} year${selectedTermIds.length > 1 ? "s" : ""} × ${selectedBranchIds.length} branch${selectedBranchIds.length > 1 ? "es" : ""}`
+          : isAdmin && (selectedSpecializationIds.length > 1 || selectedTermIds.length > 1)
+            ? `Publish to ${selectedTermIds.length} year${selectedTermIds.length > 1 ? "s" : ""} × ${selectedSpecializationIds.length} specialization${selectedSpecializationIds.length > 1 ? "s" : ""}`
             : "Publish notice"}
       </button>
 
       {success && (
         <p className="font-mono text-xs text-terminal-blue">
-          {isAdmin && (selectedBranchIds.length > 1 || selectedTermIds.length > 1)
-            ? "Published to every selected year and branch — already live, no review needed."
+          {isAdmin && (selectedSpecializationIds.length > 1 || selectedTermIds.length > 1)
+            ? "Published to every selected year and specialization — already live, no review needed."
             : "Published — it's already live, no review needed."}
         </p>
       )}

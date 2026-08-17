@@ -3,16 +3,17 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
+import { useSpecialization } from "@/hooks/useSpecialization";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
 import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
-import { useBranchBySlug, useBranches } from "@/features/branches/queries";
+import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
 import {
   usePyqResources,
-  useSubjectsForTerm,
-  useSubjectsForTerms,
+  useSubjectsForPyqScope,
+  useSubjectsForPyqScopeTerms,
   type ResourceWithSubject,
 } from "@/features/resources/queries";
-import { pyqSharingBranchNames } from "@/features/resources/pyqSharing";
+import { pyqSharingSpecializationIds } from "@/features/resources/pyqSharing";
 import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
@@ -40,7 +41,8 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
 export default function PYQsPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
-  const { data: allBranches } = useBranches();
+  const { specialization: specializationSlug } = useSpecialization();
+  const { data: branchSpecializations } = useSpecializations(branch?.has_specializations ? branch.id : null);
 
   // Selected Batch + sidebar Year jointly determine which semesters
   // exist — see useBatchSemesterFilter's own doc comment (shared with
@@ -62,20 +64,22 @@ export default function PYQsPage() {
   } = useBatchSemesterFilter();
   const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
 
-  // Which branches' PYQs this viewer actually sees together — 1st Year
-  // splits Core+AIML from AIDS, 2nd Year stays shared across all
-  // three (see pyqSharing.ts). The sharing rule is per-Year, not
-  // per-Semester, so yearNumber (not term.year_number) is what this
-  // needs — it stays defined even under "All semesters", where there's
-  // no single term to read a year_number off of. Resolved to real
-  // branch ids once the year and full branch list are loaded;
-  // usePyqResources itself won't fire its query until this is
-  // non-null, so there's no window where it fetches unscoped.
-  const allowedBranchIds = useMemo(() => {
-    if (yearNumber === undefined || !branch || !allBranches) return null;
-    const names = pyqSharingBranchNames(yearNumber, branch.name);
-    return allBranches.filter((b) => names.includes(b.name)).map((b) => b.id);
-  }, [yearNumber, branch, allBranches]);
+  // Which specializations WITHIN this viewer's own branch actually
+  // pool together — 1st Year splits Core+AIML from AIDS, 2nd Year
+  // stays shared across all three; Cyber Security never pools with any
+  // of them (see pyqSharing.ts). Never crosses a different real
+  // branch — a Civil student never sees a CSE PYQ. The sharing rule is
+  // per-Year, not per-Semester, so yearNumber (not term.year_number) is
+  // what this needs — it stays defined even under "All semesters",
+  // where there's no single term to read a year_number off of. Empty
+  // for a branch with no specialization concept — usePyqResources
+  // treats that as "match specialization_id is null" instead.
+  const pyqSpecializationIds = useMemo(() => {
+    if (yearNumber === undefined || !branch?.has_specializations || !branchSpecializations || !specializationSlug) {
+      return [];
+    }
+    return pyqSharingSpecializationIds(yearNumber, specializationSlug, branchSpecializations);
+  }, [yearNumber, branch, branchSpecializations, specializationSlug]);
 
   // Paper vs. worked solution — the PYQ equivalent of Notes & Lab's
   // Notes/Lab toggle, same pattern: one section, two resource_type
@@ -94,36 +98,43 @@ export default function PYQsPage() {
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
   const { data: resources, isLoading, isError } = usePyqResources(
-    isAllSemesters ? effectiveTermIds : term?.id ?? null,
-    allowedBranchIds
+    branch?.id ?? null,
+    pyqSpecializationIds,
+    branch?.has_specializations ?? false,
+    isAllSemesters ? effectiveTermIds : term?.id ?? null
   );
 
-  // Every branch's subjects for this term, not just the viewer's own
-  // branch — a branch's subject list (e.g. AIDS's, which is entirely
-  // different from AIML/Core's for 1st Year) doesn't cover every
-  // subject a PYQ might exist under, since PYQs are shared across
-  // every branch WITHIN the viewer's own sharing group. Deduped by
-  // name (same subject exists as a separate row per branch) and
-  // lab-only subjects excluded, same as Notes — a PYQ is never for a
-  // subject with no theory component. Under "All semesters", union
-  // across every semester in view instead of just one (both hooks
-  // always called, per rules of hooks — whichever doesn't apply gets
-  // empty/null args and is a no-op).
-  const { data: singleTermSubjects } = useSubjectsForTerm(isAllSemesters ? null : term?.id ?? null);
-  const { data: multiTermSubjects } = useSubjectsForTerms(isAllSemesters ? effectiveTermIds : []);
+  // Every subject in the viewer's own branch/sharing-pool scope for
+  // this term — already scoped by useSubjectsForPyqScope to exactly
+  // the same (branch, specializations) set usePyqResources itself
+  // queries, so the dropdown never offers a subject whose PYQs this
+  // viewer can't actually see. Deduped by name (same subject exists as
+  // a separate row per specialization) and lab-only subjects excluded,
+  // same as Notes — a PYQ is never for a subject with no theory
+  // component. Under "All semesters", union across every semester in
+  // view instead of just one (both hooks always called, per rules of
+  // hooks — whichever doesn't apply gets empty/null args and is a
+  // no-op).
+  const { data: singleTermSubjects } = useSubjectsForPyqScope(
+    branch?.id ?? null,
+    pyqSpecializationIds,
+    branch?.has_specializations ?? false,
+    isAllSemesters ? null : term?.id ?? null
+  );
+  const { data: multiTermSubjects } = useSubjectsForPyqScopeTerms(
+    branch?.id ?? null,
+    pyqSpecializationIds,
+    branch?.has_specializations ?? false,
+    isAllSemesters ? effectiveTermIds : []
+  );
   const allTermSubjects = isAllSemesters ? multiTermSubjects : singleTermSubjects;
   const subjectOptions = useMemo(() => {
     const names = new Set<string>();
     for (const subject of allTermSubjects ?? []) {
-      // Scoped to the same sharing group usePyqResources itself
-      // fetches — without this, the dropdown would offer subject
-      // names (e.g. AIDS-only ones) whose PYQs this viewer can no
-      // longer actually see.
-      if (allowedBranchIds && !allowedBranchIds.includes(subject.branch_id)) continue;
       if (!LAB_ONLY_SUBJECT_SLUGS.has(subject.slug)) names.add(subject.name);
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [allTermSubjects, allowedBranchIds]);
+  }, [allTermSubjects]);
 
   // Resets subjectFilter same as Notes & Lab's tab switch — a subject
   // selected while looking at solutions shouldn't silently carry over
@@ -185,14 +196,18 @@ export default function PYQsPage() {
     return groups;
   }, [filtered, allBatches]);
 
-  // Describes whichever sharing group actually applies right now —
-  // 1st Year genuinely isn't "every CSE branch" anymore (AIDS has its
-  // own separate PYQs there), so this can't be a fixed string.
+  // Describes whichever sharing pool actually applies right now — 1st
+  // Year genuinely isn't "every CSE specialization" anymore (AIDS has
+  // its own separate PYQs there, and Cyber Security never pools with
+  // any of them), so this can't be a fixed string.
   const sharingDescription = useMemo(() => {
-    if (yearNumber === undefined || !branch) return "shared across your branch";
-    const names = pyqSharingBranchNames(yearNumber, branch.name);
-    return names.length > 1 ? `shared between ${names.join(" and ")}` : "separate from other branches";
-  }, [yearNumber, branch]);
+    if (!branch?.has_specializations) return "shared across your branch";
+    if (yearNumber === undefined || !branchSpecializations) return "shared across your specialization";
+    const names = branchSpecializations
+      .filter((s) => pyqSpecializationIds.includes(s.id))
+      .map((s) => s.name);
+    return names.length > 1 ? `shared between ${names.join(" and ")}` : "separate from other specializations";
+  }, [yearNumber, branch, branchSpecializations, pyqSpecializationIds]);
 
   // Semester needs more room than Batch (labels run up to "3rd
   // Semester (current)" vs. just "2025-26") — min-w floors each at

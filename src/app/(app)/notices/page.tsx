@@ -5,7 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Download, Eye, Pin, Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
-import { useBranchBySlug } from "@/features/branches/queries";
+import { useSpecialization } from "@/hooks/useSpecialization";
+import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
 import { useTermBySlug } from "@/features/terms/queries";
 import { useNotices } from "@/features/notices/queries";
 import { toggleNoticePin } from "@/features/notices/actions";
@@ -31,23 +32,36 @@ function matchesSearch(notice: Notice, query: string) {
 export default function NoticesPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
+  const { specialization: specializationSlug } = useSpecialization();
+  const { data: branchSpecializations } = useSpecializations(branch?.has_specializations ? branch.id : null);
+  const specializationId = branch?.has_specializations
+    ? branchSpecializations?.find((s) => s.slug === specializationSlug)?.id ?? null
+    : null;
   const { term: termSlug } = useTerm();
   const { data: term } = useTermBySlug(termSlug);
-  const { data: notices, isLoading, isError } = useNotices(branch?.id ?? null, term?.id ?? null);
+  const { data: notices, isLoading, isError } = useNotices(
+    branch?.id ?? null,
+    specializationId,
+    branch?.has_specializations ?? false,
+    term?.id ?? null
+  );
   const { data: role } = useCurrentRole();
   const queryClient = useQueryClient();
 
-  // A CR can browse another (branch, term)'s notices like a normal
-  // student (no manage powers there) — pinning only works on their
-  // own (branch, term), same as everything else in the CR permission
-  // model.
+  // A CR can browse another (branch, specialization, term)'s notices
+  // like a normal student (no manage powers there) — pinning only
+  // works on their own scope, same as everything else in the CR
+  // permission model.
   const canManage =
     role?.type === "admin" ||
-    (role?.type === "cr" && role.branchId === branch?.id && role.termId === term?.id);
+    (role?.type === "cr" &&
+      role.branchId === branch?.id &&
+      role.specializationId === specializationId &&
+      role.termId === term?.id);
 
   async function handleTogglePin(notice: Notice) {
     await toggleNoticePin(notice.id, !notice.is_pinned);
-    queryClient.invalidateQueries({ queryKey: ["notices", branch?.id, term?.id] });
+    queryClient.invalidateQueries({ queryKey: ["notices", branch?.id, specializationId, term?.id] });
   }
 
   const [searchQuery, setSearchQuery] = useState("");

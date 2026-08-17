@@ -23,13 +23,14 @@ export function useCurrentRole() {
 
       const { data: cr } = await supabase
         .from("cr_profiles")
-        .select("branch_id, term_id, batch_id, display_name")
+        .select("branch_id, specialization_id, term_id, batch_id, display_name")
         .eq("auth_user_id", user.id)
         .maybeSingle();
       if (cr)
         return {
           type: "cr",
           branchId: cr.branch_id,
+          specializationId: cr.specialization_id,
           termId: cr.term_id,
           batchId: cr.batch_id,
           displayName: cr.display_name,

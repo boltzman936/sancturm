@@ -9,7 +9,7 @@ import { DeleteSancturmUpdateButton } from "@/features/sancturmUpdates/component
 import { deleteResource, updateResourceFields } from "@/features/resources/actions";
 import { deleteNotice, updateNoticeFields } from "@/features/notices/actions";
 import { deleteSancturmUpdate, updateSancturmUpdateDate } from "@/features/sancturmUpdates/actions";
-import { useBranches } from "@/features/branches/queries";
+import { useBranches, useSpecializations } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
 import { useBatches, useBatchesForTerm } from "@/features/batches/queries";
 import { useSubjects, useSubjectsForTerms } from "@/features/resources/queries";
@@ -83,6 +83,9 @@ export type ManageableResource = {
   created_at: string;
   subject: { name: string } | null;
   branch: { name: string } | null;
+  // null whenever the branch has no specialization concept, or for a
+  // "notice"/"update" row's own null case.
+  specialization: { name: string } | null;
   term: { label: string } | null;
   batch: { label: string } | null;
   // Raw foreign keys, alongside the name-joined display objects above —
@@ -92,6 +95,7 @@ export type ManageableResource = {
   // which have none of these (Sancturm Updates isn't scoped to any of
   // branch/term/batch/subject at all).
   branch_id: string | null;
+  specialization_id: string | null;
   term_id: string | null;
   batch_id: string | null;
   subject_id: string | null;
@@ -320,6 +324,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   const [isPending, startTransition] = useTransition();
 
   const [branchId, setBranchId] = useState(resource.branch_id ?? "");
+  const [specializationId, setSpecializationId] = useState(resource.specialization_id ?? "");
   const [termId, setTermId] = useState(resource.term_id ?? "");
   const [batchId, setBatchId] = useState(resource.batch_id ?? "");
   const [subjectId, setSubjectId] = useState(resource.subject_id ?? "");
@@ -341,6 +346,9 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   const { data: branches } = useBranches();
   const { data: terms } = useTerms();
   const { data: validBatches } = useBatchesForTerm(termId || null);
+  const currentBranch = branches?.find((b) => b.id === branchId);
+  const { data: branchSpecializations } = useSpecializations(currentBranch?.has_specializations ? branchId : null);
+  const effectiveSpecializationId = currentBranch?.has_specializations ? specializationId || null : null;
   // Driven by the currently-picked Type, not the resource's original
   // section — switching Type here can move a row between notes_lab
   // and pyq, so "on record" and the valid subject list both need to
@@ -348,6 +356,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   const isPyqType = resourceType === "pyq" || resourceType === "pyq_solution";
   const { data: allSubjects } = useSubjects(
     resource.kind === "resource" ? branchId || null : null,
+    resource.kind === "resource" ? effectiveSpecializationId : null,
     resource.kind === "resource" ? termId || null : null
   );
   const subjects = allSubjects ? filterSubjectsForResourceType(allSubjects, resourceType) : undefined;
@@ -365,6 +374,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
         if (resource.kind === "notice") {
           await updateNoticeFields(resource.id, {
             branchId,
+            specializationId: effectiveSpecializationId,
             termId,
             batchId: effectiveBatchId,
             crOnly,
@@ -373,6 +383,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
         } else {
           await updateResourceFields(resource.id, {
             branchId,
+            specializationId: effectiveSpecializationId,
             termId,
             batchId: effectiveBatchId,
             subjectId: subjectId || null,
@@ -497,6 +508,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
                 value={branchId}
                 onChange={(event) => {
                   setBranchId(event.target.value);
+                  setSpecializationId("");
                   setSubjectId("");
                 }}
                 className="bg-background"
@@ -508,6 +520,26 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
                 ))}
               </Select>
             </div>
+
+            {currentBranch?.has_specializations && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-xs text-subtle-foreground">Specialization</label>
+                <Select
+                  value={specializationId}
+                  onChange={(event) => {
+                    setSpecializationId(event.target.value);
+                    setSubjectId("");
+                  }}
+                  className="bg-background"
+                >
+                  {branchSpecializations?.map((specialization) => (
+                    <option key={specialization.id} value={specialization.id}>
+                      {specialization.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
 
             {resource.kind === "notice" && (
               <label className="flex items-center gap-2 text-sm text-foreground">

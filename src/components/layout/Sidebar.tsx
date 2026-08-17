@@ -5,7 +5,10 @@ import { usePathname } from "next/navigation";
 import { FileText, HelpCircle, Megaphone, ShieldCheck, Sparkles, UserRound, X } from "lucide-react";
 
 import { BranchSwitcher } from "@/components/layout/BranchSwitcher";
+import { SpecializationSwitcher } from "@/components/layout/SpecializationSwitcher";
 import { TermSwitcher } from "@/components/layout/TermSwitcher";
+import { useBranch } from "@/hooks/useBranch";
+import { useBranchBySlug } from "@/features/branches/queries";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { SignOutButton } from "@/lib/auth/SignOutButton";
 import { cn } from "@/lib/utils";
@@ -26,6 +29,8 @@ const NAV_LINKS = [
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const { data: role } = useCurrentRole();
+  const { branch } = useBranch();
+  const { data: currentBranch } = useBranchBySlug(branch);
   // Anurag is the one admin account — everyone else with dashboard
   // access is a branch CR, so "CR dashboard" stays accurate for them.
   const dashboardLabel = role?.type === "admin" ? "Controller's dashboard" : "CR dashboard";
@@ -110,6 +115,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <div className="flex flex-col gap-2">
             <TermSwitcher />
             <BranchSwitcher />
+            {currentBranch?.has_specializations && <SpecializationSwitcher />}
           </div>
         </div>
 

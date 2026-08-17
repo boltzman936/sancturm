@@ -6,20 +6,26 @@ import { Check, ChevronsUpDown } from "lucide-react";
 type BranchOption = { id: string; name: string };
 
 /**
- * Pick any combination of branches in one control — selecting every
- * branch IS "publish to all branches"; there's no separate mode for
- * it. Admin-only everywhere this is used: a CR is always scoped to
- * their own single branch already (see each caller's fixedBranchId),
- * so this never even renders for them.
+ * Pick any combination of branches (or, via itemLabel/itemLabelPlural,
+ * specializations within one branch — same generic id/name shape) in
+ * one control — selecting every item IS "publish to all of them";
+ * there's no separate mode for it. Admin-only everywhere this is used:
+ * a CR is always scoped to their own single branch/specialization
+ * already (see each caller's fixedBranchId), so this never even
+ * renders for them.
  */
 export function BranchMultiSelect({
   branches,
   selectedBranchIds,
   onChange,
+  itemLabel = "branch",
+  itemLabelPlural = "branches",
 }: {
   branches: BranchOption[];
   selectedBranchIds: string[];
   onChange: (ids: string[]) => void;
+  itemLabel?: string;
+  itemLabelPlural?: string;
 }) {
   return (
     <DropdownMenu.Root>
@@ -30,12 +36,12 @@ export function BranchMultiSelect({
         >
           <span>
             {selectedBranchIds.length === 0
-              ? "Select branch"
+              ? `Select ${itemLabel}`
               : selectedBranchIds.length === branches.length
-                ? "All branches"
+                ? `All ${itemLabelPlural}`
                 : selectedBranchIds.length === 1
                   ? branches.find((b) => b.id === selectedBranchIds[0])?.name
-                  : `${selectedBranchIds.length} branches selected`}
+                  : `${selectedBranchIds.length} ${itemLabelPlural} selected`}
           </span>
           <ChevronsUpDown className="h-4 w-4 text-subtle-foreground" />
         </button>
@@ -54,7 +60,7 @@ export function BranchMultiSelect({
             onSelect={(event) => event.preventDefault()}
             className="flex cursor-pointer items-center justify-between rounded-sm px-2 py-2 text-sm font-medium text-foreground outline-none data-[highlighted]:bg-background-secondary"
           >
-            All branches
+            All {itemLabelPlural}
             {selectedBranchIds.length === branches.length && <Check className="h-4 w-4 text-primary" />}
           </DropdownMenu.CheckboxItem>
           <div className="my-1 h-px bg-border" />

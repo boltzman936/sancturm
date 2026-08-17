@@ -2,7 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useSubjects, useExistingResourceTitles } from "@/features/resources/queries";
-import { pyqSharingBranchNames } from "@/features/resources/pyqSharing";
+import { pyqSharingSpecializationIds } from "@/features/resources/pyqSharing";
+import { useSpecializations } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
 import { useBatches, useBatchTerms } from "@/features/batches/queries";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
@@ -24,7 +25,7 @@ import { cn } from "@/lib/utils";
 
 type UploadType = "notes" | "lab_manual" | "pyq" | "notice" | "update";
 type PublishMode = "upload" | "custom";
-type BranchOption = { id: string; name: string };
+type BranchOption = { id: string; name: string; has_specializations: boolean };
 type TermOption = { id: string; label: string };
 
 // Applies to both CR and admin — a shared cap rather than a per-role
@@ -50,20 +51,25 @@ export function CRUploadForm({
   branches,
   terms,
   fixedBranchId,
+  fixedSpecializationId,
   fixedTermId,
   fixedBatchId,
   isAdmin,
 }: {
-  // Every branch, always fetched now — needed even for a CR when
-  // resourceType is "pyq" (any CR can publish a PYQ to any branch;
-  // notes_lab stays locked to fixedBranchId).
+  // Every branch, always fetched now.
   branches: BranchOption[];
   // Every term — only actually pickable for admin (fixedTermId is
   // undefined for them); a CR's term never changes, even for PYQ —
-  // only the branch unlocks there, since a CR is scoped to their own
-  // (branch, term) and PYQ's cross-branch exception stays within it.
+  // only the specialization unlocks there, since a CR is scoped to
+  // their own (branch, specialization, term) and PYQ's
+  // cross-specialization exception stays within their own branch.
   terms: TermOption[];
   fixedBranchId?: string;
+  // A CR's specialization — null for a branch with no specialization
+  // concept. Locked for notes_lab; for PYQ, a CR can still pick a
+  // DIFFERENT specialization within this same branch (see
+  // showSpecializationPicker below), never a different branch.
+  fixedSpecializationId?: string | null;
   fixedTermId?: string;
   // A CR's batch never changes either (their cr_profile's own batch) —
   // only admin gets a picker, same fixed-vs-picker split as Branch/Term.
@@ -74,9 +80,12 @@ export function CRUploadForm({
 }) {
   const [resourceType, setResourceType] = useState<UploadType>("notes");
   const [publishMode, setPublishMode] = useState<PublishMode>("upload");
-  // PYQ is cross-branch even for a CR, so it needs its own pickable
-  // branch, separate from the notes_lab-locked fixedBranchId.
-  const [pyqBranchId, setPyqBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  // PYQ is cross-SPECIALIZATION even for a CR (never cross-branch —
+  // see supabase/scope_pyq_by_branch.sql), so it needs its own pickable
+  // specialization, separate from the notes_lab-locked
+  // fixedSpecializationId. Only meaningful when the CR's own branch has
+  // specializations at all.
+  const [pyqSpecializationId, setPyqSpecializationId] = useState(fixedSpecializationId ?? "");
   // Paper vs. worked solution — the PYQ equivalent of the Notes/Lab
   // split above, just picked with its own toggle instead of being a
   // separate top-level Type button (that'd make the Type row 6-wide).
@@ -90,18 +99,16 @@ export function CRUploadForm({
   // Admin's picked Semester, or "" to defer to whichever of this
   // batch's semesters is currently active (see effectiveTermId).
   const [termId, setTermId] = useState(fixedTermId ?? "");
-  // Admin-only: publish one upload to any combination of branches
-  // (within the picked term) at once instead of repeating it per
-  // branch — a multi-select rather than a single branch or an
-  // all-or-nothing checkbox, so publishing to e.g. just AIML + Core
-  // doesn't need two separate uploads. Covers PYQ too now, even though
-  // PYQ visibility doesn't depend on branch_id (usePyqResources matches
-  // on term alone) — this only controls which branch(es) get "on
-  // record" as the source, same purpose the single-branch PYQ picker
-  // already served for a CR.
-  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>(
-    fixedBranchId ? [fixedBranchId] : branches[0] ? [branches[0].id] : []
-  );
+  // Admin-only: publish one upload to ANY ONE branch (the multi-select
+  // below fans out ACROSS that branch's specializations, never across
+  // different real branches — a Civil note and a CSE note are never
+  // the same upload). Defaults to the first branch in the list.
+  const [bulkBranchId, setBulkBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  // Every specialization within bulkBranchId to publish to at once —
+  // selecting all of them IS "publish to every specialization"; no
+  // separate mode for it. Irrelevant for a branch with no
+  // specialization concept (published exactly once regardless).
+  const [selectedSpecializationIds, setSelectedSpecializationIds] = useState<string[]>([]);
   // Up to MAX_FILES — each becomes its own resource row (own title,
   // own R2 object), sharing whatever Subject/Description/Date was set
   // once in the form. Truncated to the first MAX_FILES rather than
@@ -136,11 +143,11 @@ export function CRUploadForm({
   // fresh controller per submission, not one reused across them.
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Admin publishing Notes/Lab/PYQ always goes through the multi-branch
-  // picker/action now — whether that's 1 branch or all 3 is just how
-  // many are selected, not a separate mode/checkbox to toggle first.
+  // Admin publishing Notes/Lab/PYQ always goes through the bulk
+  // picker/action now — whether that fans out to 1 specialization or
+  // every one of them is just how many are selected, not a separate
+  // mode/checkbox to toggle first.
   const canBulkPublish = isAdmin && (resourceType === "notes" || resourceType === "lab_manual" || resourceType === "pyq");
-  const showSingleBranchPicker = !canBulkPublish && (resourceType === "pyq" || !fixedBranchId);
   const showBatchPicker = !fixedBatchId;
   const showTermPicker = !fixedTermId;
   // Only admin can backdate an upload — a CR's custom date is floored
@@ -148,7 +155,22 @@ export function CRUploadForm({
   // Recomputed each render rather than memoized: cheap, and it needs
   // to stay accurate if this form is left open across midnight.
   const minUploadDate = isAdmin ? undefined : localDateKey(new Date().toISOString());
-  const branchId = resourceType === "pyq" ? pyqBranchId : fixedBranchId ?? pyqBranchId;
+  // A CR's branch never changes, even for PYQ — only which
+  // SPECIALIZATION within it does (see scope_pyq_by_branch.sql).
+  const branchId = fixedBranchId ?? bulkBranchId;
+  const currentBranch = branches.find((b) => b.id === branchId);
+  const { data: currentBranchSpecializations } = useSpecializations(currentBranch?.has_specializations ? branchId : null);
+  // For a CR: fixed for notes_lab, pickable (within their own branch)
+  // for PYQ. Null whenever the branch has no specialization concept.
+  const specializationId = !currentBranch?.has_specializations
+    ? null
+    : resourceType === "pyq"
+      ? pyqSpecializationId
+      : fixedSpecializationId ?? null;
+  // Only a CR (non-bulk) with a specialization-having branch, uploading
+  // a PYQ, ever needs this — admin always goes through the bulk
+  // specialization multi-select below instead.
+  const showSpecializationPicker = !canBulkPublish && resourceType === "pyq" && !!currentBranch?.has_specializations;
 
   // Batch drives Semester now, not the other way — every configured
   // batch is always offered (config-table, zero-resource batches
@@ -178,13 +200,24 @@ export function CRUploadForm({
   const validTermIds = reachedBatchTerms ? reachedBatchTerms.map((bt) => bt.term_id) : undefined;
   useResetInvalidSelection(termId, validTermIds, "", setTermId);
 
-  // Whichever branch the Subject list previews against — every branch
-  // has its own subjects row (different id) for the same subject name,
-  // so this only supplies which NAMES exist to choose from; the id
-  // itself is discarded when submitting to multiple branches by name.
-  const subjectReferenceBranchId = canBulkPublish ? selectedBranchIds[0] ?? "" : branchId;
+  // For the bulk (admin) path: which specialization to preview the
+  // Subject list against — every specialization has its own subjects
+  // row (different id) for the same subject name, so this only
+  // supplies which NAMES exist to choose from; the id itself is
+  // discarded when submitting to multiple specializations by name.
+  const bulkBranchHasSpecializations = branches.find((b) => b.id === bulkBranchId)?.has_specializations ?? false;
+  const subjectReferenceBranchId = canBulkPublish ? bulkBranchId : branchId;
+  const subjectReferenceSpecializationId = canBulkPublish
+    ? bulkBranchHasSpecializations
+      ? selectedSpecializationIds[0] ?? null
+      : null
+    : specializationId;
 
-  const { data: allSubjects } = useSubjects(subjectReferenceBranchId || null, effectiveTermId || null);
+  const { data: allSubjects } = useSubjects(
+    subjectReferenceBranchId || null,
+    subjectReferenceSpecializationId,
+    effectiveTermId || null
+  );
   // Lab-only subjects (Engineering Graphics, Soft Skill) have no
   // notes/PYQ content by design, so they're excluded whenever the
   // upload isn't itself a lab manual.
@@ -196,34 +229,42 @@ export function CRUploadForm({
   // usePyqResources/Manage already treat pdf as.
   const resourceTypesForDuplicateCheck =
     resourceType === "pyq" ? (pyqKind === "pyq" ? ["pyq", "pdf"] : ["pyq_solution"]) : [resourceType];
-  // For a single-branch PYQ upload, the duplicate check needs the
-  // WHOLE sharing group (see pyqSharing.ts), not just the one branch
-  // being recorded — a same-named PYQ in a different sharing group
-  // (AIDS vs. Core/AIML for 1st Year) isn't actually a duplicate.
+  // For a single-specialization PYQ upload, the duplicate check needs
+  // the WHOLE sharing pool (see pyqSharing.ts), not just the one
+  // specialization being recorded — a same-named PYQ in a different
+  // pool (AIDS vs. Core/AIML for 1st Year) isn't actually a duplicate.
   const { data: fullTerms } = useTerms();
   // Year is derived from whichever Semester is in effect, never picked
   // independently — "1st Year - Semester 1" isn't a globally unique
   // period on its own, (batch, semester) is; Year is just a read-out.
   const effectiveTerm = fullTerms?.find((t) => t.id === effectiveTermId);
   const currentYearNumber = effectiveTerm?.year_number;
-  const currentBranchName = branches.find((b) => b.id === branchId)?.name;
-  const pyqGroupBranchIds =
-    currentYearNumber !== undefined && currentBranchName
-      ? branches
-          .filter((b) => pyqSharingBranchNames(currentYearNumber, currentBranchName).includes(b.name))
-          .map((b) => b.id)
+  const pyqViewerSpecializationSlug = currentBranchSpecializations?.find((s) => s.id === specializationId)?.slug;
+  const pyqSharingPool =
+    currentYearNumber !== undefined && currentBranchSpecializations && pyqViewerSpecializationSlug
+      ? pyqSharingSpecializationIds(currentYearNumber, pyqViewerSpecializationSlug, currentBranchSpecializations)
       : [];
-  const branchIdsForDuplicateCheck = canBulkPublish
-    ? selectedBranchIds
+  const specializationIdsForDuplicateCheck = canBulkPublish
+    ? bulkBranchHasSpecializations
+      ? selectedSpecializationIds
+      : []
     : resourceType === "pyq"
-      ? pyqGroupBranchIds
-      : branchId
-        ? [branchId]
+      ? currentBranch?.has_specializations
+        ? pyqSharingPool
+        : []
+      : specializationId
+        ? [specializationId]
         : [];
+  const hasSpecializationsForDuplicateCheck = canBulkPublish
+    ? bulkBranchHasSpecializations
+    : !!currentBranch?.has_specializations;
+  const branchIdForDuplicateCheck = canBulkPublish ? bulkBranchId : branchId;
   const { data: existingTitles } = useExistingResourceTitles(
     sectionForDuplicateCheck,
     resourceTypesForDuplicateCheck,
-    branchIdsForDuplicateCheck,
+    branchIdForDuplicateCheck || null,
+    specializationIdsForDuplicateCheck,
+    hasSpecializationsForDuplicateCheck,
     effectiveTermId || null,
     subjectValue || null,
     effectiveBatchId || null
@@ -259,7 +300,7 @@ export function CRUploadForm({
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (files.length === 0 || !effectiveTermId || !effectiveBatchId) return;
-    if (canBulkPublish ? selectedBranchIds.length === 0 : !branchId) return;
+    if (canBulkPublish ? !bulkBranchId : !branchId) return;
     setSuccess(false);
     setError(null);
 
@@ -309,9 +350,13 @@ export function CRUploadForm({
             const fileUrl = await uploadFileToR2(filePath, file, setUploadProgress, controller.signal);
 
             const formData = new FormData();
+            formData.set("branchId", bulkBranchId);
             formData.set("termId", effectiveTermId);
             formData.set("batchId", effectiveBatchId);
-            formData.set("branchIds", JSON.stringify(selectedBranchIds));
+            formData.set(
+              "specializationIds",
+              JSON.stringify(bulkBranchHasSpecializations ? selectedSpecializationIds : [])
+            );
             formData.set("subjectName", subjectName);
             formData.set("section", section);
             formData.set("resourceType", bulkResourceType);
@@ -327,6 +372,7 @@ export function CRUploadForm({
 
             const formData = new FormData();
             formData.set("branchId", branchId);
+            formData.set("specializationId", specializationId ?? "");
             formData.set("termId", effectiveTermId);
             formData.set("batchId", effectiveBatchId);
             formData.set("subjectId", subjectValue);
@@ -455,6 +501,7 @@ export function CRUploadForm({
             branches={branches}
             terms={terms}
             fixedBranchId={fixedBranchId}
+            fixedSpecializationId={fixedSpecializationId}
             fixedTermId={fixedTermId}
             fixedBatchId={fixedBatchId}
             isAdmin={isAdmin}
@@ -464,6 +511,7 @@ export function CRUploadForm({
             branches={branches}
             terms={terms}
             fixedBranchId={fixedBranchId}
+            fixedSpecializationId={fixedSpecializationId}
             fixedTermId={fixedTermId}
             fixedBatchId={fixedBatchId}
             isAdmin={isAdmin}
@@ -586,21 +634,21 @@ export function CRUploadForm({
         </div>
       )}
 
-      {showSingleBranchPicker && (
+      {/* Admin only — pick the ONE target branch. What fans out below
+          is the specialization multi-select WITHIN it, never across
+          different real branches (a Civil note and a CSE note are
+          never the same upload). */}
+      {canBulkPublish && (
         <div className="flex flex-col gap-1">
-          <label htmlFor="branch" className="font-mono text-xs text-subtle-foreground">
+          <label htmlFor="bulk-branch" className="font-mono text-xs text-subtle-foreground">
             Branch
-            {resourceType === "pyq" && (
-              <span className="ml-1.5 normal-case text-subtle-foreground/70">
-                (PYQs are shared, but still need one branch on record)
-              </span>
-            )}
           </label>
           <Select
-            id="branch"
-            value={branchId}
+            id="bulk-branch"
+            value={bulkBranchId}
             onChange={(event) => {
-              setPyqBranchId(event.target.value);
+              setBulkBranchId(event.target.value);
+              setSelectedSpecializationIds([]);
               setSubjectValue("");
             }}
             className="bg-background"
@@ -614,28 +662,60 @@ export function CRUploadForm({
         </div>
       )}
 
-      {/* Admin only — pick any combination of branches in one control
-          instead of a single branch or an all-or-nothing checkbox.
-          Selecting every branch IS "publish to all branches"; there's
-          no separate mode for it. */}
-      {canBulkPublish && (
+      {showSpecializationPicker && (
         <div className="flex flex-col gap-1">
-          <label className="font-mono text-xs text-subtle-foreground">Branch</label>
+          <label htmlFor="specialization" className="font-mono text-xs text-subtle-foreground">
+            Specialization
+            {resourceType === "pyq" && (
+              <span className="ml-1.5 normal-case text-subtle-foreground/70">
+                (PYQs are shared within your branch, but still need one on record)
+              </span>
+            )}
+          </label>
+          <Select
+            id="specialization"
+            value={pyqSpecializationId}
+            onChange={(event) => {
+              setPyqSpecializationId(event.target.value);
+              setSubjectValue("");
+            }}
+            className="bg-background"
+          >
+            {currentBranchSpecializations?.map((specialization) => (
+              <option key={specialization.id} value={specialization.id}>
+                {specialization.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+
+      {/* Admin only — pick any combination of specializations within
+          the branch above in one control instead of a single pick or
+          an all-or-nothing checkbox. Selecting every one IS "publish
+          to all of them"; there's no separate mode for it. Hidden
+          entirely for a branch with no specialization concept — it
+          just publishes once, straight to that branch. */}
+      {canBulkPublish && bulkBranchHasSpecializations && (
+        <div className="flex flex-col gap-1">
+          <label className="font-mono text-xs text-subtle-foreground">Specialization</label>
           <BranchMultiSelect
-            branches={branches}
-            selectedBranchIds={selectedBranchIds}
+            branches={currentBranchSpecializations ?? []}
+            selectedBranchIds={selectedSpecializationIds}
+            itemLabel="specialization"
+            itemLabelPlural="specializations"
             onChange={(ids) => {
-              setSelectedBranchIds(ids);
-              // The Subject list is sourced from selectedBranchIds[0] (see
-              // subjectReferenceBranchId) — a stale subject id from a
-              // different branch's list could otherwise silently persist,
-              // same reason the single-branch picker clears it on change.
+              setSelectedSpecializationIds(ids);
+              // The Subject list is sourced from selectedSpecializationIds[0]
+              // (see subjectReferenceSpecializationId) — a stale subject id
+              // from a different specialization's list could otherwise
+              // silently persist, same reason the single picker clears it.
               setSubjectValue("");
             }}
           />
-          {selectedBranchIds.length > 1 && (
+          {selectedSpecializationIds.length > 1 && (
             <p className="mt-1 font-mono text-xs text-subtle-foreground">
-              Subject is matched by name in each branch.
+              Subject is matched by name in each specialization.
             </p>
           )}
         </div>
@@ -663,7 +743,7 @@ export function CRUploadForm({
           Subject
         </label>
         <Select
-          key={`${resourceType}-${branchId}-${effectiveTermId}`}
+          key={`${resourceType}-${subjectReferenceBranchId}-${subjectReferenceSpecializationId}-${effectiveTermId}`}
           id="subject"
           name="subject"
           value={subjectValue}
@@ -763,16 +843,16 @@ export function CRUploadForm({
             files.length === 0 ||
             !effectiveTermId ||
             !effectiveBatchId ||
-            (canBulkPublish ? selectedBranchIds.length === 0 : !branchId)
+            (canBulkPublish ? !bulkBranchId : !branchId)
           }
           className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
         >
           {isPending
             ? "Publishing…"
-            : files.length > 1 && canBulkPublish && selectedBranchIds.length > 1
-              ? `Publish ${files.length} files to ${selectedBranchIds.length} branches`
-              : canBulkPublish && selectedBranchIds.length > 1
-                ? `Publish to ${selectedBranchIds.length} branches`
+            : files.length > 1 && canBulkPublish && selectedSpecializationIds.length > 1
+              ? `Publish ${files.length} files to ${selectedSpecializationIds.length} specializations`
+              : canBulkPublish && selectedSpecializationIds.length > 1
+                ? `Publish to ${selectedSpecializationIds.length} specializations`
                 : files.length > 1
                   ? `Publish ${files.length} files`
                   : "Publish now"}
@@ -790,10 +870,10 @@ export function CRUploadForm({
 
       {success && (
         <p className="font-mono text-xs text-terminal-blue">
-          {canBulkPublish && selectedBranchIds.length > 1
+          {canBulkPublish && selectedSpecializationIds.length > 1
             ? publishedCount > 1
-              ? `Published ${publishedCount} files to every selected branch — already live, no review needed.`
-              : "Published to every selected branch — already live, no review needed."
+              ? `Published ${publishedCount} files to every selected specialization — already live, no review needed.`
+              : "Published to every selected specialization — already live, no review needed."
             : publishedCount > 1
               ? `Published all ${publishedCount} files — already live, no review needed.`
               : "Published — it's already live, no review needed."}

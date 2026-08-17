@@ -11,11 +11,10 @@ export default async function CRUploadPage() {
   const [role, { data: branches }, { data: terms }] = await Promise.all([
     getCurrentRole(),
     // Always fetched now, not just for admin — a CR also needs the
-    // full branch list when uploading a PYQ (any CR can publish a PYQ
-    // to any branch; only notes_lab stays locked to their own). Terms
-    // fetched the same way — admin picks freely, a CR's is locked to
-    // their own.
-    supabase.from("branches").select("id, name").order("sort_order"),
+    // full branch list to know whether their own branch has
+    // specializations (has_specializations). Terms fetched the same
+    // way — admin picks freely, a CR's is locked to their own.
+    supabase.from("branches").select("id, name, has_specializations").order("sort_order"),
     supabase.from("academic_terms").select("id, label").order("sort_order"),
   ]);
 
@@ -38,6 +37,7 @@ export default async function CRUploadPage() {
         branches={branches ?? []}
         terms={terms ?? []}
         fixedBranchId={role.type === "cr" ? role.branchId : undefined}
+        fixedSpecializationId={role.type === "cr" ? role.specializationId : undefined}
         fixedTermId={role.type === "cr" ? role.termId : undefined}
         fixedBatchId={role.type === "cr" ? role.batchId : undefined}
         isAdmin={role.type === "admin"}

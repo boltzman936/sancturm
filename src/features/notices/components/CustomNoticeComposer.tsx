@@ -3,12 +3,13 @@
 import { useRef, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createCustomNotice, createCustomNoticeAllBranches } from "@/features/notices/actions";
+import { useSpecializations } from "@/features/branches/queries";
 import { Select } from "@/components/shared/Select";
 import { BranchMultiSelect } from "@/components/shared/BranchMultiSelect";
 import { TermMultiSelect } from "@/components/shared/TermMultiSelect";
 import { cn } from "@/lib/utils";
 
-type BranchOption = { id: string; name: string };
+type BranchOption = { id: string; name: string; has_specializations: boolean };
 type TermOption = { id: string; label: string };
 
 /** Text-only path — title + body typed directly, no PDF involved. */
@@ -16,6 +17,7 @@ export function CustomNoticeComposer({
   branches,
   terms,
   fixedBranchId,
+  fixedSpecializationId,
   fixedTermId,
   fixedBatchId,
   isAdmin,
@@ -23,20 +25,24 @@ export function CustomNoticeComposer({
   branches: BranchOption[];
   terms: TermOption[];
   fixedBranchId?: string;
+  // Same reasoning as NoticeComposer's identical prop — never
+  // pickable for a CR here, only fixed.
+  fixedSpecializationId?: string | null;
   fixedTermId?: string;
   // A CR's batch is fixed to their own cr_profile — admin's bulk path
   // resolves the current batch per selected year server-side instead,
   // same reasoning as NoticeComposer's identical comment.
   fixedBatchId?: string;
   // Same rule as NoticeComposer: only an admin can pick more than one
-  // branch/year — a CR is always scoped to their own (fixedBranchId/
-  // fixedTermId).
+  // specialization/year — a CR is always scoped to their own
+  // (fixedBranchId/fixedSpecializationId/fixedTermId).
   isAdmin: boolean;
 }) {
   const [branchId, setBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
-  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>(
-    fixedBranchId ? [fixedBranchId] : branches[0] ? [branches[0].id] : []
-  );
+  const [bulkBranchId, setBulkBranchId] = useState(fixedBranchId ?? branches[0]?.id ?? "");
+  const [selectedSpecializationIds, setSelectedSpecializationIds] = useState<string[]>([]);
+  const bulkBranch = branches.find((b) => b.id === bulkBranchId);
+  const { data: bulkBranchSpecializations } = useSpecializations(bulkBranch?.has_specializations ? bulkBranchId : null);
   const [termId, setTermId] = useState(fixedTermId ?? terms[0]?.id ?? "");
   const [selectedTermIds, setSelectedTermIds] = useState<string[]>(
     fixedTermId ? [fixedTermId] : terms[0] ? [terms[0].id] : []
@@ -52,7 +58,7 @@ export function CustomNoticeComposer({
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isAdmin ? selectedTermIds.length === 0 : !termId) return;
-    if (isAdmin ? selectedBranchIds.length === 0 : !branchId) return;
+    if (isAdmin ? !bulkBranchId : !branchId) return;
     setSuccess(false);
     setError(null);
 
@@ -68,14 +74,18 @@ export function CustomNoticeComposer({
     startTransition(async () => {
       try {
         if (isAdmin) {
+          const targets = bulkBranch?.has_specializations
+            ? selectedSpecializationIds.map((specializationId) => ({ branchId: bulkBranchId, specializationId }))
+            : [{ branchId: bulkBranchId, specializationId: null }];
           formData.set("termIds", JSON.stringify(selectedTermIds));
-          formData.set("branchIds", JSON.stringify(selectedBranchIds));
+          formData.set("targets", JSON.stringify(targets));
           formData.set("crOnly", String(crOnly));
           await createCustomNoticeAllBranches(formData);
         } else {
           formData.set("termId", termId);
           formData.set("batchId", fixedBatchId!);
           formData.set("branchId", branchId);
+          formData.set("specializationId", fixedSpecializationId ?? "");
           await createCustomNotice(formData);
         }
         queryClient.invalidateQueries({ queryKey: ["notices"] });
@@ -125,11 +135,35 @@ export function CustomNoticeComposer({
 
       {isAdmin && (
         <div className="flex flex-col gap-1">
-          <label className="font-mono text-xs text-subtle-foreground">Branch</label>
+          <label htmlFor="bulk-custom-notice-branch" className="font-mono text-xs text-subtle-foreground">
+            Branch
+          </label>
+          <Select
+            id="bulk-custom-notice-branch"
+            value={bulkBranchId}
+            onChange={(event) => {
+              setBulkBranchId(event.target.value);
+              setSelectedSpecializationIds([]);
+            }}
+            className="bg-background"
+          >
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+      {isAdmin && bulkBranch?.has_specializations && (
+        <div className="flex flex-col gap-1">
+          <label className="font-mono text-xs text-subtle-foreground">Specialization</label>
           <BranchMultiSelect
-            branches={branches}
-            selectedBranchIds={selectedBranchIds}
-            onChange={setSelectedBranchIds}
+            branches={bulkBranchSpecializations ?? []}
+            selectedBranchIds={selectedSpecializationIds}
+            itemLabel="specialization"
+            itemLabelPlural="specializations"
+            onChange={setSelectedSpecializationIds}
           />
         </div>
       )}
@@ -200,7 +234,7 @@ export function CustomNoticeComposer({
         disabled={
           isPending ||
           (isAdmin ? selectedTermIds.length === 0 : !termId) ||
-          (isAdmin ? selectedBranchIds.length === 0 : !branchId)
+          (isAdmin ? !bulkBranchId : !branchId)
         }
         className={cn(
           "self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
@@ -208,15 +242,15 @@ export function CustomNoticeComposer({
       >
         {isPending
           ? "Publishing…"
-          : isAdmin && (selectedBranchIds.length > 1 || selectedTermIds.length > 1)
-            ? `Publish to ${selectedTermIds.length} year${selectedTermIds.length > 1 ? "s" : ""} × ${selectedBranchIds.length} branch${selectedBranchIds.length > 1 ? "es" : ""}`
+          : isAdmin && (selectedSpecializationIds.length > 1 || selectedTermIds.length > 1)
+            ? `Publish to ${selectedTermIds.length} year${selectedTermIds.length > 1 ? "s" : ""} × ${selectedSpecializationIds.length} specialization${selectedSpecializationIds.length > 1 ? "s" : ""}`
             : "Publish notice"}
       </button>
 
       {success && (
         <p className="font-mono text-xs text-terminal-blue">
-          {isAdmin && (selectedBranchIds.length > 1 || selectedTermIds.length > 1)
-            ? "Published to every selected year and branch — already live, no review needed."
+          {isAdmin && (selectedSpecializationIds.length > 1 || selectedTermIds.length > 1)
+            ? "Published to every selected year and specialization — already live, no review needed."
             : "Published — it's already live, no review needed."}
         </p>
       )}

@@ -10,6 +10,7 @@ import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 import { assertBatchTermReached } from "@/features/batches/academicValidation";
 import {
   assertValidId,
+  assertValidIdOrNull,
   assertValidIdArray,
   assertValidString,
   assertValidDateKey,
@@ -17,6 +18,26 @@ import {
   MAX_TITLE_LENGTH,
   MAX_DESCRIPTION_LENGTH,
 } from "@/lib/validation";
+
+// Bulk-publish's per-target list is a (branch, specialization) pair,
+// not a flat id — a branch with specializations needs one row per
+// specialization selected, a branch without needs exactly one row with
+// specialization_id null. Validated the same way assertValidIdArray
+// bounds a flat array (non-empty, capped, every entry checked).
+const MAX_BULK_TARGET_COUNT = 50;
+function assertValidTargetArray(
+  value: unknown
+): asserts value is { branchId: string; specializationId: string | null }[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_BULK_TARGET_COUNT) {
+    throw new Error("Invalid branch selection.");
+  }
+  for (const target of value) {
+    if (typeof target !== "object" || target === null) throw new Error("Invalid branch selection.");
+    const t = target as Record<string, unknown>;
+    assertValidId(t.branchId, "branch");
+    assertValidIdOrNull(t.specializationId, "specialization");
+  }
+}
 
 /**
  * Resolves the currently-active batch for one term, server-side — same
@@ -64,6 +85,7 @@ export async function createNotice(formData: FormData) {
   const role = await getCurrentRole();
 
   const branchId = formData.get("branchId") as string;
+  const specializationId = (formData.get("specializationId") as string) || null;
   const termId = formData.get("termId") as string;
   const batchId = formData.get("batchId") as string;
   const title = formData.get("title") as string;
@@ -72,6 +94,7 @@ export async function createNotice(formData: FormData) {
   const fileUrl = formData.get("fileUrl") as string;
 
   assertValidId(branchId, "branch");
+  assertValidIdOrNull(specializationId, "specialization");
   assertValidId(termId, "year");
   assertValidId(batchId, "batch");
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
@@ -85,6 +108,7 @@ export async function createNotice(formData: FormData) {
 
   const { error: insertError } = await supabase.from("notices").insert({
     branch_id: branchId,
+    specialization_id: specializationId,
     term_id: termId,
     batch_id: batchId,
     title,
@@ -126,19 +150,19 @@ export async function createNoticeAllBranches(formData: FormData) {
   // who isn't admin by construction, not by trusting client input.
   const crOnly = (formData.get("crOnly") as string) === "true";
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
-  let branchIds: unknown;
+  let targets: unknown;
   let termIds: unknown;
   try {
-    branchIds = JSON.parse(formData.get("branchIds") as string);
+    targets = JSON.parse(formData.get("targets") as string);
     termIds = JSON.parse(formData.get("termIds") as string);
   } catch {
     throw new Error("Invalid branch/year selection.");
   }
-  assertValidIdArray(branchIds, "branch");
+  assertValidTargetArray(targets);
   assertValidIdArray(termIds, "year");
 
   // Verified once — the same uploaded object gets referenced by every
-  // (term, branch) row built below.
+  // (term, target) row built below.
   if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
@@ -146,9 +170,10 @@ export async function createNoticeAllBranches(formData: FormData) {
   const rows = [];
   for (const termId of termIds) {
     const batchId = await resolveCurrentBatchId(supabase, termId);
-    for (const branchId of branchIds) {
+    for (const target of targets) {
       rows.push({
-        branch_id: branchId,
+        branch_id: target.branchId,
+        specialization_id: target.specializationId,
         term_id: termId,
         batch_id: batchId,
         title,
@@ -184,23 +209,24 @@ export async function createCustomNoticeAllBranches(formData: FormData) {
   const crOnly = (formData.get("crOnly") as string) === "true";
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
   assertValidString(body, "Body", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
-  let branchIds: unknown;
+  let targets: unknown;
   let termIds: unknown;
   try {
-    branchIds = JSON.parse(formData.get("branchIds") as string);
+    targets = JSON.parse(formData.get("targets") as string);
     termIds = JSON.parse(formData.get("termIds") as string);
   } catch {
     throw new Error("Invalid branch/year selection.");
   }
-  assertValidIdArray(branchIds, "branch");
+  assertValidTargetArray(targets);
   assertValidIdArray(termIds, "year");
 
   const rows = [];
   for (const termId of termIds) {
     const batchId = await resolveCurrentBatchId(supabase, termId);
-    for (const branchId of branchIds) {
+    for (const target of targets) {
       rows.push({
-        branch_id: branchId,
+        branch_id: target.branchId,
+        specialization_id: target.specializationId,
         term_id: termId,
         batch_id: batchId,
         title,
@@ -232,12 +258,14 @@ export async function createCustomNotice(formData: FormData) {
   const role = await getCurrentRole();
 
   const branchId = formData.get("branchId") as string;
+  const specializationId = (formData.get("specializationId") as string) || null;
   const termId = formData.get("termId") as string;
   const batchId = formData.get("batchId") as string;
   const title = formData.get("title") as string;
   const body = formData.get("body") as string;
 
   assertValidId(branchId, "branch");
+  assertValidIdOrNull(specializationId, "specialization");
   assertValidId(termId, "year");
   assertValidId(batchId, "batch");
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
@@ -245,6 +273,7 @@ export async function createCustomNotice(formData: FormData) {
 
   const { error: insertError } = await supabase.from("notices").insert({
     branch_id: branchId,
+    specialization_id: specializationId,
     term_id: termId,
     batch_id: batchId,
     title,
@@ -295,7 +324,14 @@ export async function deleteNotice(noticeId: string) {
  */
 export async function updateNoticeFields(
   noticeId: string,
-  fields: { branchId?: string; termId?: string; batchId?: string; crOnly?: boolean; dateKey?: string }
+  fields: {
+    branchId?: string;
+    specializationId?: string | null;
+    termId?: string;
+    batchId?: string;
+    crOnly?: boolean;
+    dateKey?: string;
+  }
 ) {
   const supabase = await createClient();
   const {
@@ -309,6 +345,7 @@ export async function updateNoticeFields(
 
   assertValidId(noticeId, "notice");
   if (fields.branchId !== undefined) assertValidId(fields.branchId, "branch");
+  if (fields.specializationId !== undefined) assertValidIdOrNull(fields.specializationId, "specialization");
   if (fields.termId !== undefined) assertValidId(fields.termId, "year");
   if (fields.batchId !== undefined) assertValidId(fields.batchId, "batch");
   if (fields.crOnly !== undefined && typeof fields.crOnly !== "boolean") {
@@ -323,8 +360,9 @@ export async function updateNoticeFields(
     await assertBatchTermReached(supabase, fields.batchId, fields.termId);
   }
 
-  const update: Record<string, string | boolean> = {};
+  const update: Record<string, string | boolean | null> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;
+  if (fields.specializationId !== undefined) update.specialization_id = fields.specializationId;
   if (fields.termId !== undefined) update.term_id = fields.termId;
   if (fields.batchId !== undefined) update.batch_id = fields.batchId;
   if (fields.crOnly !== undefined) update.cr_only = fields.crOnly;
