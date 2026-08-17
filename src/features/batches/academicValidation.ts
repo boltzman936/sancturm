@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { localDateKey } from "@/lib/date";
-import { isDateReached } from "./academicChronology";
+import { isDateReached, isBatchTermHiddenForSpecialization } from "./academicChronology";
 
 /**
  * The server-side half of "never publish into, or move a published
@@ -24,8 +24,12 @@ import { isDateReached } from "./academicChronology";
 export async function assertBatchTermReached(
   supabase: Awaited<ReturnType<typeof createClient>>,
   batchId: string,
-  termId: string
+  termId: string,
+  specializationId: string | null
 ) {
+  if (isBatchTermHiddenForSpecialization(batchId, termId, specializationId)) {
+    throw new Error("That semester isn't available for this specialization.");
+  }
   const { data, error } = await supabase
     .from("batch_terms")
     .select("start_date")

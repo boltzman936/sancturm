@@ -33,6 +33,7 @@ export function useCurrentRole() {
         const { data: termId, error } = await supabase.rpc("cr_current_term_id", {
           p_batch_id: cr.batch_id,
           p_year_number: cr.year_number,
+          p_specialization_id: cr.specialization_id,
         });
         if (error || !termId) {
           console.error("cr_current_term_id resolution failed:", error);

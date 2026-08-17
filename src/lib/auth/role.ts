@@ -76,6 +76,7 @@ export async function getCurrentRole(): Promise<Role> {
     const { data: termId, error } = await supabase.rpc("cr_current_term_id", {
       p_batch_id: cr.batch_id,
       p_year_number: cr.year_number,
+      p_specialization_id: cr.specialization_id,
     });
     if (error || !termId) {
       // No batch_terms row exists yet for this CR's (batch, year) —

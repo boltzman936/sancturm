@@ -8,6 +8,7 @@ import { withDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 import { assertBatchTermReached } from "@/features/batches/academicValidation";
+import { isBatchTermHiddenForSpecialization } from "@/features/batches/academicChronology";
 import { resolveSubjectSpecializationName } from "./subjectInterchange";
 import type { SubjectStructureConfig, ResourceSection, ResourceType } from "./types";
 import {
@@ -151,7 +152,18 @@ export async function updateResourceFields(
   // nothing before this point already ruled out an unreached pairing.
   // Same check Upload's own insert uses, so the two can't drift apart.
   if (fields.termId !== undefined && fields.batchId !== undefined) {
-    await assertBatchTermReached(supabase, fields.batchId, fields.termId);
+    // fields.specializationId ?? null: EditResourceButton's cascade
+    // always submits specialization together with term/batch (it's
+    // one combined <select> chain), so this is the resource's real
+    // target specialization in every real request this ever receives.
+    // A hand-crafted request that changes term/batch WITHOUT also
+    // resending specializationId would fall through to null here
+    // (treated as "no specialization"), which the hidden-semester
+    // exception never matches — a narrow, admin-only gap, accepted
+    // rather than adding an extra fetch of the resource's current
+    // specialization_id just to close a case the real UI never
+    // produces.
+    await assertBatchTermReached(supabase, fields.batchId, fields.termId, fields.specializationId ?? null);
   }
 
   const update: Record<string, string | null> = {};
@@ -298,7 +310,7 @@ export async function uploadResourceDirect(formData: FormData) {
   assertValidString(description ?? "", "Description", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
   if (customCreatedAt !== null) assertValidString(customCreatedAt, "Date", { maxLength: 40 });
 
-  await assertBatchTermReached(supabase, batchId, termId);
+  await assertBatchTermReached(supabase, batchId, termId, specializationId);
 
   // The presigned PUT already constrained WHICH Content-Type header
   // could be set on this object; this confirms the object's actual
@@ -419,7 +431,15 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
     specializationIds = parsed;
   }
 
-  await assertBatchTermReached(supabase, batchId, termId);
+  // Specialization-agnostic here on purpose — this only confirms the
+  // (batch, term) pair itself has started; the specialization-specific
+  // exception (see isBatchTermHiddenForSpecialization) is applied
+  // below, per target, since a bulk publish can span several
+  // specializations at once and only SOME of them might be excluded
+  // (e.g. Core+AIML+Cyber Security picked together for 1st Year Sem 2 —
+  // Cyber Security should still get published to, even though the
+  // other two are filtered out).
+  await assertBatchTermReached(supabase, batchId, termId, null);
 
   // Verified once, not per-target — it's the same uploaded object
   // referenced by every row below. See uploadResourceDirect's identical
@@ -448,7 +468,15 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
     termSlug = termRow?.slug ?? null;
   }
 
-  const targets = specializationIds.length > 0 ? specializationIds : [null];
+  const rawTargets = specializationIds.length > 0 ? specializationIds : [null];
+  // Drops any target this exact (batch, term) is hidden for (see
+  // isBatchTermHiddenForSpecialization) — a bulk publish spanning
+  // several specializations still goes through for the ones that
+  // aren't excluded, rather than the whole request failing outright.
+  const targets = rawTargets.filter((id) => !isBatchTermHiddenForSpecialization(batchId, termId, id));
+  if (targets.length === 0) {
+    throw new Error("That semester isn't available for any of the selected specializations.");
+  }
 
   for (const specializationId of targets) {
     let subjectId: string | null = null;

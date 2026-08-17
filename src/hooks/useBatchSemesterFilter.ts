@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useBatches, useBatchTerms, useAllBatchTerms } from "@/features/batches/queries";
 import { useTerms, useTermBySlug } from "@/features/terms/queries";
+import { useBranch } from "@/hooks/useBranch";
+import { useSpecialization } from "@/hooks/useSpecialization";
+import { useBranchBySlug, useSpecializationBySlug } from "@/features/branches/queries";
 import { useBatch } from "@/hooks/useBatch";
 import { useTerm } from "@/hooks/useTerm";
 import { useResetInvalidSelection } from "./useResetInvalidSelection";
 import { localDateKey } from "@/lib/date";
-import { isDateReached } from "@/features/batches/academicChronology";
+import { isDateReached, isBatchTermHiddenForSpecialization } from "@/features/batches/academicChronology";
 import type { BatchTerm, AcademicTerm } from "@/types/database";
 
 // sessionStorage (not localStorage — see below) key holding the
@@ -125,8 +128,34 @@ export function useBatchSemesterFilter() {
     return allBatches?.find((b) => b.label === batchLabel)?.id ?? ALL_BATCHES;
   }, [batchLabel, allBatches]);
 
-  const { data: oneBatchTerms } = useBatchTerms(batchFilter !== ALL_BATCHES ? batchFilter : null);
-  const { data: everyBatchTerms } = useAllBatchTerms();
+  const { data: oneBatchTermsRaw } = useBatchTerms(batchFilter !== ALL_BATCHES ? batchFilter : null);
+  const { data: everyBatchTermsRaw } = useAllBatchTerms();
+
+  // Resolved purely to apply isBatchTermHiddenForSpecialization below —
+  // this hook otherwise has no branch/specialization concept at all,
+  // it only ever reads the sidebar's Year. Filtering here (rather than
+  // touching the reduction logic itself) means every rule below —
+  // reachedTerms, eligibleBatches, the default-batch resolver — just
+  // sees a batch_terms list that's already missing the one hidden row
+  // for these three specializations, with zero changes to how any of
+  // them work.
+  const { branch: branchSlug } = useBranch();
+  const { data: branch } = useBranchBySlug(branchSlug);
+  const { specialization: specializationSlug } = useSpecialization();
+  const { data: specialization } = useSpecializationBySlug(
+    branch?.has_specializations ? (branch?.id ?? null) : null,
+    specializationSlug
+  );
+  const specializationId = branch?.has_specializations ? (specialization?.id ?? null) : null;
+
+  const oneBatchTerms = useMemo(
+    () => oneBatchTermsRaw?.filter((bt) => !isBatchTermHiddenForSpecialization(bt.batch_id, bt.term_id, specializationId)),
+    [oneBatchTermsRaw, specializationId]
+  );
+  const everyBatchTerms = useMemo(
+    () => everyBatchTermsRaw?.filter((bt) => !isBatchTermHiddenForSpecialization(bt.batch_id, bt.term_id, specializationId)),
+    [everyBatchTermsRaw, specializationId]
+  );
 
   const todayKey = localDateKey(new Date().toISOString());
 

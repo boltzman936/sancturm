@@ -357,7 +357,9 @@ export async function updateNoticeFields(
   // lets an admin retarget a notice to ANY branch/term/batch, and
   // nothing before this point already ruled out an unreached pairing.
   if (fields.termId !== undefined && fields.batchId !== undefined) {
-    await assertBatchTermReached(supabase, fields.batchId, fields.termId);
+    // Same fields.specializationId ?? null reasoning as
+    // updateResourceFields' identical check.
+    await assertBatchTermReached(supabase, fields.batchId, fields.termId, fields.specializationId ?? null);
   }
 
   const update: Record<string, string | boolean | null> = {};
