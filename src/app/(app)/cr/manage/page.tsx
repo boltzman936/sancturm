@@ -101,6 +101,34 @@ export default async function CRManagePage() {
     updatesQuery,
   ]);
 
+  // Which uploader names in THIS list are actually admin accounts — the
+  // one thing ManageResourceList needs to hide the Remove button on an
+  // admin's own uploads for a CR viewer, matching the RLS "CR or admin
+  // deletes" policy's own `NOT is_admin_display_name(uploaded_by_name)`
+  // clause exactly (see supabase/security_hardening.sql) — a CR trying
+  // to delete one of these today gets silently rejected by RLS, so this
+  // is closing the same gap in the UI, not adding a new restriction.
+  // is_admin_display_name is SECURITY DEFINER (checked: EXECUTE granted
+  // to `authenticated`), so a CR's own restricted session can call it
+  // even though `admins` itself isn't directly readable by a CR. Skipped
+  // entirely for an admin viewer — nothing to hide from them.
+  // Notices aren't included here — the notices query doesn't select
+  // uploaded_by_name at all today (noticeItems below always sets it to
+  // null), so there's no per-notice uploader identity in this list to
+  // check yet; scoping this to resources only, matching what was asked.
+  let adminDisplayNames: string[] = [];
+  if (role.type === "cr") {
+    const uploaderNames = new Set<string>();
+    for (const r of published ?? []) if (r.uploaded_by_name) uploaderNames.add(r.uploaded_by_name);
+    const checks = await Promise.all(
+      Array.from(uploaderNames).map(async (name) => {
+        const { data } = await supabase.rpc("is_admin_display_name", { name });
+        return data ? name : null;
+      })
+    );
+    adminDisplayNames = checks.filter((name): name is string => name !== null);
+  }
+
   const resourceItems: ManageableResource[] = (published ?? []).map((resource) => ({
     ...resource,
     kind: "resource",
@@ -180,6 +208,7 @@ export default async function CRManagePage() {
       <ManageResourceList
         resources={[...resourceItems, ...noticeItems, ...updateItems]}
         isAdmin={role.type === "admin"}
+        adminDisplayNames={adminDisplayNames}
       />
     </div>
   );

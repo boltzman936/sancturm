@@ -205,6 +205,17 @@ function deleteItem(item: ManageableResource) {
   return deleteResource(item.id);
 }
 
+// Mirrors the "CR or admin deletes" RLS policy's own
+// `NOT is_admin_display_name(uploaded_by_name)` clause exactly (see
+// supabase/security_hardening.sql) — a CR trying to delete a row this
+// returns false for is rejected by RLS regardless of what the UI does,
+// so this is purely about not showing a Remove button that would fail.
+// Always true for an admin viewer.
+function canDeleteItem(item: ManageableResource, isAdmin: boolean, adminDisplayNames: string[]): boolean {
+  if (isAdmin) return true;
+  return !item.uploaded_by_name || !adminDisplayNames.includes(item.uploaded_by_name);
+}
+
 function matchesSearch(resource: ManageableResource, query: string) {
   return matchesQuery(
     [
@@ -654,11 +665,13 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
 function ResourceGroupRow({
   group,
   isAdmin,
+  adminDisplayNames,
   selectedIds,
   onToggleGroup,
 }: {
   group: ResourceGroup;
   isAdmin: boolean;
+  adminDisplayNames: string[];
   selectedIds: Set<string>;
   onToggleGroup: (ids: string[]) => void;
 }) {
@@ -700,7 +713,14 @@ function ResourceGroupRow({
   const subjectSummary = subjectNames.length === 1 ? subjectNames[0] : "Multiple subjects";
   const typeLabels = Array.from(new Set(items.map((item) => typeGroupLabel(item))));
   const typeSummary = typeLabels.length === 1 ? typeLabels[0] : "Multiple types";
-  const allSelected = items.every((item) => selectedIds.has(item.id));
+  // Only the rows THIS viewer is actually allowed to delete — an
+  // admin-uploaded row mixed into a group a CR can otherwise see (e.g.
+  // a shared PYQ pool) never counts here for a CR viewer, matching
+  // canDeleteItem/RLS exactly. Selecting/bulk-removing a group only
+  // ever touches this subset, never the rows that would just get
+  // silently rejected.
+  const deletableItems = items.filter((item) => canDeleteItem(item, isAdmin, adminDisplayNames));
+  const allSelected = deletableItems.length > 0 && deletableItems.every((item) => selectedIds.has(item.id));
 
   function contextLabel(item: ManageableResource) {
     const parts = [item.branch?.name, item.specialization?.name].filter((part): part is string => !!part);
@@ -713,12 +733,12 @@ function ResourceGroupRow({
   function handleGroupDelete() {
     if (
       !confirm(
-        `Remove this content from ${items.length} academic contexts? This can't be undone.`
+        `Remove this content from ${deletableItems.length} academic contexts? This can't be undone.`
       )
     )
       return;
     startDelete(async () => {
-      await Promise.all(items.map(deleteItem));
+      await Promise.all(deletableItems.map(deleteItem));
     });
   }
 
@@ -731,13 +751,15 @@ function ResourceGroupRow({
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="flex min-w-0 items-start gap-3">
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={() => onToggleGroup(items.map((item) => item.id))}
-            aria-label={`Select ${primary.title}`}
-            className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
-          />
+          {deletableItems.length > 0 && (
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() => onToggleGroup(deletableItems.map((item) => item.id))}
+              aria-label={`Select ${primary.title}`}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+            />
+          )}
           <div className="min-w-0">
             <p className="flex flex-wrap items-center gap-1.5">
               <span className="break-words text-foreground">{primary.title}</span>
@@ -815,16 +837,23 @@ function ResourceGroupRow({
               >
                 <ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} />
               </button>
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={handleGroupDelete}
-                className="rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 active:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
-              >
-                {isDeleting ? "Removing…" : `Remove (${items.length})`}
-              </button>
+              {/* Hidden entirely, not just disabled, when nothing in
+                  this group is deletable by this viewer (e.g. a CR
+                  looking at a shared PYQ pool that's entirely admin-
+                  uploaded) — a visible-but-broken button would just
+                  fail against RLS the moment it's clicked. */}
+              {deletableItems.length > 0 && (
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleGroupDelete}
+                  className="rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 active:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {isDeleting ? "Removing…" : `Remove (${deletableItems.length})`}
+                </button>
+              )}
             </>
-          ) : primary.kind === "notice" ? (
+          ) : !canDeleteItem(primary, isAdmin, adminDisplayNames) ? null : primary.kind === "notice" ? (
             <DeleteNoticeButton noticeId={primary.id} />
           ) : primary.kind === "update" ? (
             <DeleteSancturmUpdateButton updateId={primary.id} />
@@ -842,18 +871,20 @@ function ResourceGroupRow({
               className="flex flex-col gap-2 rounded-md bg-background-secondary/60 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
             >
               <label className="flex min-w-0 items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(item.id)}
-                  // A single-id array — reuses the exact same toggleIds
-                  // the group's own top-level checkbox calls with every
-                  // id at once (see its own comment), so a context
-                  // picked here participates in "Select all" / bulk
-                  // Remove exactly like any other selected row.
-                  onChange={() => onToggleGroup([item.id])}
-                  aria-label={`Select ${contextLabel(item)}`}
-                  className="h-4 w-4 shrink-0 accent-primary"
-                />
+                {canDeleteItem(item, isAdmin, adminDisplayNames) && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(item.id)}
+                    // A single-id array — reuses the exact same toggleIds
+                    // the group's own top-level checkbox calls with every
+                    // id at once (see its own comment), so a context
+                    // picked here participates in "Select all" / bulk
+                    // Remove exactly like any other selected row.
+                    onChange={() => onToggleGroup([item.id])}
+                    aria-label={`Select ${contextLabel(item)}`}
+                    className="h-4 w-4 shrink-0 accent-primary"
+                  />
+                )}
                 <span className="font-mono text-xs text-subtle-foreground">{contextLabel(item)}</span>
               </label>
               <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
@@ -863,7 +894,7 @@ function ResourceGroupRow({
                   ) : (
                     <EditResourceButton resource={item} />
                   ))}
-                {item.kind === "notice" ? (
+                {!canDeleteItem(item, isAdmin, adminDisplayNames) ? null : item.kind === "notice" ? (
                   <DeleteNoticeButton noticeId={item.id} />
                 ) : item.kind === "update" ? (
                   <DeleteSancturmUpdateButton updateId={item.id} />
@@ -895,9 +926,17 @@ const TYPE_LABEL_TO_RESOURCE_TYPE: Record<string, "notes" | "lab_manual" | "pyq"
 export function ManageResourceList({
   resources,
   isAdmin,
+  adminDisplayNames,
 }: {
   resources: ManageableResource[];
   isAdmin: boolean;
+  // Which uploader names belong to an admin account — see
+  // cr/manage/page.tsx's own comment for why this has to come from a
+  // SECURITY DEFINER RPC rather than reading `admins` directly. Always
+  // [] for an admin viewer (nothing to hide from them); a CR viewer
+  // uses it to hide Remove on exactly the rows RLS would reject anyway
+  // (see canDeleteItem below) — never the other way around.
+  adminDisplayNames: string[];
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
@@ -1117,30 +1156,47 @@ export function ManageResourceList({
     });
   }
 
+  // "Select all" / bulk Remove only ever act on rows THIS viewer can
+  // actually delete — for a CR that excludes anything uploaded by an
+  // admin (see canDeleteItem), the same rows that never get a Remove
+  // button rendered at all. A group with zero deletable rows doesn't
+  // count against "all selected" either way (nothing there for the
+  // checkbox to represent).
+  const deletableVisible = useMemo(
+    () => visible.filter((r) => canDeleteItem(r, isAdmin, adminDisplayNames)),
+    [visible, isAdmin, adminDisplayNames]
+  );
   const allVisibleSelected =
-    visibleGroups.length > 0 && visibleGroups.every((group) => group.items.every((r) => selectedIds.has(r.id)));
+    visibleGroups.length > 0 &&
+    visibleGroups.every((group) => {
+      const deletable = group.items.filter((r) => canDeleteItem(r, isAdmin, adminDisplayNames));
+      return deletable.length === 0 || deletable.every((r) => selectedIds.has(r.id));
+    });
 
-  // How many CARDS have every one of their rows selected — shown next
-  // to the raw selectedIds.size (the actual delete button's own count,
-  // since that's what genuinely gets removed) so a multi-context card
-  // being selected/removed is never ambiguous about how many rows that
-  // really is.
-  const selectedGroupCount = visibleGroups.filter((group) => group.items.every((r) => selectedIds.has(r.id))).length;
+  // How many CARDS have every one of their DELETABLE rows selected —
+  // shown next to the raw selectedIds.size (the actual delete button's
+  // own count, since that's what genuinely gets removed) so a multi-
+  // context card being selected/removed is never ambiguous about how
+  // many rows that really is.
+  const selectedGroupCount = visibleGroups.filter((group) => {
+    const deletable = group.items.filter((r) => canDeleteItem(r, isAdmin, adminDisplayNames));
+    return deletable.length > 0 && deletable.every((r) => selectedIds.has(r.id));
+  }).length;
 
   function toggleSelectAllVisible() {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (allVisibleSelected) {
-        for (const r of visible) next.delete(r.id);
+        for (const r of deletableVisible) next.delete(r.id);
       } else {
-        for (const r of visible) next.add(r.id);
+        for (const r of deletableVisible) next.add(r.id);
       }
       return next;
     });
   }
 
   function handleBulkDelete() {
-    const items = resources.filter((r) => selectedIds.has(r.id));
+    const items = resources.filter((r) => selectedIds.has(r.id) && canDeleteItem(r, isAdmin, adminDisplayNames));
     if (items.length === 0) return;
     if (!confirm(`Remove ${items.length} item${items.length > 1 ? "s" : ""}? This can't be undone.`)) return;
 
@@ -1435,6 +1491,7 @@ export function ManageResourceList({
               key={group.items[0].id}
               group={group}
               isAdmin={isAdmin}
+              adminDisplayNames={adminDisplayNames}
               selectedIds={selectedIds}
               onToggleGroup={toggleIds}
             />
@@ -1455,6 +1512,7 @@ export function ManageResourceList({
                     key={group.items[0].id}
                     group={group}
                     isAdmin={isAdmin}
+                    adminDisplayNames={adminDisplayNames}
                     selectedIds={selectedIds}
                     onToggleGroup={toggleIds}
                   />
