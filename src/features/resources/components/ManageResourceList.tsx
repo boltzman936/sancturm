@@ -813,6 +813,7 @@ export function ManageResourceList({
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
   const [branchFilter, setBranchFilter] = useState(ALL);
+  const [specializationFilter, setSpecializationFilter] = useState(ALL);
   const [termFilter, setTermFilter] = useState(ALL);
   const [batchFilter, setBatchFilter] = useState(ALL);
   const [typeFilter, setTypeFilter] = useState(ALL);
@@ -832,6 +833,11 @@ export function ManageResourceList({
   }
   function handleBranchFilterChange(value: string) {
     setBranchFilter(value);
+    setSpecializationFilter(ALL);
+    setSubjectFilter(ALL);
+  }
+  function handleSpecializationFilterChange(value: string) {
+    setSpecializationFilter(value);
     setSubjectFilter(ALL);
   }
   function handleBatchFilterChange(value: string) {
@@ -875,10 +881,21 @@ export function ManageResourceList({
     return terms.filter((t) => shortTermLabel(t) === termFilter).map((t) => t.id);
   }, [terms, termFilter]);
   const { data: termSubjects } = useSubjectsForTerms(termIdsForSubjects);
-  const branchIdForSubjects = useMemo(() => {
+  const selectedBranchForFilter = useMemo(() => {
     if (branchFilter === ALL || !branches) return null;
-    return branches.find((b) => b.name === branchFilter)?.id ?? null;
+    return branches.find((b) => b.name === branchFilter) ?? null;
   }, [branchFilter, branches]);
+  const branchIdForSubjects = selectedBranchForFilter?.id ?? null;
+  // Only CSE has specializations — this filter only renders once a
+  // branch with has_specializations is explicitly picked (same gating
+  // rule the Cockpit/Upload/Edit cascades already use everywhere else).
+  const { data: specializationsForFilter } = useSpecializations(
+    selectedBranchForFilter?.has_specializations ? selectedBranchForFilter.id : null
+  );
+  const specializationOptions = useMemo(
+    () => (specializationsForFilter ?? []).map((s) => s.name),
+    [specializationsForFilter]
+  );
 
   // Config-table driven (the `subjects` table), not derived from
   // already-published resources — a subject with zero approved
@@ -890,27 +907,51 @@ export function ManageResourceList({
   // resolved without ever assuming a single branch) doesn't have that
   // problem, since PYQs' page already proves the "all branches" case
   // works via the same underlying query shape.
+  const specializationIdForFilter = useMemo(() => {
+    if (specializationFilter === ALL || !specializationsForFilter) return null;
+    return specializationsForFilter.find((s) => s.name === specializationFilter)?.id ?? null;
+  }, [specializationFilter, specializationsForFilter]);
+
   const subjectOptions = useMemo(() => {
     if (typeFilter === "Notices" || typeFilter === "Sancturm updates") return [];
     let scoped = branchIdForSubjects
       ? (termSubjects ?? []).filter((s) => s.branch_id === branchIdForSubjects)
       : (termSubjects ?? []);
+    // Once a specialization is picked, narrow further — CSE's subjects
+    // are per-specialization, so without this a name unique to a
+    // sibling specialization (e.g. Core-only) would still show up as
+    // a Subject option while browsing AIML, yielding zero results if
+    // picked.
+    if (specializationIdForFilter) {
+      scoped = scoped.filter((s) => s.specialization_id === specializationIdForFilter);
+    }
     const mappedType = TYPE_LABEL_TO_RESOURCE_TYPE[typeFilter];
     if (mappedType) scoped = filterSubjectsForResourceType(scoped, mappedType);
     const names = new Set(scoped.map((s) => s.name));
     return [...Array.from(names).sort(), "Extra"];
-  }, [termSubjects, branchIdForSubjects, typeFilter]);
+  }, [termSubjects, branchIdForSubjects, specializationIdForFilter, typeFilter]);
 
   const visible = useMemo(() => {
     return resources
       .filter((r) => !dateFilter || localDateKey(r.created_at) === dateFilter)
       .filter((r) => matchesSearch(r, searchQuery))
       .filter((r) => branchFilter === ALL || r.branch?.name === branchFilter)
+      .filter((r) => specializationFilter === ALL || r.specialization?.name === specializationFilter)
       .filter((r) => termFilter === ALL || shortTermLabel(r.term) === termFilter)
       .filter((r) => batchFilter === ALL || r.batch?.label === batchFilter)
       .filter((r) => matchesTypeFilter(r, typeFilter))
       .filter((r) => subjectFilter === ALL || (r.subject?.name ?? "Extra") === subjectFilter);
-  }, [resources, dateFilter, searchQuery, branchFilter, termFilter, batchFilter, typeFilter, subjectFilter]);
+  }, [
+    resources,
+    dateFilter,
+    searchQuery,
+    branchFilter,
+    specializationFilter,
+    termFilter,
+    batchFilter,
+    typeFilter,
+    subjectFilter,
+  ]);
 
   // With no type picked, group into labeled sections (Notes, Lab, PYQ,
   // Notices) so they don't interleave. Once a specific type is chosen
@@ -1040,6 +1081,18 @@ export function ManageResourceList({
           />
         )}
 
+        {isAdmin && selectedBranchForFilter?.has_specializations && (
+          <FilterSelect
+            label="Specialization"
+            value={specializationFilter}
+            onChange={handleSpecializationFilterChange}
+            options={[
+              { value: ALL, label: "All specializations" },
+              ...specializationOptions.map((s) => ({ value: s, label: s })),
+            ]}
+          />
+        )}
+
         {isAdmin && (
           <FilterSelect
             label="Batch"
@@ -1113,6 +1166,21 @@ export function ManageResourceList({
               options={[
                 { value: ALL, label: "All branches" },
                 ...branchOptions.map((b) => ({ value: b, label: b })),
+              ]}
+              fullWidth
+            />
+          </div>
+        )}
+
+        {isAdmin && selectedBranchForFilter?.has_specializations && (
+          <div className="grid grid-cols-2 gap-2">
+            <FilterSelect
+              label="Specialization"
+              value={specializationFilter}
+              onChange={handleSpecializationFilterChange}
+              options={[
+                { value: ALL, label: "All specializations" },
+                ...specializationOptions.map((s) => ({ value: s, label: s })),
               ]}
               fullWidth
             />
