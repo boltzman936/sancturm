@@ -841,7 +841,21 @@ function ResourceGroupRow({
               key={item.id}
               className="flex flex-col gap-2 rounded-md bg-background-secondary/60 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
             >
-              <span className="font-mono text-xs text-subtle-foreground">{contextLabel(item)}</span>
+              <label className="flex min-w-0 items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(item.id)}
+                  // A single-id array — reuses the exact same toggleIds
+                  // the group's own top-level checkbox calls with every
+                  // id at once (see its own comment), so a context
+                  // picked here participates in "Select all" / bulk
+                  // Remove exactly like any other selected row.
+                  onChange={() => onToggleGroup([item.id])}
+                  aria-label={`Select ${contextLabel(item)}`}
+                  className="h-4 w-4 shrink-0 accent-primary"
+                />
+                <span className="font-mono text-xs text-subtle-foreground">{contextLabel(item)}</span>
+              </label>
               <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
                 {isAdmin &&
                   (item.kind === "update" ? (
@@ -1380,8 +1394,14 @@ export function ManageResourceList({
           {selectedIds.size > 0 && (
             <div className="flex items-center gap-3">
               <span className="text-sm text-foreground">
-                {selectedGroupCount} selected
-                {selectedIds.size !== selectedGroupCount ? ` (${selectedIds.size} items)` : ""}
+                {/* Raw item count leads — always unambiguous, including
+                    when a checkbox was picked on just SOME of a card's
+                    contexts (see the expanded per-context checkbox),
+                    where "N cards" alone would misleadingly read as
+                    zero. Card count only appended once at least one
+                    full card is selected, where it adds real info. */}
+                {selectedIds.size} item{selectedIds.size === 1 ? "" : "s"} selected
+                {selectedGroupCount > 0 ? ` (${selectedGroupCount} full card${selectedGroupCount === 1 ? "" : "s"})` : ""}
               </span>
               <button
                 onClick={() => setSelectedIds(new Set())}
