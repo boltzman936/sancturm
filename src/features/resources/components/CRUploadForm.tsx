@@ -598,17 +598,14 @@ export function CRUploadForm({
 
       {showTermPicker && (
         <div className="flex flex-col gap-1">
+          {/* "Year and Semester", not just "Semester" — Year isn't a
+              separate selector (it's derived from whichever Semester is
+              picked, since (batch, semester) is what's globally unique,
+              not semester alone), but every option below already shows
+              its own full "1st Year - Semester 1" label, so the heading
+              should say what's actually being picked. */}
           <label htmlFor="term" className="font-mono text-xs text-subtle-foreground">
-            Semester
-            {/* Year is derived from whichever Semester is picked, not
-                a separate selector — "1st Year - Semester 1" isn't a
-                globally unique period on its own, (batch, semester)
-                is. Shown here as a read-only label. */}
-            {currentYearNumber !== undefined && (
-              <span className="ml-1.5 normal-case text-subtle-foreground/70">
-                ({effectiveTerm?.label.split(" - ")[0]})
-              </span>
-            )}
+            Year and Semester
           </label>
           <Select
             id="term"

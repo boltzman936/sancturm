@@ -131,14 +131,14 @@ export function NoticeComposer({
     >
       {isAdmin ? (
         <div className="flex flex-col gap-1">
-          <label className="font-mono text-xs text-subtle-foreground">Year</label>
+          <label className="font-mono text-xs text-subtle-foreground">Year and Semester</label>
           <TermMultiSelect terms={terms} selectedTermIds={selectedTermIds} onChange={setSelectedTermIds} />
         </div>
       ) : (
         !fixedTermId && (
           <div className="flex flex-col gap-1">
             <label htmlFor="notice-term" className="font-mono text-xs text-subtle-foreground">
-              Year
+              Year and Semester
             </label>
             <Select
               id="notice-term"

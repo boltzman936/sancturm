@@ -187,6 +187,7 @@ function matchesSearch(resource: ManageableResource, query: string) {
       resource.title,
       resource.subject?.name,
       resource.branch?.name,
+      resource.specialization?.name,
       shortTermLabel(resource.term),
       uploaderLabel(resource),
       formatShortDate(resource.created_at),
@@ -467,7 +468,11 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
             )}
 
             <div className="flex flex-col gap-1">
-              <label className="font-mono text-xs text-subtle-foreground">Year</label>
+              {/* "Year and Semester", matching CRUploadForm's identical
+                  field — every option is a full "1st Year - Semester 1"
+                  label, so the heading should say what's actually being
+                  picked, not just "Year". */}
+              <label className="font-mono text-xs text-subtle-foreground">Year and Semester</label>
               <Select
                 value={termId}
                 onChange={(event) => {
@@ -643,7 +648,12 @@ function ResourceGroupRow({
   // came from is genuinely useful context even for a CR. Term is only
   // ever ambiguous for admin (a CR's own term is implied — even a PYQ
   // stays within their own term, never shown to them cross-term).
+  // Specialization mirrors branch exactly — without it every CSE row
+  // reads as bare "CSE" regardless of whether it's actually Core, AIML,
+  // or AIDS, which is exactly the distinction that matters here (a
+  // group can genuinely span all three, e.g. an admin bulk publish).
   const showBranch = isAdmin || primary.section === "pyq";
+  const showSpecialization = isAdmin || primary.section === "pyq";
   const showTerm = isAdmin && primary.term;
   const showBatch = isAdmin && primary.batch;
   const allSelected = items.every((item) => selectedIds.has(item.id));
@@ -652,6 +662,9 @@ function ResourceGroupRow({
   // in the same group somehow shared a branch.
   const branchNames = Array.from(
     new Set(items.map((item) => item.branch?.name).filter((name): name is string => !!name))
+  );
+  const specializationNames = Array.from(
+    new Set(items.map((item) => item.specialization?.name).filter((name): name is string => !!name))
   );
 
   function handleGroupDelete() {
@@ -689,7 +702,7 @@ function ResourceGroupRow({
             <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-subtle-foreground">
               {showTerm && (
                 <>
-                  <span>{shortTermLabel(primary.term)}</span>
+                  <span>{primary.term?.label}</span>
                   <span aria-hidden="true">·</span>
                 </>
               )}
@@ -702,6 +715,12 @@ function ResourceGroupRow({
               {showBranch && branchNames.length > 0 && (
                 <>
                   <span>{branchNames.join(", ")}</span>
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
+              {showSpecialization && specializationNames.length > 0 && (
+                <>
+                  <span>{specializationNames.join(", ")}</span>
                   <span aria-hidden="true">·</span>
                 </>
               )}
@@ -765,7 +784,10 @@ function ResourceGroupRow({
               key={item.id}
               className="flex flex-col gap-2 rounded-md bg-background-secondary/60 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
             >
-              <span className="font-mono text-xs text-subtle-foreground">{item.branch?.name}</span>
+              <span className="font-mono text-xs text-subtle-foreground">
+                {item.branch?.name}
+                {item.specialization?.name ? ` — ${item.specialization.name}` : ""}
+              </span>
               <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
                 {isAdmin &&
                   (item.kind === "update" ? (
