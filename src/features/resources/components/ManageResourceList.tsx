@@ -140,9 +140,24 @@ function bySubject(a: ManageableResource, b: ManageableResource) {
 // coarser day-level match still groups those correctly too.
 type ResourceGroup = { items: ManageableResource[] };
 
+// Includes branch_id — every branch's academic context is now fully
+// independent (see supabase/initialize_2025_26_shared_content.sql: the
+// same source content was deliberately copied into multiple branches
+// as separate, unrelated rows), so grouping must never span them.
+// Without this, resources that only coincidentally share a
+// title/date/subject across branches — no longer "the same publish
+// action," just similar-looking independent content — would render as
+// one collapsible card with a single bulk "Remove (N)" spanning every
+// branch it happens to match, which could delete a resource in one
+// branch as a side effect of removing another's. specialization_id is
+// deliberately NOT included: a genuine admin bulk-publish still fans
+// one upload across several specializations WITHIN one branch in a
+// single action, and grouping those together (with a real shared
+// bulk-delete) still reflects one real event, not a coincidence.
 function contentGroupKey(r: ManageableResource): string {
   return [
     r.kind,
+    r.branch_id ?? "",
     r.section,
     r.resource_type ?? "",
     r.term_id ?? "",
