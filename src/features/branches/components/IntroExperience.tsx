@@ -114,11 +114,11 @@ export function IntroExperience() {
   const [typingDone, setTypingDone] = useState(false);
   const [cursorVisible, setCursorVisible] = useState(true);
   const [showSelector, setShowSelector] = useState(false);
-  // Year, then Branch, then — only for a branch with
-  // has_specializations=true (CSE today) — Specialization. Department
-  // and Degree are never asked here at all: exactly one of each exists,
-  // so there's nothing for a student to choose.
-  const [step, setStep] = useState<"term" | "branch" | "specialization">("term");
+  // Branch, then — only for a branch with has_specializations=true
+  // (CSE today) — Specialization, then Year. Department and Degree
+  // are never asked here at all: exactly one of each exists, so
+  // there's nothing for a student to choose.
+  const [step, setStep] = useState<"branch" | "specialization" | "term">("branch");
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [exiting, setExiting] = useState(false);
   // Gates the typing sequence so the headline never starts animating
@@ -238,11 +238,6 @@ export function IntroExperience() {
     };
   }, [typingDone, prefersReducedMotion]);
 
-  function handleTermSelect(slug: string) {
-    setTerm(slug);
-    setStep("branch");
-  }
-
   function enterSancturm() {
     setExiting(true);
     setTimeout(() => {
@@ -258,11 +253,17 @@ export function IntroExperience() {
       setStep("specialization");
       return;
     }
-    enterSancturm();
+    setSelectedBranchId(null);
+    setStep("term");
   }
 
   function handleSpecializationSelect(slug: string) {
     setSpecialization(slug);
+    setStep("term");
+  }
+
+  function handleTermSelect(slug: string) {
+    setTerm(slug);
     enterSancturm();
   }
 
@@ -365,19 +366,7 @@ export function IntroExperience() {
               transition={{ duration: 0.6 }}
               className="mt-2 flex flex-col items-center gap-3"
             >
-              {step === "term" && <TermSelectCard onSelect={handleTermSelect} />}
-              {step === "branch" && (
-                <>
-                  <BranchSelectCard onSelect={handleBranchSelect} />
-                  <button
-                    type="button"
-                    onClick={() => setStep("term")}
-                    className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
-                  >
-                    ← change year
-                  </button>
-                </>
-              )}
+              {step === "branch" && <BranchSelectCard onSelect={handleBranchSelect} />}
               {step === "specialization" && selectedBranchId && (
                 <>
                   <SpecializationSelectCard branchId={selectedBranchId} onSelect={handleSpecializationSelect} />
@@ -387,6 +376,18 @@ export function IntroExperience() {
                     className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
                   >
                     ← change branch
+                  </button>
+                </>
+              )}
+              {step === "term" && (
+                <>
+                  <TermSelectCard onSelect={handleTermSelect} />
+                  <button
+                    type="button"
+                    onClick={() => setStep(selectedBranchId ? "specialization" : "branch")}
+                    className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"
+                  >
+                    {selectedBranchId ? "← change specialization" : "← change branch"}
                   </button>
                 </>
               )}

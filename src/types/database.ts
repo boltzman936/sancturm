@@ -69,10 +69,10 @@ export type Specialization = {
 
 // A branch doesn't carry year/semester itself — a term is the (year,
 // sem) pair layered on top, and every branch's content is scoped to a
-// specific (branch, term) pair once one exists. The full 1st-4th Year
-// / Sem 1-8 range exists as academic_terms rows (global — shared by
-// every branch, not branch-specific), each gated by real calendar
-// dates in batch_terms.
+// specific (branch, term) pair once one exists. Currently 1st Year
+// (Sem 1-2) and 2nd Year (Sem 3-4) exist as academic_terms rows
+// (global — shared by every branch, not branch-specific), each gated
+// by real calendar dates in batch_terms.
 export type AcademicTerm = {
   id: string;
   year_number: number;
