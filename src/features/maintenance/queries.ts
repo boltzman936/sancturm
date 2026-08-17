@@ -10,8 +10,7 @@ import type { MaintenanceConfig } from "./types";
  * in maintenance). Polls every 15s (baked into the hook itself, not
  * left to each call site) since this hook's whole value is near-real-
  * time countdown/recovery on /maintenance and a trustworthy live
- * status on the admin's own control panel — unlike
- * useSubjectStructureConfig, which has no such freshness need.
+ * status on the admin's own control panel.
  */
 export function useMaintenanceConfig() {
   return useQuery({

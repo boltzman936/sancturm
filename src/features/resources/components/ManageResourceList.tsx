@@ -621,10 +621,10 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
 // published to on one line instead of repeating the whole card once
 // per branch, and its checkbox/Remove act on every row in the group
 // together. Edit only ever applies to a single row (branch/term/batch/
-// subject are genuinely per-row fields, sometimes divergent across
-// branches under subject interchange — see subjectInterchange.ts), so
-// it's hidden for a multi-branch group; ungrouped items (the common
-// case) render and behave exactly as a single row always has.
+// subject are genuinely per-row fields, divergent across branches for
+// a bulk-published group), so it's hidden for a multi-branch group;
+// ungrouped items (the common case) render and behave exactly as a
+// single row always has.
 function ResourceGroupRow({
   group,
   isAdmin,

@@ -7,16 +7,13 @@ import { useSpecialization } from "@/hooks/useSpecialization";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
 import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
-import { useTerms } from "@/features/terms/queries";
 import {
   usePyqResources,
-  useSharedResourceSourceScopes,
   useSubjectsForPyqScope,
   useSubjectsForPyqScopeTerms,
   type ResourceWithSubject,
 } from "@/features/resources/queries";
 import { pyqSharingSpecializationIds } from "@/features/resources/pyqSharing";
-import { resolveSubjectQueryTermSlug } from "@/features/resources/subjectInterchange";
 import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
@@ -113,46 +110,17 @@ export default function PYQsPage() {
   // view instead of just one (both hooks always called, per rules of
   // hooks — whichever doesn't apply gets empty/null args and is a
   // no-op).
-  //
-  // Subject-list terms are redirected (Sem 2 -> Sem 1) the same way
-  // Notes/Lab's useSubjects is, using the VIEWER's own specialization
-  // (not the sharing pool — pyqSpecializationIds is keyed by Year, not
-  // Semester, so it applies correctly to Sem 1's real subjects once the
-  // term itself is redirected). The PYQ RESOURCE query below
-  // (usePyqResources) keeps using the real, unredirected term(s) for
-  // its DIRECT match — the Sem 2 -> Sem 1 redirect for actually finding
-  // existing content is handled separately via sharedScopes below,
-  // same mechanism Notes/Lab uses.
-  const { data: allTerms } = useTerms();
-  const subjectTermId = useMemo(() => {
-    if (isAllSemesters || !term) return null;
-    const resolvedSlug = resolveSubjectQueryTermSlug(specializationName ?? null, term.slug);
-    return allTerms?.find((t) => t.slug === resolvedSlug)?.id ?? term.id;
-  }, [isAllSemesters, term, specializationName, allTerms]);
-  const subjectTermIds = useMemo(() => {
-    if (!isAllSemesters || !allTerms) return [];
-    return Array.from(
-      new Set(
-        effectiveTermIds.map((id) => {
-          const t = allTerms.find((term) => term.id === id);
-          if (!t) return id;
-          const resolvedSlug = resolveSubjectQueryTermSlug(specializationName ?? null, t.slug);
-          return allTerms.find((term) => term.slug === resolvedSlug)?.id ?? id;
-        })
-      )
-    );
-  }, [isAllSemesters, effectiveTermIds, specializationName, allTerms]);
   const { data: singleTermSubjects } = useSubjectsForPyqScope(
     branch?.id ?? null,
     pyqSpecializationIds,
     branch?.has_specializations ?? false,
-    subjectTermId
+    isAllSemesters ? null : term?.id ?? null
   );
   const { data: multiTermSubjects } = useSubjectsForPyqScopeTerms(
     branch?.id ?? null,
     pyqSpecializationIds,
     branch?.has_specializations ?? false,
-    subjectTermIds
+    isAllSemesters ? effectiveTermIds : []
   );
   const allTermSubjects = isAllSemesters ? multiTermSubjects : singleTermSubjects;
   const subjectOptions = useMemo(() => {
@@ -163,36 +131,11 @@ export default function PYQsPage() {
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [allTermSubjects]);
 
-  // Same shared-content resolver Notes & Lab uses — see
-  // sharedResourceScopes.ts. PYQs and PYQ Solutions are the same
-  // section/query here (filtered client-side by pyqKind below), so
-  // wiring it once into usePyqResources covers both, per the "PYQ must
-  // use the exact same shared-content logic" requirement. ownSubjects is
-  // {id, name} pairs (unlike subjectOptions above, which is name-only —
-  // that one drives the Subject filter dropdown and intentionally
-  // matches by name across the sharing pool's own specializations, a
-  // separate, pre-existing mechanism) since shared-in matching is by
-  // explicit canonical subject id (see canonicalSubjects.ts), never by
-  // name. Deduped by id — allTermSubjects can repeat the same subject
-  // once per pooled specialization.
-  const sharedScopes = useSharedResourceSourceScopes(
-    branchSlug,
-    specializationName ?? null,
-    isAllSemesters ? effectiveTermIds : term?.id ?? null
-  );
-  const ownSubjects = useMemo(
-    () => Array.from(new Map((allTermSubjects ?? []).map((s) => [s.id, { id: s.id, name: s.name }])).values()),
-    [allTermSubjects]
-  );
-
   const { data: resources, isLoading, isError } = usePyqResources(
     branch?.id ?? null,
     pyqSpecializationIds,
     branch?.has_specializations ?? false,
-    isAllSemesters ? effectiveTermIds : term?.id ?? null,
-    undefined,
-    sharedScopes,
-    ownSubjects
+    isAllSemesters ? effectiveTermIds : term?.id ?? null
   );
 
   // Resets subjectFilter same as Notes & Lab's tab switch — a subject

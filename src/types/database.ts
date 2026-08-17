@@ -148,17 +148,6 @@ export type TeamDirectoryEntry = {
   current_term_id: string;
 };
 
-// Singleton config row (id is always `true` — the boolean-PK trick
-// that makes a second row physically impossible) controlling whether
-// 1st-Year Sem 2's subject structure is currently interchanged — see
-// src/features/resources/subjectInterchange.ts for what that means.
-export type SubjectStructureConfig = {
-  id: true;
-  interchange_active: boolean;
-  updated_by: string | null;
-  updated_at: string;
-};
-
 // Same singleton pattern — `until` is the sole source of truth for
 // whether maintenance is active (null = not in maintenance).
 export type MaintenanceConfig = {
@@ -220,13 +209,6 @@ export type Resource = {
   view_count: number;
   uploaded_by_device: string | null;
   uploaded_by_name: string | null;
-  // One-time backfilled marker (see supabase/add_legacy_shared_flag.sql)
-  // — true only for resources that existed before cross-context
-  // resource sharing was introduced (see sharedResourceScopes.ts).
-  // Every new upload defaults to false via the column default and
-  // stays visible ONLY in its own exact upload context; this is never
-  // set true by application code, only by that one migration.
-  legacy_shared: boolean;
   created_at: string;
   updated_at: string;
 };

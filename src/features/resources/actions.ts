@@ -9,7 +9,6 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 import { assertBatchTermReached, assertSubjectMatchesScope } from "@/features/batches/academicValidation";
 import { isBatchTermHiddenForSpecialization } from "@/features/batches/academicChronology";
-import { resolveSubjectQueryTermSlug, resolveSubjectSpecializationName } from "./subjectInterchange";
 import type { ResourceSection, ResourceType } from "./types";
 import {
   assertValidId,
@@ -47,56 +46,6 @@ function assertValidSection(value: unknown): asserts value is ResourceSection {
   if (typeof value !== "string" || !RESOURCE_SECTIONS.has(value as ResourceSection)) {
     throw new Error("Invalid section.");
   }
-}
-
-/**
- * A subject a Core/AIML/AIDS Sem 2 upload legitimately points at lives
- * on a Sem 1-term row (see subjectInterchange.ts's
- * resolveSubjectQueryTermSlug — Sem 2 has no subject rows of its own,
- * by design). assertSubjectMatchesScope checks a subject against the
- * exact (specialization, term) it belongs to, so validating a genuine
- * Sem 2 upload against the resource's own RAW (specializationId,
- * termId) would incorrectly reject it. This resolves the same
- * EFFECTIVE (specialization, term) pair useSubjects/the bulk-publish
- * path already resolve client/server-side, so the two can't drift
- * apart — a subject the UI legitimately offered is always accepted
- * here too.
- *
- * A no-op (returns the inputs unchanged) for every branch/term this
- * doesn't apply to — no specialization (non-CSE) short-circuits
- * immediately, and resolveSubjectSpecializationName/
- * resolveSubjectQueryTermSlug are themselves no-ops outside 1st-Year
- * Sem 2.
- */
-async function resolveEffectiveSubjectScope(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  specializationId: string | null,
-  termId: string
-): Promise<{ specializationId: string | null; termId: string }> {
-  if (!specializationId) return { specializationId, termId };
-
-  const [{ data: specialization }, { data: term }] = await Promise.all([
-    supabase.from("specializations").select("id, name, branch_id").eq("id", specializationId).single(),
-    supabase.from("academic_terms").select("id, slug").eq("id", termId).single(),
-  ]);
-  if (!specialization || !term) return { specializationId, termId };
-
-  const resolvedName = resolveSubjectSpecializationName(specialization.name, term.slug);
-  const resolvedTermSlug = resolveSubjectQueryTermSlug(specialization.name, term.slug);
-
-  const [{ data: resolvedSpecialization }, { data: resolvedTerm }] = await Promise.all([
-    resolvedName === specialization.name
-      ? Promise.resolve({ data: specialization })
-      : supabase.from("specializations").select("id").eq("branch_id", specialization.branch_id).eq("name", resolvedName).single(),
-    resolvedTermSlug === term.slug
-      ? Promise.resolve({ data: term })
-      : supabase.from("academic_terms").select("id").eq("slug", resolvedTermSlug ?? term.slug).single(),
-  ]);
-
-  return {
-    specializationId: resolvedSpecialization?.id ?? specializationId,
-    termId: resolvedTerm?.id ?? termId,
-  };
 }
 
 /**
@@ -215,31 +164,17 @@ export async function updateResourceFields(
     // produces.
     await assertBatchTermReached(supabase, fields.batchId, fields.termId, fields.specializationId ?? null);
   }
-  // CSE Core/AIML/AIDS Sem 2 has no subject rows or real content of its
-  // own — moving/saving a resource "into" Sem 2 actually means saving
-  // it into the swapped specialization's real Sem 1, same as a fresh
-  // upload (see resolveEffectiveSubjectScope + uploadResourceDirect's
-  // identical resolution below). Computed whenever termId changes, not
-  // just when subjectId does, so the SAVED specialization_id/term_id
-  // themselves land on the effective scope too — not only the
-  // validation check.
-  const effectiveTargetScope =
-    fields.termId !== undefined
-      ? await resolveEffectiveSubjectScope(supabase, fields.specializationId ?? null, fields.termId)
-      : null;
   // Same reasoning: EditResourceButton's cascade always resends
   // subjectId alongside branch/term when any of them change, so this
   // is a real check for every real request, not just UI-narrowing.
-  if (fields.subjectId !== undefined && fields.branchId !== undefined && effectiveTargetScope) {
-    await assertSubjectMatchesScope(supabase, fields.subjectId, fields.branchId, effectiveTargetScope.specializationId, effectiveTargetScope.termId);
+  if (fields.subjectId !== undefined && fields.branchId !== undefined && fields.termId !== undefined) {
+    await assertSubjectMatchesScope(supabase, fields.subjectId, fields.branchId, fields.specializationId ?? null, fields.termId);
   }
 
   const update: Record<string, string | null> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;
-  if (fields.specializationId !== undefined) {
-    update.specialization_id = effectiveTargetScope ? effectiveTargetScope.specializationId : fields.specializationId;
-  }
-  if (fields.termId !== undefined) update.term_id = effectiveTargetScope ? effectiveTargetScope.termId : fields.termId;
+  if (fields.specializationId !== undefined) update.specialization_id = fields.specializationId;
+  if (fields.termId !== undefined) update.term_id = fields.termId;
   if (fields.batchId !== undefined) update.batch_id = fields.batchId;
   if (fields.subjectId !== undefined) update.subject_id = fields.subjectId;
   if (fields.title !== undefined) update.title = fields.title;
@@ -265,48 +200,6 @@ export async function updateResourceFields(
   revalidatePath("/notes");
   revalidatePath("/pyqs");
   revalidatePath("/cr");
-  revalidatePath("/cr/manage");
-}
-
-/**
- * Admin-only: flips the 1st-Year Sem 2 subject-interchange toggle —
- * the single system-level switch resolveSubjectBranchName reads.
- * Explicit role check, not left to RLS's own "Admin only updates"
- * policy alone, for the same clearer-error-message reason as every
- * other admin action here.
- */
-export async function setSubjectInterchange(active: boolean) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in.");
-
-  const role = await getCurrentRole();
-  if (role?.type !== "admin") throw new Error("Admin only.");
-  // Tight — this is a rare, deliberate system-wide toggle, not
-  // something a legitimate admin flips repeatedly in a short window.
-  await checkRateLimit("setSubjectInterchange", user.id, 10, 60_000);
-
-  if (typeof active !== "boolean") throw new Error("Invalid value.");
-
-  const { error } = await supabase
-    .from("subject_structure_config")
-    .update({
-      interchange_active: active,
-      updated_by: role.displayName,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", true);
-  if (error) throw safeDbError(error);
-
-  // Every page that resolves a subject list needs to see the new
-  // value — Notes/PYQs (browsing), Upload, and Manage (admin's own
-  // edit dialog) all call useSubjects.
-  revalidatePath("/notes");
-  revalidatePath("/pyqs");
-  revalidatePath("/cr");
-  revalidatePath("/cr/upload");
   revalidatePath("/cr/manage");
 }
 
@@ -381,8 +274,7 @@ export async function uploadResourceDirect(formData: FormData) {
   if (customCreatedAt !== null) assertValidString(customCreatedAt, "Date", { maxLength: 40 });
 
   await assertBatchTermReached(supabase, batchId, termId, specializationId);
-  const effectiveScope = await resolveEffectiveSubjectScope(supabase, specializationId, termId);
-  await assertSubjectMatchesScope(supabase, subjectId, branchId, effectiveScope.specializationId, effectiveScope.termId);
+  await assertSubjectMatchesScope(supabase, subjectId, branchId, specializationId, termId);
 
   // The presigned PUT already constrained WHICH Content-Type header
   // could be set on this object; this confirms the object's actual
@@ -393,19 +285,10 @@ export async function uploadResourceDirect(formData: FormData) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
-  // Saved at the EFFECTIVE scope, not the raw browsing selection — a
-  // CR uploading "while viewing" Core/AIML/AIDS Sem 2 is really
-  // contributing to the swapped specialization's real Sem 1 (the only
-  // place that subject/term pairing actually exists), so the resource
-  // lands where every other reader of that subject will find it,
-  // instead of an orphaned Sem 2 row nothing ever queries again. batchId
-  // stays the raw selected batch — batch_terms already has a row for
-  // (batch, Sem 1), so this doesn't change which batch the upload
-  // belongs to, only which semester within it.
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
-    specialization_id: effectiveScope.specializationId,
-    term_id: effectiveScope.termId,
+    specialization_id: specializationId,
+    term_id: termId,
     batch_id: batchId,
     subject_id: subjectId,
     section,
@@ -529,26 +412,6 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
-  // Resolved once for the whole batch, not per-target — fine to share
-  // across every target since it only depends on termId, which is
-  // fixed for this whole call. Same resolveSubjectSpecializationName
-  // useSubjects itself calls client-side, so a bulk-publish and a
-  // regular upload can never disagree about which subject list is
-  // currently active for a given specialization.
-  let allSpecializationNames: { id: string; name: string }[] = [];
-  let termSlug: string | null = null;
-  let allTerms: { id: string; slug: string }[] = [];
-  if (subjectName && specializationIds.length > 0) {
-    const [{ data: specializationRows }, { data: termRow }, { data: termRows }] = await Promise.all([
-      supabase.from("specializations").select("id, name").eq("branch_id", branchId),
-      supabase.from("academic_terms").select("slug").eq("id", termId).single(),
-      supabase.from("academic_terms").select("id, slug"),
-    ]);
-    allSpecializationNames = specializationRows ?? [];
-    termSlug = termRow?.slug ?? null;
-    allTerms = termRows ?? [];
-  }
-
   const rawTargets = specializationIds.length > 0 ? specializationIds : [null];
   // Drops any target this exact (batch, term) is hidden for (see
   // isBatchTermHiddenForSpecialization) — a bulk publish spanning
@@ -561,31 +424,13 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
 
   for (const specializationId of targets) {
     let subjectId: string | null = null;
-    // Defaults to the raw target/term — overwritten below only for a
-    // Core/AIML/AIDS Sem 2 target, where the resource is saved at the
-    // swapped specialization's real Sem 1 (the only place that
-    // subject/term pairing exists), exactly like uploadResourceDirect's
-    // own resolveEffectiveSubjectScope. Every other target (Cyber
-    // Security, non-CSE branches, any other term) keeps its raw values,
-    // so this is a no-op for them.
-    let effectiveSpecializationId = specializationId;
-    let effectiveTermId = termId;
     if (subjectName && specializationId) {
-      const requestedName = allSpecializationNames.find((s) => s.id === specializationId)?.name;
-      const resolvedName = requestedName ? resolveSubjectSpecializationName(requestedName, termSlug) : undefined;
-      const resolvedSpecializationId = resolvedName
-        ? allSpecializationNames.find((s) => s.name === resolvedName)?.id
-        : specializationId;
-      const subjectTermSlug = requestedName ? resolveSubjectQueryTermSlug(requestedName, termSlug) : termSlug;
-      const subjectTermId = allTerms.find((t) => t.slug === subjectTermSlug)?.id ?? termId;
-      effectiveSpecializationId = resolvedSpecializationId ?? specializationId;
-      effectiveTermId = subjectTermId;
       const { data: subject } = await supabase
         .from("subjects")
         .select("id")
         .eq("branch_id", branchId)
-        .eq("specialization_id", effectiveSpecializationId)
-        .eq("term_id", effectiveTermId)
+        .eq("specialization_id", specializationId)
+        .eq("term_id", termId)
         .eq("name", subjectName)
         .maybeSingle();
       subjectId = subject?.id ?? null;
@@ -603,8 +448,8 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
 
     const { error: insertError } = await supabase.from("resources").insert({
       branch_id: branchId,
-      specialization_id: effectiveSpecializationId,
-      term_id: effectiveTermId,
+      specialization_id: specializationId,
+      term_id: termId,
       batch_id: batchId,
       subject_id: subjectId,
       section,

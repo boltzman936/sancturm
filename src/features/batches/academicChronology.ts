@@ -16,18 +16,16 @@ export function isDateReached(startDate: string, todayKey: string): boolean {
 // deliberately designed (see supabase/add_batches.sql) — this is the
 // one row/audience pairing carved out of that shared table, matching
 // the same "small, explicit, hardcoded business rule" shape as
-// pyqSharing.ts and subjectInterchange.ts, not a new schema
-// dimension.
+// pyqSharing.ts, not a new schema dimension.
 //
 // CSE Core/AIML/AIDS's 1st Year Sem 2 used to be hidden entirely for
 // the 2025-26 batch (see git history — supabase/
 // exclude_sem2_core_aiml_aids.sql) — reversed per explicit correction:
 // Sem 2 is now available for 2025-26 same as every other reached
-// semester, with its SUBJECT LIST resolved from Sem 1's real subjects
-// via the interchange mapping (see subjectInterchange.ts's
-// resolveSubjectQueryTermSlug) rather than a separately-maintained Sem
-// 2 list that was never created. The only remaining exception here is
-// Cyber Security's own batch restriction, below.
+// semester, with its own explicit, permanent subject and resource rows
+// (see supabase/create_cse_sem2_subjects.sql) rather than a hidden
+// term. The only remaining exception here is Cyber Security's own
+// batch restriction, below.
 
 // Named exception: CSE Cyber Security didn't exist as a
 // specialization before the 2026-27 batch (see
