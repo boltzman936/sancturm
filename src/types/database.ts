@@ -248,3 +248,36 @@ export type SancturmUpdate = {
   is_pinned: boolean;
   created_at: string;
 };
+
+// Singleton config row, same boolean-PK pattern as MaintenanceConfig.
+// enabled=false (with upi_id/qr_url null) is the deployed default —
+// see supabase/add_support_sancturm.sql for why that's the only state
+// that ever reaches a real student while this feature is dormant.
+export type SupportConfig = {
+  id: true;
+  enabled: boolean;
+  upi_id: string | null;
+  qr_url: string | null;
+  suggested_amounts: number[];
+  support_message: string;
+  payment_instructions: string;
+  updated_by: string | null;
+  updated_at: string;
+};
+
+export type ContributionStatus = "pending" | "successful" | "failed" | "cancelled" | "refunded";
+
+export type Contribution = {
+  id: string;
+  amount: number;
+  currency: "INR";
+  status: ContributionStatus;
+  provider: string | null;
+  provider_reference_id: string | null;
+  utr: string | null;
+  is_anonymous: boolean;
+  display_name: string | null;
+  created_at: string;
+  verified_at: string | null;
+  verified_by: string | null;
+};

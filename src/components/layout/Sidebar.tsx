@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, HelpCircle, Megaphone, ShieldCheck, Sparkles, UserRound, X } from "lucide-react";
+import { FileText, HeartHandshake, HelpCircle, Megaphone, ShieldCheck, Sparkles, UserRound, X } from "lucide-react";
 
 import { BranchSwitcher } from "@/components/layout/BranchSwitcher";
 import { SpecializationSwitcher } from "@/components/layout/SpecializationSwitcher";
@@ -18,6 +18,7 @@ const NAV_LINKS = [
   { href: "/pyqs", label: "PYQs", icon: HelpCircle },
   { href: "/notices", label: "Notices", icon: Megaphone },
   { href: "/sancturm-updates", label: "Sancturm updates", icon: Sparkles },
+  { href: "/support", label: "Support Sancturm", icon: HeartHandshake },
   { href: "/ownership", label: "Ownership", icon: UserRound },
 ];
 

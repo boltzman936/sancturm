@@ -3,6 +3,8 @@ import { getCurrentRole } from "@/lib/auth/role";
 import { ManageResourceList, type ManageableResource } from "@/features/resources/components/ManageResourceList";
 import { SubjectInterchangeControl } from "@/features/resources/components/SubjectInterchangeControl";
 import { MaintenanceControl } from "@/features/maintenance/components/MaintenanceControl";
+import { SupportSancturmControl } from "@/features/support/components/SupportSancturmControl";
+import { ContributionsPanel } from "@/features/support/components/ContributionsPanel";
 
 export default async function CRManagePage() {
   const role = await getCurrentRole();
@@ -170,6 +172,8 @@ export default async function CRManagePage() {
 
       {role.type === "admin" && <SubjectInterchangeControl />}
       {role.type === "admin" && <MaintenanceControl />}
+      {role.type === "admin" && <SupportSancturmControl />}
+      {role.type === "admin" && <ContributionsPanel />}
 
       <ManageResourceList
         resources={[...resourceItems, ...noticeItems, ...updateItems]}

@@ -65,7 +65,7 @@ function checkBucket(key: string, limit: number, windowMs: number, now: number) 
 // set that one), then "unknown" if genuinely absent (e.g. local dev
 // without either header) — the per-user bucket below still applies
 // either way, this is purely the secondary layer.
-async function getClientIp(): Promise<string | null> {
+export async function getClientIp(): Promise<string | null> {
   const h = await headers();
   const forwarded = h.get("x-forwarded-for");
   if (forwarded) {

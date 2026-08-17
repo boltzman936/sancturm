@@ -92,10 +92,15 @@ export const config = {
   // (the admin must always be able to sign in, even mid-maintenance-
   // window with an expired/missing session, on any device — this is
   // the actual mechanism that prevents an admin lockout), /offline
-  // (unrelated browser-network-offline page, left untouched), and any
-  // path whose last segment has a file extension (covers every static
-  // asset by pattern rather than an allowlist — App Router pages never
-  // have a dot in their last segment, so this can't exclude a real
-  // route, and it never needs updating when a new asset type appears).
-  matcher: ["/((?!_next/static|_next/image|maintenance|login|offline|.*\\.[^/]+$).*)"],
+  // (unrelated browser-network-offline page, left untouched), /api
+  // (a route handler — e.g. the support payment webhook — needs its
+  // own response shape and must never receive an HTML redirect to
+  // /maintenance; a payment provider doesn't follow that the way a
+  // browser does, and even mid-maintenance a verified webhook still
+  // needs to land), and any path whose last segment has a file
+  // extension (covers every static asset by pattern rather than an
+  // allowlist — App Router pages never have a dot in their last
+  // segment, so this can't exclude a real route, and it never needs
+  // updating when a new asset type appears).
+  matcher: ["/((?!_next/static|_next/image|maintenance|login|offline|api|.*\\.[^/]+$).*)"],
 };
