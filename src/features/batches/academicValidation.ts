@@ -41,3 +41,31 @@ export async function assertBatchTermReached(
     throw new Error("That semester hasn't started yet for that batch, so it can't be used here.");
   }
 }
+
+/**
+ * Confirms `subjectId` (when given — it's optional, the "Extra"
+ * bucket has none) actually belongs to the (branch, specialization,
+ * term) it's being attached to. The client-side Subject <select> is
+ * already scoped correctly (useSubjects(branchId, specializationId,
+ * termId)), same as the Batch <select> assertBatchTermReached backs
+ * up above — this is what stops a manipulated request from pairing a
+ * real subject id with the WRONG branch/term (a Biotechnology
+ * resource pointing at a CSE subject, a 1st-Year subject attached to
+ * a 2nd-Year upload, etc.) regardless of what the dropdown offered.
+ */
+export async function assertSubjectMatchesScope(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  subjectId: string | null,
+  branchId: string,
+  specializationId: string | null,
+  termId: string
+) {
+  if (!subjectId) return;
+  let query = supabase.from("subjects").select("id").eq("id", subjectId).eq("branch_id", branchId).eq("term_id", termId);
+  query = specializationId === null ? query.is("specialization_id", null) : query.eq("specialization_id", specializationId);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    throw new Error("That subject doesn't belong to the selected branch/specialization/semester.");
+  }
+}

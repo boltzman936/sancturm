@@ -7,7 +7,7 @@ import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
-import { assertBatchTermReached } from "@/features/batches/academicValidation";
+import { assertBatchTermReached, assertSubjectMatchesScope } from "@/features/batches/academicValidation";
 import { isBatchTermHiddenForSpecialization } from "@/features/batches/academicChronology";
 import { resolveSubjectSpecializationName } from "./subjectInterchange";
 import type { SubjectStructureConfig, ResourceSection, ResourceType } from "./types";
@@ -165,6 +165,12 @@ export async function updateResourceFields(
     // produces.
     await assertBatchTermReached(supabase, fields.batchId, fields.termId, fields.specializationId ?? null);
   }
+  // Same reasoning: EditResourceButton's cascade always resends
+  // subjectId alongside branch/term when any of them change, so this
+  // is a real check for every real request, not just UI-narrowing.
+  if (fields.subjectId !== undefined && fields.branchId !== undefined && fields.termId !== undefined) {
+    await assertSubjectMatchesScope(supabase, fields.subjectId, fields.branchId, fields.specializationId ?? null, fields.termId);
+  }
 
   const update: Record<string, string | null> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;
@@ -311,6 +317,7 @@ export async function uploadResourceDirect(formData: FormData) {
   if (customCreatedAt !== null) assertValidString(customCreatedAt, "Date", { maxLength: 40 });
 
   await assertBatchTermReached(supabase, batchId, termId, specializationId);
+  await assertSubjectMatchesScope(supabase, subjectId, branchId, specializationId, termId);
 
   // The presigned PUT already constrained WHICH Content-Type header
   // could be set on this object; this confirms the object's actual
