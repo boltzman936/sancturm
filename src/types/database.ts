@@ -61,9 +61,6 @@ export type Specialization = {
   name: string;
   slug: string;
   sort_order: number;
-  cr_user_id: string | null;
-  cr_contact_email: string | null;
-  cr_contact_whatsapp: string | null;
   created_at: string;
 };
 

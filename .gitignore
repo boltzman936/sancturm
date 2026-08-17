@@ -50,3 +50,11 @@ next-env.d.ts
 /public/pdf.worker.min.mjs
 /public/pdf-cmaps
 /public/pdf-standard-fonts
+
+# Per-machine Claude Code tool config ("local" in the name is the
+# signal) — accumulates a running allowlist of approved shell commands
+# across sessions, including some that read local CLI auth tokens
+# (Vercel, Supabase). Values are redacted before being written here,
+# but it still has no business in the app's own git history — this was
+# committed once by mistake; untracking it going forward.
+.claude/settings.local.json
