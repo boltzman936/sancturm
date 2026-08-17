@@ -10,7 +10,7 @@ import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 import { assertBatchTermReached, assertSubjectMatchesScope } from "@/features/batches/academicValidation";
 import { isBatchTermHiddenForSpecialization } from "@/features/batches/academicChronology";
 import { resolveSubjectQueryTermSlug, resolveSubjectSpecializationName } from "./subjectInterchange";
-import type { SubjectStructureConfig, ResourceSection, ResourceType } from "./types";
+import type { ResourceSection, ResourceType } from "./types";
 import {
   assertValidId,
   assertValidIdOrNull,
@@ -75,15 +75,13 @@ async function resolveEffectiveSubjectScope(
 ): Promise<{ specializationId: string | null; termId: string }> {
   if (!specializationId) return { specializationId, termId };
 
-  const [{ data: config }, { data: specialization }, { data: term }] = await Promise.all([
-    supabase.from("subject_structure_config").select("*").single(),
+  const [{ data: specialization }, { data: term }] = await Promise.all([
     supabase.from("specializations").select("id, name, branch_id").eq("id", specializationId).single(),
     supabase.from("academic_terms").select("id, slug").eq("id", termId).single(),
   ]);
   if (!specialization || !term) return { specializationId, termId };
 
-  const interchangeActive = (config as SubjectStructureConfig | null)?.interchange_active ?? false;
-  const resolvedName = resolveSubjectSpecializationName(specialization.name, term.slug, interchangeActive);
+  const resolvedName = resolveSubjectSpecializationName(specialization.name, term.slug);
   const resolvedTermSlug = resolveSubjectQueryTermSlug(specialization.name, term.slug);
 
   const [{ data: resolvedSpecialization }, { data: resolvedTerm }] = await Promise.all([
@@ -515,18 +513,15 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   // useSubjects itself calls client-side, so a bulk-publish and a
   // regular upload can never disagree about which subject list is
   // currently active for a given specialization.
-  let interchangeActive = false;
   let allSpecializationNames: { id: string; name: string }[] = [];
   let termSlug: string | null = null;
   let allTerms: { id: string; slug: string }[] = [];
   if (subjectName && specializationIds.length > 0) {
-    const [{ data: config }, { data: specializationRows }, { data: termRow }, { data: termRows }] = await Promise.all([
-      supabase.from("subject_structure_config").select("*").single(),
+    const [{ data: specializationRows }, { data: termRow }, { data: termRows }] = await Promise.all([
       supabase.from("specializations").select("id, name").eq("branch_id", branchId),
       supabase.from("academic_terms").select("slug").eq("id", termId).single(),
       supabase.from("academic_terms").select("id, slug"),
     ]);
-    interchangeActive = (config as SubjectStructureConfig | null)?.interchange_active ?? false;
     allSpecializationNames = specializationRows ?? [];
     termSlug = termRow?.slug ?? null;
     allTerms = termRows ?? [];
@@ -546,9 +541,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
     let subjectId: string | null = null;
     if (subjectName && specializationId) {
       const requestedName = allSpecializationNames.find((s) => s.id === specializationId)?.name;
-      const resolvedName = requestedName
-        ? resolveSubjectSpecializationName(requestedName, termSlug, interchangeActive)
-        : undefined;
+      const resolvedName = requestedName ? resolveSubjectSpecializationName(requestedName, termSlug) : undefined;
       const resolvedSpecializationId = resolvedName
         ? allSpecializationNames.find((s) => s.name === resolvedName)?.id
         : specializationId;

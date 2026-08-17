@@ -38,30 +38,29 @@ export function useSubjectStructureConfig() {
  *
  * For CSE, resolves through resolveSubjectSpecializationName AND
  * resolveSubjectQueryTermSlug first — for every term except 1st-Year
- * Sem 2 (or whenever the interchange toggle is off, for the
- * specialization swap) this is exactly (specializationId, termId),
- * unchanged. For Core/AIML/AIDS's Sem 2 specifically, the query is
- * always redirected to Sem 1's real subject rows (there is no
- * separately-maintained Sem 2 list — it was never created, by design),
- * with the specialization swap still deciding whose Sem 1 list.
- * Cyber Security and every non-CSE branch pass through both resolvers
- * unchanged. Callers never need to know interchange/redirect exists at
- * all — they ask for "this specialization's subjects at this term" and
- * get the currently-active list back, same call shape as before.
+ * Sem 2 this is exactly (specializationId, termId), unchanged. For
+ * Core/AIML/AIDS's Sem 2 specifically, the query is always redirected
+ * to Sem 1's real subject rows (there is no separately-maintained Sem
+ * 2 list — it was never created, by design), with the specialization
+ * ALWAYS swapped (AIDS <-> Core/AIML — not admin-togglable, see
+ * subjectInterchange.ts). Cyber Security and every non-CSE branch pass
+ * through both resolvers unchanged. Callers never need to know
+ * interchange/redirect exists at all — they ask for "this
+ * specialization's subjects at this term" and get the currently-active
+ * list back, same call shape as before.
  */
 export function useSubjects(branchId: string | null, specializationId: string | null, termId: string | null) {
   const { data: specializations } = useSpecializations(branchId);
   const { data: terms } = useTerms();
-  const { data: config } = useSubjectStructureConfig();
 
   const effectiveSpecializationId = useMemo(() => {
-    if (!specializationId || !termId || !specializations || !terms || !config) return specializationId;
+    if (!specializationId || !termId || !specializations || !terms) return specializationId;
     const term = terms.find((t) => t.id === termId);
     const spec = specializations.find((s) => s.id === specializationId);
     if (!term || !spec) return specializationId;
-    const resolvedName = resolveSubjectSpecializationName(spec.name, term.slug, config.interchange_active);
+    const resolvedName = resolveSubjectSpecializationName(spec.name, term.slug);
     return specializations.find((s) => s.name === resolvedName)?.id ?? specializationId;
-  }, [specializationId, termId, specializations, terms, config]);
+  }, [specializationId, termId, specializations, terms]);
 
   const effectiveTermId = useMemo(() => {
     if (!termId || !specializationId || !specializations || !terms) return termId;
@@ -235,18 +234,16 @@ export function useSubjectsForBranchAndTerms(
 ) {
   const { data: specializations } = useSpecializations(branchId);
   const { data: terms } = useTerms();
-  const { data: config } = useSubjectStructureConfig();
   const spec = specializations?.find((s) => s.id === specializationId);
-  const ready = !!branchId && (!specializationId || (!!specializations && !!terms && !!config));
+  const ready = !!branchId && (!specializationId || (!!specializations && !!terms));
 
   const results = useQueries({
     queries: termIds.map((termId) => {
       const term = terms?.find((t) => t.id === termId);
       const effectiveSpecializationId =
         specializationId && ready && spec && term
-          ? specializations!.find(
-              (s) => s.name === resolveSubjectSpecializationName(spec.name, term.slug, config!.interchange_active)
-            )?.id ?? specializationId
+          ? specializations!.find((s) => s.name === resolveSubjectSpecializationName(spec.name, term.slug))?.id ??
+            specializationId
           : specializationId;
       const effectiveTermId =
         specializationId && ready && spec && term
