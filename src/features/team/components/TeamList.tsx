@@ -14,15 +14,38 @@ type ResolvedRow = {
   specializationName: string | null;
   yearLabel: string;
   semesterLabel: string;
+  // Raw sort keys, kept alongside the display labels above — sorting
+  // on yearLabel itself ("1st Year"/"2nd Year" as strings) happens to
+  // work today but breaks the moment a 10th Year exists ("10th Year" <
+  // "2nd Year" alphabetically); year_number is the real ordering.
+  yearNumber: number;
 };
+
+// Year, then Branch, then Specialization — matches how the sidebar
+// itself scopes browsing (Year picked first, then Branch, then
+// Specialization), so the team roster reads in the same order a
+// visitor already thinks in. No-specialization branches (Civil,
+// Biotechnology, ...) sort before CSE's own specializations at the
+// same Branch/Year, since a missing specialization name is treated as
+// "" for comparison purposes — harmless since branchName already
+// groups them apart from CSE.
+function sortRows(rows: ResolvedRow[]): ResolvedRow[] {
+  return [...rows].sort(
+    (a, b) =>
+      a.yearNumber - b.yearNumber ||
+      a.branchName.localeCompare(b.branchName) ||
+      (a.specializationName ?? "").localeCompare(b.specializationName ?? "") ||
+      a.name.localeCompare(b.name)
+  );
+}
 
 function resolveRows(
   entries: TeamDirectoryEntry[],
   branches: { id: string; name: string; has_specializations: boolean }[],
   specializations: { id: string; name: string }[],
-  terms: { id: string; label: string; semester_number: number }[]
+  terms: { id: string; label: string; semester_number: number; year_number: number }[]
 ): ResolvedRow[] {
-  return entries.map((entry, i) => {
+  const resolved = entries.map((entry, i) => {
     const branch = branches.find((b) => b.id === entry.branch_id);
     const specialization =
       branch?.has_specializations && entry.specialization_id
@@ -36,8 +59,10 @@ function resolveRows(
       specializationName: specialization?.name ?? null,
       yearLabel: term ? shortTermLabel(term) : "—",
       semesterLabel: term ? ordinalSemesterLabel(term.semester_number) : "—",
+      yearNumber: term?.year_number ?? Number.MAX_SAFE_INTEGER,
     };
   });
+  return sortRows(resolved);
 }
 
 /**
