@@ -9,6 +9,7 @@ import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useB
 import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
 import {
   useNotesAndLabResources,
+  useSharedResourceSourceScopes,
   useSubjects,
   useSubjectsForBranchAndTerms,
   type ResourceWithSubject,
@@ -124,11 +125,28 @@ export default function NotesAndLabPage() {
   );
   useResetInvalidSelection(subjectFilter, validSubjectValues, ALL_SUBJECTS, setSubjectFilter);
 
+  // Some (branch, term) combinations have no Notes/Lab content of
+  // their own — CSE Core/AIML/AIDS Sem 2 (its own swapped Sem 1) and
+  // Civil/Mechanical/Automation & Robotics's 1st Year (mirrors CSE's
+  // curriculum) — see sharedResourceScopes.ts. ownSubjectNames comes
+  // from the exact subject list already fetched above for the Subject
+  // filter, so a shared-in resource is only kept when it matches a
+  // subject this branch's own curriculum actually has.
+  const sharedScopes = useSharedResourceSourceScopes(
+    branchSlug,
+    specializationName ?? null,
+    isAllSemesters ? effectiveTermIds : term?.id ?? null
+  );
+  const ownSubjectNames = useMemo(() => (allSubjects ?? []).map((s) => s.name), [allSubjects]);
+
   const { data: resources, isLoading, isError } = useNotesAndLabResources(
     branch?.id ?? null,
     specializationId,
     isAllSemesters ? effectiveTermIds : term?.id ?? null,
-    resourceType
+    resourceType,
+    undefined,
+    sharedScopes,
+    ownSubjectNames
   );
 
   // Newest batch always groups first, regardless of dateSort direction

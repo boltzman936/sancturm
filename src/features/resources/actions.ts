@@ -215,18 +215,31 @@ export async function updateResourceFields(
     // produces.
     await assertBatchTermReached(supabase, fields.batchId, fields.termId, fields.specializationId ?? null);
   }
+  // CSE Core/AIML/AIDS Sem 2 has no subject rows or real content of its
+  // own — moving/saving a resource "into" Sem 2 actually means saving
+  // it into the swapped specialization's real Sem 1, same as a fresh
+  // upload (see resolveEffectiveSubjectScope + uploadResourceDirect's
+  // identical resolution below). Computed whenever termId changes, not
+  // just when subjectId does, so the SAVED specialization_id/term_id
+  // themselves land on the effective scope too — not only the
+  // validation check.
+  const effectiveTargetScope =
+    fields.termId !== undefined
+      ? await resolveEffectiveSubjectScope(supabase, fields.specializationId ?? null, fields.termId)
+      : null;
   // Same reasoning: EditResourceButton's cascade always resends
   // subjectId alongside branch/term when any of them change, so this
   // is a real check for every real request, not just UI-narrowing.
-  if (fields.subjectId !== undefined && fields.branchId !== undefined && fields.termId !== undefined) {
-    const effectiveScope = await resolveEffectiveSubjectScope(supabase, fields.specializationId ?? null, fields.termId);
-    await assertSubjectMatchesScope(supabase, fields.subjectId, fields.branchId, effectiveScope.specializationId, effectiveScope.termId);
+  if (fields.subjectId !== undefined && fields.branchId !== undefined && effectiveTargetScope) {
+    await assertSubjectMatchesScope(supabase, fields.subjectId, fields.branchId, effectiveTargetScope.specializationId, effectiveTargetScope.termId);
   }
 
   const update: Record<string, string | null> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;
-  if (fields.specializationId !== undefined) update.specialization_id = fields.specializationId;
-  if (fields.termId !== undefined) update.term_id = fields.termId;
+  if (fields.specializationId !== undefined) {
+    update.specialization_id = effectiveTargetScope ? effectiveTargetScope.specializationId : fields.specializationId;
+  }
+  if (fields.termId !== undefined) update.term_id = effectiveTargetScope ? effectiveTargetScope.termId : fields.termId;
   if (fields.batchId !== undefined) update.batch_id = fields.batchId;
   if (fields.subjectId !== undefined) update.subject_id = fields.subjectId;
   if (fields.title !== undefined) update.title = fields.title;
@@ -380,10 +393,19 @@ export async function uploadResourceDirect(formData: FormData) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
+  // Saved at the EFFECTIVE scope, not the raw browsing selection — a
+  // CR uploading "while viewing" Core/AIML/AIDS Sem 2 is really
+  // contributing to the swapped specialization's real Sem 1 (the only
+  // place that subject/term pairing actually exists), so the resource
+  // lands where every other reader of that subject will find it,
+  // instead of an orphaned Sem 2 row nothing ever queries again. batchId
+  // stays the raw selected batch — batch_terms already has a row for
+  // (batch, Sem 1), so this doesn't change which batch the upload
+  // belongs to, only which semester within it.
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
-    specialization_id: specializationId,
-    term_id: termId,
+    specialization_id: effectiveScope.specializationId,
+    term_id: effectiveScope.termId,
     batch_id: batchId,
     subject_id: subjectId,
     section,
@@ -539,26 +561,31 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
 
   for (const specializationId of targets) {
     let subjectId: string | null = null;
+    // Defaults to the raw target/term — overwritten below only for a
+    // Core/AIML/AIDS Sem 2 target, where the resource is saved at the
+    // swapped specialization's real Sem 1 (the only place that
+    // subject/term pairing exists), exactly like uploadResourceDirect's
+    // own resolveEffectiveSubjectScope. Every other target (Cyber
+    // Security, non-CSE branches, any other term) keeps its raw values,
+    // so this is a no-op for them.
+    let effectiveSpecializationId = specializationId;
+    let effectiveTermId = termId;
     if (subjectName && specializationId) {
       const requestedName = allSpecializationNames.find((s) => s.id === specializationId)?.name;
       const resolvedName = requestedName ? resolveSubjectSpecializationName(requestedName, termSlug) : undefined;
       const resolvedSpecializationId = resolvedName
         ? allSpecializationNames.find((s) => s.name === resolvedName)?.id
         : specializationId;
-      // Sem 2 has no subject rows of its own for Core/AIML/AIDS — the
-      // lookup is redirected to Sem 1's real term, same as
-      // useSubjects/resolveEffectiveSubjectScope. The RESOURCE row
-      // inserted below still uses the real termId — a Sem 2 publish
-      // stays a genuine Sem 2 resource, only its subject_id borrows a
-      // Sem 1-term row.
       const subjectTermSlug = requestedName ? resolveSubjectQueryTermSlug(requestedName, termSlug) : termSlug;
       const subjectTermId = allTerms.find((t) => t.slug === subjectTermSlug)?.id ?? termId;
+      effectiveSpecializationId = resolvedSpecializationId ?? specializationId;
+      effectiveTermId = subjectTermId;
       const { data: subject } = await supabase
         .from("subjects")
         .select("id")
         .eq("branch_id", branchId)
-        .eq("specialization_id", resolvedSpecializationId ?? specializationId)
-        .eq("term_id", subjectTermId)
+        .eq("specialization_id", effectiveSpecializationId)
+        .eq("term_id", effectiveTermId)
         .eq("name", subjectName)
         .maybeSingle();
       subjectId = subject?.id ?? null;
@@ -576,8 +603,8 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
 
     const { error: insertError } = await supabase.from("resources").insert({
       branch_id: branchId,
-      specialization_id: specializationId,
-      term_id: termId,
+      specialization_id: effectiveSpecializationId,
+      term_id: effectiveTermId,
       batch_id: batchId,
       subject_id: subjectId,
       section,

@@ -10,6 +10,7 @@ import { useBranchBySlug, useSpecializations } from "@/features/branches/queries
 import { useTerms } from "@/features/terms/queries";
 import {
   usePyqResources,
+  useSharedResourceSourceScopes,
   useSubjectsForPyqScope,
   useSubjectsForPyqScopeTerms,
   type ResourceWithSubject,
@@ -101,13 +102,6 @@ export default function PYQsPage() {
   const [dateFilter, setDateFilter] = useState("");
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
 
-  const { data: resources, isLoading, isError } = usePyqResources(
-    branch?.id ?? null,
-    pyqSpecializationIds,
-    branch?.has_specializations ?? false,
-    isAllSemesters ? effectiveTermIds : term?.id ?? null
-  );
-
   // Every subject in the viewer's own branch/sharing-pool scope for
   // this term — already scoped by useSubjectsForPyqScope to exactly
   // the same (branch, specializations) set usePyqResources itself
@@ -124,9 +118,11 @@ export default function PYQsPage() {
   // Notes/Lab's useSubjects is, using the VIEWER's own specialization
   // (not the sharing pool — pyqSpecializationIds is keyed by Year, not
   // Semester, so it applies correctly to Sem 1's real subjects once the
-  // term itself is redirected). The PYQ RESOURCE query above
-  // (usePyqResources) deliberately keeps using the real, unredirected
-  // term(s) — a Sem 2 PYQ is a genuine Sem 2 resource.
+  // term itself is redirected). The PYQ RESOURCE query below
+  // (usePyqResources) keeps using the real, unredirected term(s) for
+  // its DIRECT match — the Sem 2 -> Sem 1 redirect for actually finding
+  // existing content is handled separately via sharedScopes below,
+  // same mechanism Notes/Lab uses.
   const { data: allTerms } = useTerms();
   const subjectTermId = useMemo(() => {
     if (isAllSemesters || !term) return null;
@@ -166,6 +162,29 @@ export default function PYQsPage() {
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [allTermSubjects]);
+
+  // Same shared-content resolver Notes & Lab uses — see
+  // sharedResourceScopes.ts. PYQs and PYQ Solutions are the same
+  // section/query here (filtered client-side by pyqKind below), so
+  // wiring it once into usePyqResources covers both, per the "PYQ must
+  // use the exact same shared-content logic" requirement. ownSubjectNames
+  // reuses subjectOptions (already deduped/lab-filtered) rather than a
+  // second derivation of the same list.
+  const sharedScopes = useSharedResourceSourceScopes(
+    branchSlug,
+    specializationName ?? null,
+    isAllSemesters ? effectiveTermIds : term?.id ?? null
+  );
+
+  const { data: resources, isLoading, isError } = usePyqResources(
+    branch?.id ?? null,
+    pyqSpecializationIds,
+    branch?.has_specializations ?? false,
+    isAllSemesters ? effectiveTermIds : term?.id ?? null,
+    undefined,
+    sharedScopes,
+    subjectOptions
+  );
 
   // Resets subjectFilter same as Notes & Lab's tab switch — a subject
   // selected while looking at solutions shouldn't silently carry over

@@ -3,9 +3,10 @@
 import { useMemo } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { useSpecializations } from "@/features/branches/queries";
+import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
 import { resolveSubjectQueryTermSlug, resolveSubjectSpecializationName } from "./subjectInterchange";
+import { getSharedResourceScopes, normalizeSharedSubjectName } from "./sharedResourceScopes";
 import type { Resource, ResourceType, Subject, SubjectStructureConfig } from "./types";
 
 export type ResourceWithSubject = Resource & {
@@ -31,25 +32,19 @@ export function useSubjectStructureConfig() {
 }
 
 /**
- * Subjects for one (branch, specialization, term) combination, ordered
- * the way the CR arranged them. specializationId is null for any
- * branch with no specialization concept (everything but CSE) — those
- * subjects are matched with `specialization_id is null`.
- *
- * For CSE, resolves through resolveSubjectSpecializationName AND
- * resolveSubjectQueryTermSlug first — for every term except 1st-Year
- * Sem 2 this is exactly (specializationId, termId), unchanged. For
- * Core/AIML/AIDS's Sem 2 specifically, the query is always redirected
- * to Sem 1's real subject rows (there is no separately-maintained Sem
- * 2 list — it was never created, by design), with the specialization
- * ALWAYS swapped (AIDS <-> Core/AIML — not admin-togglable, see
- * subjectInterchange.ts). Cyber Security and every non-CSE branch pass
- * through both resolvers unchanged. Callers never need to know
- * interchange/redirect exists at all — they ask for "this
- * specialization's subjects at this term" and get the currently-active
- * list back, same call shape as before.
+ * The (specializationId, termId) a CSE Core/AIML/AIDS Sem 2 selection
+ * ACTUALLY resolves to — the swapped specialization's real Sem 1
+ * (there is no separately-maintained Sem 2 list or content; see
+ * subjectInterchange.ts). Identity (returns the inputs unchanged) for
+ * every other term/specialization, including Cyber Security and every
+ * non-CSE branch. Shared by useSubjects (the subject-list query) AND
+ * by every resource query (Notes/Lab/PYQ) and the Upload/Manage/Edit
+ * write paths (see actions.ts's resolveEffectiveSubjectScope, the
+ * server-side twin of this) — reads and writes always agree on where
+ * Sem 2 content actually lives, so browsing Sem 2 shows exactly what
+ * was uploaded there.
  */
-export function useSubjects(branchId: string | null, specializationId: string | null, termId: string | null) {
+export function useEffectiveScope(branchId: string | null, specializationId: string | null, termId: string | null) {
   const { data: specializations } = useSpecializations(branchId);
   const { data: terms } = useTerms();
 
@@ -70,6 +65,24 @@ export function useSubjects(branchId: string | null, specializationId: string | 
     const resolvedSlug = resolveSubjectQueryTermSlug(spec.name, term.slug);
     return terms.find((t) => t.slug === resolvedSlug)?.id ?? termId;
   }, [termId, specializationId, specializations, terms]);
+
+  return { effectiveSpecializationId, effectiveTermId };
+}
+
+/**
+ * Subjects for one (branch, specialization, term) combination, ordered
+ * the way the CR arranged them. specializationId is null for any
+ * branch with no specialization concept (everything but CSE) — those
+ * subjects are matched with `specialization_id is null`.
+ *
+ * Resolves through useEffectiveScope first — for every term except
+ * 1st-Year Sem 2 this is exactly (specializationId, termId), unchanged.
+ * Callers never need to know interchange/redirect exists at all — they
+ * ask for "this specialization's subjects at this term" and get the
+ * currently-active list back, same call shape as before.
+ */
+export function useSubjects(branchId: string | null, specializationId: string | null, termId: string | null) {
+  const { effectiveSpecializationId, effectiveTermId } = useEffectiveScope(branchId, specializationId, termId);
 
   return useQuery({
     queryKey: ["subjects", branchId, effectiveSpecializationId, effectiveTermId],
@@ -275,6 +288,115 @@ export function useSubjectsForBranchAndTerms(
 }
 
 /**
+ * Resolves getSharedResourceScopes' (branchSlug, specializationName,
+ * termSlug) scopes to real ids, for however many terms are currently
+ * in view (single term, or the full array under "All semesters").
+ * Covers both content-sharing rules that function knows about — CSE
+ * Core/AIML/AIDS's own Sem 2 self-swap and Civil/Mechanical/Automation
+ * & Robotics's cross-branch mirroring — with one resolved-ids list,
+ * since today's rules only ever produce scopes inside a single source
+ * branch (always CSE) regardless of which rule fired, so only one
+ * extra useSpecializations call is ever needed. Empty for every
+ * branch/term neither rule applies to.
+ */
+export function useSharedResourceSourceScopes(
+  branchSlug: string | null,
+  specializationName: string | null,
+  termId: string | string[] | null
+) {
+  const { data: terms } = useTerms();
+  const termIdList = termId === null ? [] : Array.isArray(termId) ? termId : [termId];
+
+  const rawScopes: { branchSlug: string; specializationName: string | null; termSlug: string }[] = [];
+  if (branchSlug && terms) {
+    const seen = new Set<string>();
+    for (const id of termIdList) {
+      const slug = terms.find((t) => t.id === id)?.slug;
+      if (!slug) continue;
+      for (const scope of getSharedResourceScopes(branchSlug, specializationName, slug)) {
+        const key = `${scope.branchSlug}|${scope.specializationName}|${scope.termSlug}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rawScopes.push(scope);
+      }
+    }
+  }
+
+  const { data: sourceBranch } = useBranchBySlug(rawScopes[0]?.branchSlug ?? null);
+  const { data: sourceSpecializations } = useSpecializations(sourceBranch?.id ?? null);
+  // rawScopes is rebuilt fresh every render from primitive inputs
+  // (branchSlug/specializationName/termIdList's values, via terms) — a
+  // stringified key lets the memo below key on its actual contents
+  // rather than array identity, matching the termKey pattern the
+  // resource hooks below already use for the same reason.
+  const termIdKey = termIdList.join(",");
+
+  return useMemo(() => {
+    if (rawScopes.length === 0 || !sourceBranch || !sourceSpecializations || !terms) return [];
+    return rawScopes
+      .map((s) => ({
+        branchId: sourceBranch.id,
+        specializationId: sourceSpecializations.find((sp) => sp.name === s.specializationName)?.id ?? null,
+        termId: terms.find((t) => t.slug === s.termSlug)?.id ?? null,
+      }))
+      .filter((s): s is { branchId: string; specializationId: string; termId: string } => !!s.specializationId && !!s.termId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceBranch, sourceSpecializations, terms, branchSlug, specializationName, termIdKey]);
+}
+
+async function fetchSharedScopeResources(
+  section: "notes_lab" | "pyq",
+  resourceType: ResourceType | null,
+  sharedScopes: { branchId: string; specializationId: string; termId: string }[],
+  ownSubjectNames: string[],
+  batchId?: string | null
+): Promise<ResourceWithSubject[]> {
+  if (sharedScopes.length === 0 || ownSubjectNames.length === 0) return [];
+  // Maps the SOURCE scope's subject name (e.g. CSE's "Mathematics I")
+  // back to the viewer's own name for it (e.g. Civil's "Engineering
+  // Mathematics I") — built from the caller's own subject list, so a
+  // shared-in resource displays and filters exactly like the viewer's
+  // own content, never exposing the source branch's naming.
+  const sourceNameToOwnName = new Map(ownSubjectNames.map((name) => [normalizeSharedSubjectName(name), name]));
+
+  const supabase = createClient();
+  const results = await Promise.all(
+    sharedScopes.map(async (scope) => {
+      let query = supabase
+        .from("resources")
+        .select("*, subject:subjects(id, name, sort_order)")
+        .eq("branch_id", scope.branchId)
+        .eq("specialization_id", scope.specializationId)
+        .eq("term_id", scope.termId)
+        .eq("section", section)
+        .eq("status", "approved");
+      if (resourceType) query = query.eq("resource_type", resourceType);
+      if (batchId) query = query.eq("batch_id", batchId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []) as unknown as ResourceWithSubject[];
+    })
+  );
+
+  const merged: ResourceWithSubject[] = [];
+  for (const scopeResults of results) {
+    for (const resource of scopeResults) {
+      const ownName = resource.subject ? sourceNameToOwnName.get(resource.subject.name) : undefined;
+      if (!ownName) continue; // not a subject the viewer's own curriculum actually studies
+      merged.push({ ...resource, subject: { ...resource.subject!, name: ownName } });
+    }
+  }
+  return merged;
+}
+
+function mergeSharedResources(direct: ResourceWithSubject[], shared: ResourceWithSubject[]): ResourceWithSubject[] {
+  if (shared.length === 0) return direct;
+  const byId = new Map(direct.map((r) => [r.id, r]));
+  for (const resource of shared) if (!byId.has(resource.id)) byId.set(resource.id, resource);
+  return Array.from(byId.values());
+}
+
+/**
  * Approved Notes & Lab resources for one (branch, specialization, term)
  * combination + type ('notes' or 'lab_manual'). specializationId null
  * matches specialization_id is null (every non-CSE branch). Returned
@@ -285,6 +407,15 @@ export function useSubjectsForBranchAndTerms(
  * termId also accepts an array — Notes/PYQ's "All semesters" pick
  * (ALL_SEMESTERS in useBatchSemesterFilter) needs every semester
  * currently in view in one query (.in(...)), not a single .eq(...).
+ *
+ * sharedScopes/ownSubjectNames (both optional, default empty): when the
+ * viewer's own branch/term has no content of its own but MIRRORS
+ * another scope's curriculum (Civil/Mechanical/Automation & Robotics's
+ * 1st Year — see sharedResourceScopes.ts), the matching existing
+ * resources from that source scope are merged in, filtered to subjects
+ * the viewer's own curriculum actually studies (ownSubjectNames) and
+ * re-labeled with the viewer's own subject name. Never duplicates a
+ * row — the source resource is only ever read, never re-inserted.
  */
 export function useNotesAndLabResources(
   branchId: string | null,
@@ -295,12 +426,24 @@ export function useNotesAndLabResources(
   // Omitted (null) shows every batch's content for this scope, which
   // is what "browsing your year" meant before Batch existed and stays
   // the default now.
-  batchId?: string | null
+  batchId?: string | null,
+  sharedScopes: { branchId: string; specializationId: string; termId: string }[] = [],
+  ownSubjectNames: string[] = []
 ) {
   const termKey = Array.isArray(termId) ? [...termId].sort() : termId;
   const hasTerm = Array.isArray(termId) ? termId.length > 0 : !!termId;
   return useQuery({
-    queryKey: ["resources", "notes_lab", branchId, specializationId, termKey, resourceType, batchId ?? null],
+    queryKey: [
+      "resources",
+      "notes_lab",
+      branchId,
+      specializationId,
+      termKey,
+      resourceType,
+      batchId ?? null,
+      sharedScopes,
+      [...ownSubjectNames].sort(),
+    ],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase
@@ -313,11 +456,12 @@ export function useNotesAndLabResources(
       query = specializationId ? query.eq("specialization_id", specializationId) : query.is("specialization_id", null);
       query = Array.isArray(termId) ? query.in("term_id", termId) : query.eq("term_id", termId!);
       if (batchId) query = query.eq("batch_id", batchId);
-      const { data, error } = await query
-        .order("is_pinned", { ascending: false })
-        .order("created_at", { ascending: false });
+      const [{ data, error }, sharedResources] = await Promise.all([
+        query.order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
+        fetchSharedScopeResources("notes_lab", resourceType, sharedScopes, ownSubjectNames, batchId),
+      ]);
       if (error) throw error;
-      return data as unknown as ResourceWithSubject[];
+      return mergeSharedResources(data as unknown as ResourceWithSubject[], sharedResources);
     },
     enabled: !!branchId && hasTerm,
     staleTime: 30_000,
@@ -327,9 +471,12 @@ export function useNotesAndLabResources(
 /**
  * PYQs are shared within one branch's specialization pool (see
  * pyqSharing.ts's pyqSharingSpecializationIds) WITHIN a term — never
- * across different real branches (a Civil PYQ has nothing to do with a
- * CSE student). hasSpecializations=false (every non-CSE branch) means
- * "match specialization_id is null" instead of an IN-list.
+ * across different real branches for DIRECT content (a Civil PYQ has
+ * nothing to do with a CSE student's own upload). sharedScopes is the
+ * one deliberate exception — see useNotesAndLabResources's identical
+ * parameter for what it does and why.
+ * hasSpecializations=false (every non-CSE branch) means "match
+ * specialization_id is null" instead of an IN-list.
  *
  * termId also accepts an array — see useNotesAndLabResources's
  * identical note for why ("All semesters").
@@ -339,13 +486,24 @@ export function usePyqResources(
   specializationIds: string[],
   hasSpecializations: boolean,
   termId: string | string[] | null,
-  batchId?: string | null
+  batchId?: string | null,
+  sharedScopes: { branchId: string; specializationId: string; termId: string }[] = [],
+  ownSubjectNames: string[] = []
 ) {
   const termKey = Array.isArray(termId) ? [...termId].sort() : termId;
   const hasTerm = Array.isArray(termId) ? termId.length > 0 : !!termId;
   const ready = hasSpecializations ? specializationIds.length > 0 : true;
   return useQuery({
-    queryKey: ["resources", "pyq", branchId, [...specializationIds].sort(), termKey, batchId ?? null],
+    queryKey: [
+      "resources",
+      "pyq",
+      branchId,
+      [...specializationIds].sort(),
+      termKey,
+      batchId ?? null,
+      sharedScopes,
+      [...ownSubjectNames].sort(),
+    ],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase
@@ -357,11 +515,12 @@ export function usePyqResources(
       query = hasSpecializations ? query.in("specialization_id", specializationIds) : query.is("specialization_id", null);
       query = Array.isArray(termId) ? query.in("term_id", termId) : query.eq("term_id", termId!);
       if (batchId) query = query.eq("batch_id", batchId);
-      const { data, error } = await query
-        .order("is_pinned", { ascending: false })
-        .order("created_at", { ascending: false });
+      const [{ data, error }, sharedResources] = await Promise.all([
+        query.order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
+        fetchSharedScopeResources("pyq", null, sharedScopes, ownSubjectNames, batchId),
+      ]);
       if (error) throw error;
-      return data as unknown as ResourceWithSubject[];
+      return mergeSharedResources(data as unknown as ResourceWithSubject[], sharedResources);
     },
     enabled: !!branchId && hasTerm && ready,
     staleTime: 30_000,
