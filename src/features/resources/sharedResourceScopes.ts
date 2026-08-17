@@ -9,26 +9,13 @@
 // scopes a resource query searches, same idea as CSE Core/AIML/AIDS's
 // own Sem 2 -> Sem 1 redirect (see subjectInterchange.ts +
 // queries.ts's useEffectiveScope) — that one is a single-scope,
-// same-physical-subject-row redirect; this one is a cross-BRANCH,
-// name-matched union, since Civil/Mechanical/Automation & Robotics
-// have their own distinct subject rows (different ids, same names)
-// rather than sharing CSE's rows directly.
+// same-physical-subject-row redirect; this one is a cross-BRANCH union
+// scoped here to (branch, specialization, term) only. WHICH subjects
+// within that scope actually match is resolved separately, by explicit
+// id, via canonicalSubjects.ts — never by name (see that file).
 import { resolveSubjectQueryTermSlug, resolveSubjectSpecializationName } from "./subjectInterchange";
 
 export type SharedResourceScope = { branchSlug: string; specializationName: string | null; termSlug: string };
-
-// The one subject renamed between CSE's source curriculum and the
-// mirroring branches — every other subject in the mirrored set kept an
-// identical name (see the migration's own subject lists), so this is
-// the only alias name-matching needs.
-const SUBJECT_NAME_ALIASES: Record<string, string> = {
-  "Engineering Mathematics I": "Mathematics I",
-  "Engineering Mathematics II": "Mathematics I",
-};
-
-export function normalizeSharedSubjectName(name: string): string {
-  return SUBJECT_NAME_ALIASES[name] ?? name;
-}
 
 const MIRRORING_BRANCH_SLUGS = new Set(["civil", "mechanical", "automation-robotics"]);
 

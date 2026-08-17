@@ -220,6 +220,13 @@ export type Resource = {
   view_count: number;
   uploaded_by_device: string | null;
   uploaded_by_name: string | null;
+  // One-time backfilled marker (see supabase/add_legacy_shared_flag.sql)
+  // — true only for resources that existed before cross-context
+  // resource sharing was introduced (see sharedResourceScopes.ts).
+  // Every new upload defaults to false via the column default and
+  // stays visible ONLY in its own exact upload context; this is never
+  // set true by application code, only by that one migration.
+  legacy_shared: boolean;
   created_at: string;
   updated_at: string;
 };

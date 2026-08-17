@@ -167,13 +167,22 @@ export default function PYQsPage() {
   // sharedResourceScopes.ts. PYQs and PYQ Solutions are the same
   // section/query here (filtered client-side by pyqKind below), so
   // wiring it once into usePyqResources covers both, per the "PYQ must
-  // use the exact same shared-content logic" requirement. ownSubjectNames
-  // reuses subjectOptions (already deduped/lab-filtered) rather than a
-  // second derivation of the same list.
+  // use the exact same shared-content logic" requirement. ownSubjects is
+  // {id, name} pairs (unlike subjectOptions above, which is name-only —
+  // that one drives the Subject filter dropdown and intentionally
+  // matches by name across the sharing pool's own specializations, a
+  // separate, pre-existing mechanism) since shared-in matching is by
+  // explicit canonical subject id (see canonicalSubjects.ts), never by
+  // name. Deduped by id — allTermSubjects can repeat the same subject
+  // once per pooled specialization.
   const sharedScopes = useSharedResourceSourceScopes(
     branchSlug,
     specializationName ?? null,
     isAllSemesters ? effectiveTermIds : term?.id ?? null
+  );
+  const ownSubjects = useMemo(
+    () => Array.from(new Map((allTermSubjects ?? []).map((s) => [s.id, { id: s.id, name: s.name }])).values()),
+    [allTermSubjects]
   );
 
   const { data: resources, isLoading, isError } = usePyqResources(
@@ -183,7 +192,7 @@ export default function PYQsPage() {
     isAllSemesters ? effectiveTermIds : term?.id ?? null,
     undefined,
     sharedScopes,
-    subjectOptions
+    ownSubjects
   );
 
   // Resets subjectFilter same as Notes & Lab's tab switch — a subject

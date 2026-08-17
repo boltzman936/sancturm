@@ -128,16 +128,19 @@ export default function NotesAndLabPage() {
   // Some (branch, term) combinations have no Notes/Lab content of
   // their own — CSE Core/AIML/AIDS Sem 2 (its own swapped Sem 1) and
   // Civil/Mechanical/Automation & Robotics's 1st Year (mirrors CSE's
-  // curriculum) — see sharedResourceScopes.ts. ownSubjectNames comes
-  // from the exact subject list already fetched above for the Subject
-  // filter, so a shared-in resource is only kept when it matches a
-  // subject this branch's own curriculum actually has.
+  // curriculum) — see sharedResourceScopes.ts. ownSubjects comes from
+  // the exact subject list already fetched above for the Subject
+  // filter; a shared-in resource is matched and kept by explicit
+  // canonical subject id (see canonicalSubjects.ts), never by name.
   const sharedScopes = useSharedResourceSourceScopes(
     branchSlug,
     specializationName ?? null,
     isAllSemesters ? effectiveTermIds : term?.id ?? null
   );
-  const ownSubjectNames = useMemo(() => (allSubjects ?? []).map((s) => s.name), [allSubjects]);
+  const ownSubjects = useMemo(
+    () => (allSubjects ?? []).map((s) => ({ id: s.id, name: s.name })),
+    [allSubjects]
+  );
 
   const { data: resources, isLoading, isError } = useNotesAndLabResources(
     branch?.id ?? null,
@@ -146,7 +149,7 @@ export default function NotesAndLabPage() {
     resourceType,
     undefined,
     sharedScopes,
-    ownSubjectNames
+    ownSubjects
   );
 
   // Newest batch always groups first, regardless of dateSort direction

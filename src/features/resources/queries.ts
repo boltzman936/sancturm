@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
 import { resolveSubjectQueryTermSlug, resolveSubjectSpecializationName } from "./subjectInterchange";
-import { getSharedResourceScopes, normalizeSharedSubjectName } from "./sharedResourceScopes";
+import { getSharedResourceScopes } from "./sharedResourceScopes";
+import { getCanonicalSourceSubjectIds } from "./canonicalSubjects";
 import type { Resource, ResourceType, Subject, SubjectStructureConfig } from "./types";
 
 export type ResourceWithSubject = Resource & {
@@ -348,16 +349,31 @@ async function fetchSharedScopeResources(
   section: "notes_lab" | "pyq",
   resourceType: ResourceType | null,
   sharedScopes: { branchId: string; specializationId: string; termId: string }[],
-  ownSubjectNames: string[],
+  ownSubjects: { id: string; name: string }[],
   batchId?: string | null
 ): Promise<ResourceWithSubject[]> {
-  if (sharedScopes.length === 0 || ownSubjectNames.length === 0) return [];
-  // Maps the SOURCE scope's subject name (e.g. CSE's "Mathematics I")
-  // back to the viewer's own name for it (e.g. Civil's "Engineering
-  // Mathematics I") — built from the caller's own subject list, so a
-  // shared-in resource displays and filters exactly like the viewer's
-  // own content, never exposing the source branch's naming.
-  const sourceNameToOwnName = new Map(ownSubjectNames.map((name) => [normalizeSharedSubjectName(name), name]));
+  if (sharedScopes.length === 0 || ownSubjects.length === 0) return [];
+
+  // Maps a SOURCE scope's subject id back to the viewer's own subject
+  // (id + name) — explicit id-to-id only, never a name/string
+  // comparison (see canonicalSubjects.ts). Cross-branch subjects (e.g.
+  // Civil's own "Engineering Physics" row) go through the canonical
+  // map; a subject with no canonical entry registered falls back to
+  // identity, which is what makes CSE Core/AIML/AIDS's own Sem 2 -> Sem
+  // 1 redirect work here too — there the "shared scope" already IS the
+  // exact same physical subject row (see subjectInterchange.ts), so
+  // own.id is already the correct id to look up, no mapping needed.
+  const sourceIdToOwnSubject = new Map<string, { id: string; name: string }>();
+  for (const own of ownSubjects) {
+    const canonicalSourceIds = getCanonicalSourceSubjectIds(own.id);
+    if (canonicalSourceIds.length > 0) {
+      for (const sourceId of canonicalSourceIds) sourceIdToOwnSubject.set(sourceId, own);
+    } else {
+      sourceIdToOwnSubject.set(own.id, own);
+    }
+  }
+  if (sourceIdToOwnSubject.size === 0) return [];
+  const sourceSubjectIds = Array.from(sourceIdToOwnSubject.keys());
 
   const supabase = createClient();
   const results = await Promise.all(
@@ -369,7 +385,13 @@ async function fetchSharedScopeResources(
         .eq("specialization_id", scope.specializationId)
         .eq("term_id", scope.termId)
         .eq("section", section)
-        .eq("status", "approved");
+        .eq("status", "approved")
+        // Only pre-existing content is eligible for cross-context
+        // display (see supabase/add_legacy_shared_flag.sql) — a new
+        // upload into this exact scope defaults to legacy_shared=false
+        // and stays visible ONLY in its own upload context, never here.
+        .eq("legacy_shared", true)
+        .in("subject_id", sourceSubjectIds);
       if (resourceType) query = query.eq("resource_type", resourceType);
       if (batchId) query = query.eq("batch_id", batchId);
       const { data, error } = await query;
@@ -381,9 +403,9 @@ async function fetchSharedScopeResources(
   const merged: ResourceWithSubject[] = [];
   for (const scopeResults of results) {
     for (const resource of scopeResults) {
-      const ownName = resource.subject ? sourceNameToOwnName.get(resource.subject.name) : undefined;
-      if (!ownName) continue; // not a subject the viewer's own curriculum actually studies
-      merged.push({ ...resource, subject: { ...resource.subject!, name: ownName } });
+      const ownSubject = resource.subject_id ? sourceIdToOwnSubject.get(resource.subject_id) : undefined;
+      if (!ownSubject) continue;
+      merged.push({ ...resource, subject: { ...resource.subject!, id: ownSubject.id, name: ownSubject.name } });
     }
   }
   return merged;
@@ -408,13 +430,13 @@ function mergeSharedResources(direct: ResourceWithSubject[], shared: ResourceWit
  * (ALL_SEMESTERS in useBatchSemesterFilter) needs every semester
  * currently in view in one query (.in(...)), not a single .eq(...).
  *
- * sharedScopes/ownSubjectNames (both optional, default empty): when the
+ * sharedScopes/ownSubjects (both optional, default empty): when the
  * viewer's own branch/term has no content of its own but MIRRORS
  * another scope's curriculum (Civil/Mechanical/Automation & Robotics's
  * 1st Year — see sharedResourceScopes.ts), the matching existing
- * resources from that source scope are merged in, filtered to subjects
- * the viewer's own curriculum actually studies (ownSubjectNames) and
- * re-labeled with the viewer's own subject name. Never duplicates a
+ * resources from that source scope are merged in, matched by explicit
+ * canonical subject id (see canonicalSubjects.ts — never by name) and
+ * re-labeled with the viewer's own subject id/name. Never duplicates a
  * row — the source resource is only ever read, never re-inserted.
  */
 export function useNotesAndLabResources(
@@ -428,10 +450,11 @@ export function useNotesAndLabResources(
   // the default now.
   batchId?: string | null,
   sharedScopes: { branchId: string; specializationId: string; termId: string }[] = [],
-  ownSubjectNames: string[] = []
+  ownSubjects: { id: string; name: string }[] = []
 ) {
   const termKey = Array.isArray(termId) ? [...termId].sort() : termId;
   const hasTerm = Array.isArray(termId) ? termId.length > 0 : !!termId;
+  const ownSubjectKey = [...ownSubjects.map((s) => s.id)].sort();
   return useQuery({
     queryKey: [
       "resources",
@@ -442,7 +465,7 @@ export function useNotesAndLabResources(
       resourceType,
       batchId ?? null,
       sharedScopes,
-      [...ownSubjectNames].sort(),
+      ownSubjectKey,
     ],
     queryFn: async () => {
       const supabase = createClient();
@@ -458,7 +481,7 @@ export function useNotesAndLabResources(
       if (batchId) query = query.eq("batch_id", batchId);
       const [{ data, error }, sharedResources] = await Promise.all([
         query.order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
-        fetchSharedScopeResources("notes_lab", resourceType, sharedScopes, ownSubjectNames, batchId),
+        fetchSharedScopeResources("notes_lab", resourceType, sharedScopes, ownSubjects, batchId),
       ]);
       if (error) throw error;
       return mergeSharedResources(data as unknown as ResourceWithSubject[], sharedResources);
@@ -488,11 +511,12 @@ export function usePyqResources(
   termId: string | string[] | null,
   batchId?: string | null,
   sharedScopes: { branchId: string; specializationId: string; termId: string }[] = [],
-  ownSubjectNames: string[] = []
+  ownSubjects: { id: string; name: string }[] = []
 ) {
   const termKey = Array.isArray(termId) ? [...termId].sort() : termId;
   const hasTerm = Array.isArray(termId) ? termId.length > 0 : !!termId;
   const ready = hasSpecializations ? specializationIds.length > 0 : true;
+  const ownSubjectKey = [...ownSubjects.map((s) => s.id)].sort();
   return useQuery({
     queryKey: [
       "resources",
@@ -502,7 +526,7 @@ export function usePyqResources(
       termKey,
       batchId ?? null,
       sharedScopes,
-      [...ownSubjectNames].sort(),
+      ownSubjectKey,
     ],
     queryFn: async () => {
       const supabase = createClient();
@@ -517,7 +541,7 @@ export function usePyqResources(
       if (batchId) query = query.eq("batch_id", batchId);
       const [{ data, error }, sharedResources] = await Promise.all([
         query.order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
-        fetchSharedScopeResources("pyq", null, sharedScopes, ownSubjectNames, batchId),
+        fetchSharedScopeResources("pyq", null, sharedScopes, ownSubjects, batchId),
       ]);
       if (error) throw error;
       return mergeSharedResources(data as unknown as ResourceWithSubject[], sharedResources);
