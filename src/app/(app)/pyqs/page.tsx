@@ -7,6 +7,7 @@ import { useSpecialization } from "@/hooks/useSpecialization";
 import { useResetInvalidSelection } from "@/hooks/useResetInvalidSelection";
 import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
+import { useTerms } from "@/features/terms/queries";
 import {
   usePyqResources,
   useSubjectsForPyqScope,
@@ -14,6 +15,7 @@ import {
   type ResourceWithSubject,
 } from "@/features/resources/queries";
 import { pyqSharingSpecializationIds } from "@/features/resources/pyqSharing";
+import { resolveSubjectQueryTermSlug } from "@/features/resources/subjectInterchange";
 import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
@@ -117,17 +119,44 @@ export default function PYQsPage() {
   // view instead of just one (both hooks always called, per rules of
   // hooks — whichever doesn't apply gets empty/null args and is a
   // no-op).
+  //
+  // Subject-list terms are redirected (Sem 2 -> Sem 1) the same way
+  // Notes/Lab's useSubjects is, using the VIEWER's own specialization
+  // (not the sharing pool — pyqSpecializationIds is keyed by Year, not
+  // Semester, so it applies correctly to Sem 1's real subjects once the
+  // term itself is redirected). The PYQ RESOURCE query above
+  // (usePyqResources) deliberately keeps using the real, unredirected
+  // term(s) — a Sem 2 PYQ is a genuine Sem 2 resource.
+  const { data: allTerms } = useTerms();
+  const subjectTermId = useMemo(() => {
+    if (isAllSemesters || !term) return null;
+    const resolvedSlug = resolveSubjectQueryTermSlug(specializationName ?? null, term.slug);
+    return allTerms?.find((t) => t.slug === resolvedSlug)?.id ?? term.id;
+  }, [isAllSemesters, term, specializationName, allTerms]);
+  const subjectTermIds = useMemo(() => {
+    if (!isAllSemesters || !allTerms) return [];
+    return Array.from(
+      new Set(
+        effectiveTermIds.map((id) => {
+          const t = allTerms.find((term) => term.id === id);
+          if (!t) return id;
+          const resolvedSlug = resolveSubjectQueryTermSlug(specializationName ?? null, t.slug);
+          return allTerms.find((term) => term.slug === resolvedSlug)?.id ?? id;
+        })
+      )
+    );
+  }, [isAllSemesters, effectiveTermIds, specializationName, allTerms]);
   const { data: singleTermSubjects } = useSubjectsForPyqScope(
     branch?.id ?? null,
     pyqSpecializationIds,
     branch?.has_specializations ?? false,
-    isAllSemesters ? null : term?.id ?? null
+    subjectTermId
   );
   const { data: multiTermSubjects } = useSubjectsForPyqScopeTerms(
     branch?.id ?? null,
     pyqSpecializationIds,
     branch?.has_specializations ?? false,
-    isAllSemesters ? effectiveTermIds : []
+    subjectTermIds
   );
   const allTermSubjects = isAllSemesters ? multiTermSubjects : singleTermSubjects;
   const subjectOptions = useMemo(() => {

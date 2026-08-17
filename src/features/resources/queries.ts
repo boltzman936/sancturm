@@ -5,7 +5,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { createClient } from "@/lib/supabase/client";
 import { useSpecializations } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
-import { resolveSubjectSpecializationName } from "./subjectInterchange";
+import { resolveSubjectQueryTermSlug, resolveSubjectSpecializationName } from "./subjectInterchange";
 import type { Resource, ResourceType, Subject, SubjectStructureConfig } from "./types";
 
 export type ResourceWithSubject = Resource & {
@@ -36,14 +36,18 @@ export function useSubjectStructureConfig() {
  * branch with no specialization concept (everything but CSE) — those
  * subjects are matched with `specialization_id is null`.
  *
- * For CSE, resolves through resolveSubjectSpecializationName first —
- * for every term except 1st-Year Sem 2 (or whenever the interchange
- * toggle is off) this is exactly specializationId, unchanged; the swap
- * only ever kicks in for that one semester, and only for Core/AIML/AIDS
- * (Cyber Security is confirmed independent — untouched regardless of
- * the toggle). Callers never need to know interchange exists at all —
- * they ask for "this specialization's subjects" and get the
- * currently-active list back, same call shape as before.
+ * For CSE, resolves through resolveSubjectSpecializationName AND
+ * resolveSubjectQueryTermSlug first — for every term except 1st-Year
+ * Sem 2 (or whenever the interchange toggle is off, for the
+ * specialization swap) this is exactly (specializationId, termId),
+ * unchanged. For Core/AIML/AIDS's Sem 2 specifically, the query is
+ * always redirected to Sem 1's real subject rows (there is no
+ * separately-maintained Sem 2 list — it was never created, by design),
+ * with the specialization swap still deciding whose Sem 1 list.
+ * Cyber Security and every non-CSE branch pass through both resolvers
+ * unchanged. Callers never need to know interchange/redirect exists at
+ * all — they ask for "this specialization's subjects at this term" and
+ * get the currently-active list back, same call shape as before.
  */
 export function useSubjects(branchId: string | null, specializationId: string | null, termId: string | null) {
   const { data: specializations } = useSpecializations(branchId);
@@ -59,11 +63,20 @@ export function useSubjects(branchId: string | null, specializationId: string | 
     return specializations.find((s) => s.name === resolvedName)?.id ?? specializationId;
   }, [specializationId, termId, specializations, terms, config]);
 
+  const effectiveTermId = useMemo(() => {
+    if (!termId || !specializationId || !specializations || !terms) return termId;
+    const term = terms.find((t) => t.id === termId);
+    const spec = specializations.find((s) => s.id === specializationId);
+    if (!term || !spec) return termId;
+    const resolvedSlug = resolveSubjectQueryTermSlug(spec.name, term.slug);
+    return terms.find((t) => t.slug === resolvedSlug)?.id ?? termId;
+  }, [termId, specializationId, specializations, terms]);
+
   return useQuery({
-    queryKey: ["subjects", branchId, effectiveSpecializationId, termId],
+    queryKey: ["subjects", branchId, effectiveSpecializationId, effectiveTermId],
     queryFn: async () => {
       const supabase = createClient();
-      let query = supabase.from("subjects").select("*").eq("branch_id", branchId!).eq("term_id", termId!);
+      let query = supabase.from("subjects").select("*").eq("branch_id", branchId!).eq("term_id", effectiveTermId!);
       query = effectiveSpecializationId
         ? query.eq("specialization_id", effectiveSpecializationId)
         : query.is("specialization_id", null);
@@ -71,7 +84,7 @@ export function useSubjects(branchId: string | null, specializationId: string | 
       if (error) throw error;
       return data as Subject[];
     },
-    enabled: !!branchId && !!termId,
+    enabled: !!branchId && !!effectiveTermId,
     // Subjects only change when a CR restructures the syllabus list —
     // near-static reference data, same reasoning as useBranchBySlug.
     staleTime: 5 * 60_000,
@@ -208,6 +221,12 @@ export function useSubjectsForPyqScopeTerms(
  * 2's own resolution, not the requesting specialization's raw id
  * applied to every term uniformly. Shares useSubjects' exact query key
  * shape per term, so results aren't double-fetched.
+ *
+ * Also redirects Sem 2's term the same way useSubjects does — for
+ * Core/AIML/AIDS a union spanning Sem 1 and Sem 2 would otherwise fetch
+ * the same Sem 1 rows twice (once as themselves, once as Sem 2's
+ * redirect target), so results are de-duplicated by subject id after
+ * fetching.
  */
 export function useSubjectsForBranchAndTerms(
   branchId: string | null,
@@ -229,11 +248,15 @@ export function useSubjectsForBranchAndTerms(
               (s) => s.name === resolveSubjectSpecializationName(spec.name, term.slug, config!.interchange_active)
             )?.id ?? specializationId
           : specializationId;
+      const effectiveTermId =
+        specializationId && ready && spec && term
+          ? terms!.find((t) => t.slug === resolveSubjectQueryTermSlug(spec.name, term.slug))?.id ?? termId
+          : termId;
       return {
-        queryKey: ["subjects", branchId, effectiveSpecializationId, termId],
+        queryKey: ["subjects", branchId, effectiveSpecializationId, effectiveTermId],
         queryFn: async () => {
           const supabase = createClient();
-          let query = supabase.from("subjects").select("*").eq("branch_id", branchId!).eq("term_id", termId);
+          let query = supabase.from("subjects").select("*").eq("branch_id", branchId!).eq("term_id", effectiveTermId);
           query = effectiveSpecializationId
             ? query.eq("specialization_id", effectiveSpecializationId)
             : query.is("specialization_id", null);
@@ -248,7 +271,9 @@ export function useSubjectsForBranchAndTerms(
   });
 
   const isLoading = termIds.length > 0 && results.some((r) => r.isLoading);
-  const data = isLoading ? undefined : results.flatMap((r) => r.data ?? []);
+  const data = isLoading
+    ? undefined
+    : Array.from(new Map(results.flatMap((r) => r.data ?? []).map((s) => [s.id, s])).values());
   return { data, isLoading };
 }
 

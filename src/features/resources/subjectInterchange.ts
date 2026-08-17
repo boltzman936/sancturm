@@ -41,3 +41,35 @@ export function resolveSubjectSpecializationName(
   if (requestedSpecializationName === "CSE AIML" || requestedSpecializationName === "CSE Core") return "CSE AIDS";
   return requestedSpecializationName;
 }
+
+// CSE Core/AIML/AIDS's 1st Year Sem 2 has no subject rows of its own —
+// deliberately: per the "FINAL CSE SEMESTER + INTERCHANGE SYSTEM"
+// correction, Sem 2's entire subject list is always a live, read-time
+// redirect to Sem 1's real subject rows (with resolveSubjectSpecializ
+// ationName above still deciding WHICH specialization's Sem 1 list
+// applies). This is the "which TERM to query subjects against" half of
+// that same redirect; the two functions are always used together.
+//
+// Named exception, matching this file's existing scope: only Core/
+// AIML/AIDS redirect. Cyber Security is a distinct specialization
+// (independent of this interchange system entirely, per its own
+// batch/chronology carve-out in academicChronology.ts) and every
+// non-CSE branch passes specializationName = null, so both fall
+// through unchanged here.
+//
+// Deliberately does NOT affect resource queries — a Sem 2 upload is a
+// genuine Sem 2 resource (its own term_id stays real/unredirected);
+// only its subject_id may legitimately point at a Sem 1-term subject
+// row, because that's the only subject list that ever existed. Callers
+// resolving a subject to attach to a Sem 2 resource use this function;
+// callers querying/inserting the resource itself never do.
+const CORE_AIML_AIDS_SPECIALIZATION_NAMES = new Set(["CSE Core", "CSE AIML", "CSE AIDS"]);
+
+export function resolveSubjectQueryTermSlug(
+  specializationName: string | null,
+  termSlug: string | null
+): string | null {
+  if (termSlug !== INTERCHANGE_TERM_SLUG) return termSlug;
+  if (!specializationName || !CORE_AIML_AIDS_SPECIALIZATION_NAMES.has(specializationName)) return termSlug;
+  return "y1-s1";
+}

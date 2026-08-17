@@ -9,7 +9,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 import { assertBatchTermReached, assertSubjectMatchesScope } from "@/features/batches/academicValidation";
 import { isBatchTermHiddenForSpecialization } from "@/features/batches/academicChronology";
-import { resolveSubjectSpecializationName } from "./subjectInterchange";
+import { resolveSubjectQueryTermSlug, resolveSubjectSpecializationName } from "./subjectInterchange";
 import type { SubjectStructureConfig, ResourceSection, ResourceType } from "./types";
 import {
   assertValidId,
@@ -47,6 +47,58 @@ function assertValidSection(value: unknown): asserts value is ResourceSection {
   if (typeof value !== "string" || !RESOURCE_SECTIONS.has(value as ResourceSection)) {
     throw new Error("Invalid section.");
   }
+}
+
+/**
+ * A subject a Core/AIML/AIDS Sem 2 upload legitimately points at lives
+ * on a Sem 1-term row (see subjectInterchange.ts's
+ * resolveSubjectQueryTermSlug — Sem 2 has no subject rows of its own,
+ * by design). assertSubjectMatchesScope checks a subject against the
+ * exact (specialization, term) it belongs to, so validating a genuine
+ * Sem 2 upload against the resource's own RAW (specializationId,
+ * termId) would incorrectly reject it. This resolves the same
+ * EFFECTIVE (specialization, term) pair useSubjects/the bulk-publish
+ * path already resolve client/server-side, so the two can't drift
+ * apart — a subject the UI legitimately offered is always accepted
+ * here too.
+ *
+ * A no-op (returns the inputs unchanged) for every branch/term this
+ * doesn't apply to — no specialization (non-CSE) short-circuits
+ * immediately, and resolveSubjectSpecializationName/
+ * resolveSubjectQueryTermSlug are themselves no-ops outside 1st-Year
+ * Sem 2.
+ */
+async function resolveEffectiveSubjectScope(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  specializationId: string | null,
+  termId: string
+): Promise<{ specializationId: string | null; termId: string }> {
+  if (!specializationId) return { specializationId, termId };
+
+  const [{ data: config }, { data: specialization }, { data: term }] = await Promise.all([
+    supabase.from("subject_structure_config").select("*").single(),
+    supabase.from("specializations").select("id, name, branch_id").eq("id", specializationId).single(),
+    supabase.from("academic_terms").select("id, slug").eq("id", termId).single(),
+  ]);
+  if (!specialization || !term) return { specializationId, termId };
+
+  const interchangeActive = (config as SubjectStructureConfig | null)?.interchange_active ?? false;
+  const resolvedName = resolveSubjectSpecializationName(specialization.name, term.slug, interchangeActive);
+  const resolvedTermSlug = resolveSubjectQueryTermSlug(specialization.name, term.slug);
+
+  const [{ data: resolvedSpecialization }, { data: resolvedTerm }] = await Promise.all([
+    resolvedName === specialization.name
+      ? Promise.resolve({ data: specialization })
+      : supabase.from("specializations").select("id").eq("branch_id", specialization.branch_id).eq("name", resolvedName).single(),
+    resolvedTermSlug === term.slug
+      ? Promise.resolve({ data: term })
+      : supabase.from("academic_terms").select("id").eq("slug", resolvedTermSlug ?? term.slug).single(),
+  ]);
+
+  return {
+    specializationId: resolvedSpecialization?.id ?? specializationId,
+    termId: resolvedTerm?.id ?? termId,
+  };
 }
 
 /**
@@ -169,7 +221,8 @@ export async function updateResourceFields(
   // subjectId alongside branch/term when any of them change, so this
   // is a real check for every real request, not just UI-narrowing.
   if (fields.subjectId !== undefined && fields.branchId !== undefined && fields.termId !== undefined) {
-    await assertSubjectMatchesScope(supabase, fields.subjectId, fields.branchId, fields.specializationId ?? null, fields.termId);
+    const effectiveScope = await resolveEffectiveSubjectScope(supabase, fields.specializationId ?? null, fields.termId);
+    await assertSubjectMatchesScope(supabase, fields.subjectId, fields.branchId, effectiveScope.specializationId, effectiveScope.termId);
   }
 
   const update: Record<string, string | null> = {};
@@ -317,7 +370,8 @@ export async function uploadResourceDirect(formData: FormData) {
   if (customCreatedAt !== null) assertValidString(customCreatedAt, "Date", { maxLength: 40 });
 
   await assertBatchTermReached(supabase, batchId, termId, specializationId);
-  await assertSubjectMatchesScope(supabase, subjectId, branchId, specializationId, termId);
+  const effectiveScope = await resolveEffectiveSubjectScope(supabase, specializationId, termId);
+  await assertSubjectMatchesScope(supabase, subjectId, branchId, effectiveScope.specializationId, effectiveScope.termId);
 
   // The presigned PUT already constrained WHICH Content-Type header
   // could be set on this object; this confirms the object's actual
@@ -464,15 +518,18 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   let interchangeActive = false;
   let allSpecializationNames: { id: string; name: string }[] = [];
   let termSlug: string | null = null;
+  let allTerms: { id: string; slug: string }[] = [];
   if (subjectName && specializationIds.length > 0) {
-    const [{ data: config }, { data: specializationRows }, { data: termRow }] = await Promise.all([
+    const [{ data: config }, { data: specializationRows }, { data: termRow }, { data: termRows }] = await Promise.all([
       supabase.from("subject_structure_config").select("*").single(),
       supabase.from("specializations").select("id, name").eq("branch_id", branchId),
       supabase.from("academic_terms").select("slug").eq("id", termId).single(),
+      supabase.from("academic_terms").select("id, slug"),
     ]);
     interchangeActive = (config as SubjectStructureConfig | null)?.interchange_active ?? false;
     allSpecializationNames = specializationRows ?? [];
     termSlug = termRow?.slug ?? null;
+    allTerms = termRows ?? [];
   }
 
   const rawTargets = specializationIds.length > 0 ? specializationIds : [null];
@@ -495,12 +552,20 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
       const resolvedSpecializationId = resolvedName
         ? allSpecializationNames.find((s) => s.name === resolvedName)?.id
         : specializationId;
+      // Sem 2 has no subject rows of its own for Core/AIML/AIDS — the
+      // lookup is redirected to Sem 1's real term, same as
+      // useSubjects/resolveEffectiveSubjectScope. The RESOURCE row
+      // inserted below still uses the real termId — a Sem 2 publish
+      // stays a genuine Sem 2 resource, only its subject_id borrows a
+      // Sem 1-term row.
+      const subjectTermSlug = requestedName ? resolveSubjectQueryTermSlug(requestedName, termSlug) : termSlug;
+      const subjectTermId = allTerms.find((t) => t.slug === subjectTermSlug)?.id ?? termId;
       const { data: subject } = await supabase
         .from("subjects")
         .select("id")
         .eq("branch_id", branchId)
         .eq("specialization_id", resolvedSpecializationId ?? specializationId)
-        .eq("term_id", termId)
+        .eq("term_id", subjectTermId)
         .eq("name", subjectName)
         .maybeSingle();
       subjectId = subject?.id ?? null;

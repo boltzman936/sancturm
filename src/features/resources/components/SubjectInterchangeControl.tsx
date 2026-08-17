@@ -2,8 +2,39 @@
 
 import { useState, useTransition } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useBranch } from "@/hooks/useBranch";
+import { useSpecialization } from "@/hooks/useSpecialization";
+import { useBatch } from "@/hooks/useBatch";
 import { useSubjectStructureConfig } from "@/features/resources/queries";
 import { setSubjectInterchange } from "@/features/resources/actions";
+
+// The button is the controlled, manual side of the 2026-27 CSE Core/
+// AIML/AIDS 1st-Year Sem 2 transition specifically (see the "FINAL CSE
+// SEMESTER + INTERCHANGE SYSTEM" spec, section 3) — 2025-26's own Sem 2
+// already resolves automatically (no button needed there, per section
+// 1), and every other specialization/branch has its own independent
+// mapping untouched by this system entirely.
+//
+// Visibility reacts to the SAME sidebar/Cockpit selection (useBranch/
+// useSpecialization/useBatch) every other page already treats as the
+// one shared source of "what context is currently active" — an admin
+// sees this control only while actually looking at that one context,
+// not as a general-purpose switch sitting on Manage regardless of what
+// they've selected.
+//
+// Underlying mechanism is deliberately UNCHANGED — still the single
+// global subject_structure_config.interchange_active flag, not a new
+// per-batch lock. It's a stateless, read-time resolver (see
+// subjectInterchange.ts) that never duplicates or moves data no matter
+// how many times it's flipped, which is what makes "can't
+// double-interchange" true structurally rather than needing a new
+// one-time-use schema. The one real consequence worth knowing: because
+// the flag is global, flipping it here also retroactively changes
+// 2025-26's already-live Sem 2 mapping (both batches share the same
+// rule) — a deliberate reading of the spec's own "ONE source of truth"
+// requirement (section 6), not an oversight.
+const CORE_AIML_AIDS_SLUGS = new Set(["cse-core", "cse-aiml", "cse-aids"]);
+const TRANSITION_BATCH_LABEL = "2026-27";
 
 /**
  * Admin-only, one-click, reversible — flips subject_structure_config's
@@ -13,11 +44,18 @@ import { setSubjectInterchange } from "@/features/resources/actions";
  */
 export function SubjectInterchangeControl() {
   const { data: config } = useSubjectStructureConfig();
+  const { branch } = useBranch();
+  const { specialization } = useSpecialization();
+  const { batch } = useBatch();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const active = config?.interchange_active ?? false;
+
+  const isApplicableContext =
+    branch === "cse" && !!specialization && CORE_AIML_AIDS_SLUGS.has(specialization) && batch === TRANSITION_BATCH_LABEL;
+  if (!isApplicableContext) return null;
 
   function handleConfirm() {
     setError(null);

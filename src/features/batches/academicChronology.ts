@@ -19,22 +19,17 @@ export function isDateReached(startDate: string, todayKey: string): boolean {
 // pyqSharing.ts and subjectInterchange.ts, not a new schema
 // dimension.
 //
-// 1st Year - Semester 2, 2025-26 batch, is hidden from CSE Core/AIML/
-// AIDS — Cyber Security (and every non-CSE branch, which reaches this
-// same globally-shared row the normal way) keeps it. IDs, not
-// slugs/labels — every real call site already has the real id in
-// hand, and hardcoding ids here (rather than a slug lookup) is what
-// lets this stay a pure, dependency-free function callable from both
-// a client hook and a server action.
-const HIDDEN_SEM2_BATCH_ID = "2f2d1232-76ea-4a42-a744-e9be040158e3"; // 2025-26
-const HIDDEN_SEM2_TERM_ID = "f9699ad2-6f0c-469e-9b28-e59ef838d889"; // 1st Year - Semester 2
-const HIDDEN_SEM2_SPECIALIZATION_IDS = new Set([
-  "67e55583-69ed-4a50-9aad-256fdff9fec1", // CSE Core
-  "09b06a94-bcf3-41c2-9858-0ec5cb6b647a", // CSE AIML
-  "f581246d-6feb-4095-aa33-e82e88a1de3f", // CSE AIDS
-]);
+// CSE Core/AIML/AIDS's 1st Year Sem 2 used to be hidden entirely for
+// the 2025-26 batch (see git history — supabase/
+// exclude_sem2_core_aiml_aids.sql) — reversed per explicit correction:
+// Sem 2 is now available for 2025-26 same as every other reached
+// semester, with its SUBJECT LIST resolved from Sem 1's real subjects
+// via the interchange mapping (see subjectInterchange.ts's
+// resolveSubjectQueryTermSlug) rather than a separately-maintained Sem
+// 2 list that was never created. The only remaining exception here is
+// Cyber Security's own batch restriction, below.
 
-// Second named exception: CSE Cyber Security didn't exist as a
+// Named exception: CSE Cyber Security didn't exist as a
 // specialization before the 2026-27 batch (see
 // supabase/expand_branch_hierarchy.sql — it was inserted brand new,
 // with no 2025-26 history of its own), but batch_terms is globally
@@ -51,8 +46,8 @@ const CYBER_SECURITY_FIRST_BATCH_ID = "f4c959e8-e921-4e6e-b37b-f28e80cad145"; //
 
 /**
  * True whenever a (batch, term) pairing should be treated as if it
- * doesn't exist for the given specialization — see the two named
- * exceptions above. Every place that resolves "which semesters are
+ * doesn't exist for the given specialization — see the named
+ * exception above. Every place that resolves "which semesters are
  * reachable/current" for a specific specialization (the Notes/PYQ/
  * Notices picker, upload/edit's server-side chronology check, and —
  * in SQL, via the mirrored check inside cr_current_term_id — CR
@@ -65,9 +60,6 @@ export function isBatchTermHiddenForSpecialization(
   specializationId: string | null
 ): boolean {
   if (!specializationId) return false;
-  if (batchId === HIDDEN_SEM2_BATCH_ID && termId === HIDDEN_SEM2_TERM_ID && HIDDEN_SEM2_SPECIALIZATION_IDS.has(specializationId)) {
-    return true;
-  }
   if (specializationId === CYBER_SECURITY_SPECIALIZATION_ID && batchId !== CYBER_SECURITY_FIRST_BATCH_ID) {
     return true;
   }
