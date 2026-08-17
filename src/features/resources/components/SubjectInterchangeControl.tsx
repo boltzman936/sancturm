@@ -35,7 +35,7 @@ export function SubjectInterchangeControl() {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">
-        CSE Core / AIML / AIDS — 1st Year Sem 2 subject structure
+        CSE — AIML, Core, AIDS subject structure
       </h2>
       <p className="mt-1 text-sm text-foreground">
         Currently: <span className="font-medium">{active ? "Interchanged" : "Normal"}</span>
