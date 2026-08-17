@@ -150,11 +150,6 @@ export function CRUploadForm({
   const canBulkPublish = isAdmin && (resourceType === "notes" || resourceType === "lab_manual" || resourceType === "pyq");
   const showBatchPicker = !fixedBatchId;
   const showTermPicker = !fixedTermId;
-  // Only admin can backdate an upload — a CR's custom date is floored
-  // at today, so the earliest they can pick is "now", never the past.
-  // Recomputed each render rather than memoized: cheap, and it needs
-  // to stay accurate if this form is left open across midnight.
-  const minUploadDate = isAdmin ? undefined : localDateKey(new Date().toISOString());
   // A CR's branch never changes, even for PYQ — only which
   // SPECIALIZATION within it does (see scope_pyq_by_branch.sql).
   const branchId = fixedBranchId ?? bulkBranchId;
@@ -768,21 +763,25 @@ export function CRUploadForm({
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label className="font-mono text-xs text-subtle-foreground">
-          Date{" "}
-          <span className="normal-case text-subtle-foreground/70">
-            (optional — defaults to today{!isAdmin && ", no backdating"})
-          </span>
-        </label>
-        <DateFilterInput
-          value={customDate}
-          onChange={setCustomDate}
-          placeholder="Today"
-          minDate={minUploadDate}
-          className="bg-background"
-        />
-      </div>
+      {/* Admin-only, full stop — a CR's upload always lands with the
+          server's own current timestamp (customDate stays "" and
+          customCreatedAt is never set below, exactly as if this field
+          didn't exist). No restricted/no-backdating version shown to a
+          CR either — the picker itself is gone for that role, not just
+          narrowed. */}
+      {isAdmin && (
+        <div className="flex flex-col gap-1">
+          <label className="font-mono text-xs text-subtle-foreground">
+            Date <span className="normal-case text-subtle-foreground/70">(optional — defaults to today)</span>
+          </label>
+          <DateFilterInput
+            value={customDate}
+            onChange={setCustomDate}
+            placeholder="Today"
+            className="bg-background"
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-1">
         <label htmlFor="file" className="font-mono text-xs text-subtle-foreground">

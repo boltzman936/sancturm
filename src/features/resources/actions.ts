@@ -270,8 +270,11 @@ export async function uploadResourceDirect(formData: FormData) {
   // Optional — a full ISO timestamp already built client-side (see
   // CRUploadForm), not just a date, so it sorts correctly against
   // same-day uploads. Omitted entirely when blank, letting the
-  // database's own now() default apply exactly as before.
-  const customCreatedAt = (formData.get("customCreatedAt") as string) || null;
+  // database's own now() default apply exactly as before. Admin-only —
+  // CRUploadForm no longer even renders this field for a CR, but that's
+  // a UI convenience, not the actual boundary; enforced here too so a
+  // hand-crafted form submission can't backdate a CR's own upload.
+  const customCreatedAt = role?.type === "admin" ? (formData.get("customCreatedAt") as string) || null : null;
 
   assertValidId(branchId, "branch");
   assertValidIdOrNull(specializationId, "specialization");
