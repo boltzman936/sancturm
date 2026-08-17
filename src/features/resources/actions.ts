@@ -291,8 +291,10 @@ export async function uploadResourceDirect(formData: FormData) {
   // could be set on this object; this confirms the object's actual
   // bytes match that claimed type before it can ever be referenced by
   // a published row — see uploadVerification.ts's own comment for why
-  // the earlier check alone wasn't enough.
-  if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
+  // the earlier check alone wasn't enough. Also yields contentHash —
+  // see its own comment for why that's what Manage's grouping keys on.
+  const verification = await verifyUploadedFileOrCleanUp(fileUrl);
+  if (!verification.valid) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
@@ -307,6 +309,7 @@ export async function uploadResourceDirect(formData: FormData) {
     title,
     description,
     file_url: fileUrl,
+    content_hash: verification.contentHash,
     status: "approved",
     uploaded_by_device: null,
     uploaded_by_name: role?.displayName ?? null,
@@ -419,7 +422,8 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   // Verified once, not per-target — it's the same uploaded object
   // referenced by every row below. See uploadResourceDirect's identical
   // check for why this exists.
-  if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
+  const verification = await verifyUploadedFileOrCleanUp(fileUrl);
+  if (!verification.valid) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
@@ -468,6 +472,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
       title,
       description,
       file_url: fileUrl,
+      content_hash: verification.contentHash,
       status: "approved",
       uploaded_by_device: null,
       uploaded_by_name: role.displayName,

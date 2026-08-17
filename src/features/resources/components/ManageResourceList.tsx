@@ -100,10 +100,14 @@ export type ManageableResource = {
   term_id: string | null;
   batch_id: string | null;
   subject_id: string | null;
-  // The content-identity signal groupByContent keys on — see its own
-  // comment. null for "notice"/"update" rows, which have no file at
-  // all.
+  // Content-identity signals groupByContent prefers, in order — both
+  // null for "notice"/"update" rows, which have no file at all.
+  // content_hash catches the SAME file re-uploaded as a genuinely
+  // separate object (the common real case: the identical PDF uploaded
+  // once per branch by hand); file_url is the fallback for older rows
+  // uploaded before this column existed.
   file_url: string | null;
+  content_hash: string | null;
   // Only ever true for a "notice" row — resources/updates have no
   // CR-only concept at all. RLS-enforced (see
   // supabase/add_notice_cr_only.sql), so a student browser never even
@@ -151,6 +155,13 @@ type ResourceGroup = { items: ManageableResource[] };
 // event") and is unrelated to content-identity grouping.
 function contentGroupKey(r: ManageableResource): string {
   if (r.kind === "resource") {
+    // content_hash first — the actual byte-content signature, so it
+    // correctly merges the SAME file uploaded as a genuinely separate
+    // R2 object each time (see its own comment on ManageableResource).
+    // file_url next, for older rows uploaded before this column
+    // existed. A row with neither gets its own id as the key, so it
+    // never accidentally merges with anything.
+    if (r.content_hash) return `hash:${r.content_hash}`;
     return r.file_url ? `file:${r.file_url}` : `row:${r.id}`;
   }
   return [

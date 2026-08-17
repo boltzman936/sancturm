@@ -24,41 +24,61 @@ const SIGNATURES: Record<string, SignatureCheck> = {
     b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50,
 };
 
+export type VerificationResult = {
+  valid: boolean;
+  // SHA-256 of the full file body, hex-encoded — null whenever `valid`
+  // is false (nothing to hash, or hashing itself never ran). This is
+  // the "same file identity/hash" signal Manage's content-identity
+  // grouping (see contentGroupKey in ManageResourceList.tsx) uses to
+  // recognize the SAME underlying document even when it was uploaded
+  // as a genuinely separate R2 object each time (the common case —
+  // one admin re-uploading the identical PDF once per branch, which a
+  // bare file_url comparison can never catch since each upload gets
+  // its own fresh object key).
+  contentHash: string | null;
+};
+
 /**
- * Fetches the first 16 bytes of an already-uploaded R2 object (a
- * Range request — cheap regardless of the file's real size) and
- * checks them against the known signature for whatever Content-Type
- * R2 is actually serving the object as. The presigned-URL flow (see
- * uploads/actions.ts) already constrains WHICH Content-Type header
- * can be set on an object; this closes the remaining gap — nothing
- * previously checked that the object's actual BYTES match that
- * claimed type, so a CR could rename an HTML/script file to
- * `report.pdf`, set Content-Type: application/pdf on the presigned
- * PUT (a header value, not a content transformation), and have it
- * pass every check that existed before this one.
+ * Fetches an already-uploaded R2 object's full body ONCE and:
+ *  1. Checks its first bytes against the known signature for whatever
+ *     Content-Type R2 is actually serving the object as. The
+ *     presigned-URL flow (see uploads/actions.ts) already constrains
+ *     WHICH Content-Type header can be set on an object; this closes
+ *     the remaining gap — nothing previously checked that the
+ *     object's actual BYTES match that claimed type, so a CR could
+ *     rename an HTML/script file to `report.pdf`, set Content-Type:
+ *     application/pdf on the presigned PUT (a header value, not a
+ *     content transformation), and have it pass every check that
+ *     existed before this one.
+ *  2. Computes a SHA-256 of the whole body — see VerificationResult's
+ *     own comment for why.
  *
- * On a mismatch (or an unrecognized/missing Content-Type — fails
- * closed, never silently allowed), deletes the object and returns
- * false. Callers MUST bail out of the DB insert when this returns
- * false — a rejected file must never end up referenced by a
- * published resource/notice/update row.
+ * On a signature mismatch (or an unrecognized/missing Content-Type —
+ * fails closed, never silently allowed), deletes the object and
+ * returns `{ valid: false, contentHash: null }`. Callers MUST bail out
+ * of the DB insert when `valid` is false — a rejected file must never
+ * end up referenced by a published resource/notice/update row.
  *
  * Also enforces MAX_FILE_SIZE_BYTES via a HEAD request before ever
- * downloading bytes — cheap (no body transferred) and lets an
- * oversized object get rejected without paying for the Range fetch
- * below at all.
+ * downloading the body — cheap (no body transferred) and lets an
+ * oversized object get rejected without paying for the full fetch
+ * below at all. Fetching the whole body (rather than the previous
+ * 16-byte Range request) is what lets steps 1 and 2 share a single
+ * download instead of two separate requests.
  */
-export async function verifyUploadedFileOrCleanUp(fileUrl: string): Promise<boolean> {
+export async function verifyUploadedFileOrCleanUp(fileUrl: string): Promise<VerificationResult> {
+  const invalid: VerificationResult = { valid: false, contentHash: null };
+
   let headResponse: Response;
   try {
     headResponse = await fetch(fileUrl, { method: "HEAD" });
   } catch {
-    return false;
+    return invalid;
   }
-  if (!headResponse.ok) return false;
+  if (!headResponse.ok) return invalid;
 
   const contentLength = Number(headResponse.headers.get("content-length"));
-  if (!Number.isFinite(contentLength) || contentLength <= 0) return false;
+  if (!Number.isFinite(contentLength) || contentLength <= 0) return invalid;
   if (contentLength > MAX_FILE_SIZE_BYTES) {
     try {
       await deleteFromR2(fileUrl);
@@ -66,22 +86,23 @@ export async function verifyUploadedFileOrCleanUp(fileUrl: string): Promise<bool
       // Best-effort cleanup — same accepted tradeoff as every other
       // orphan-object case already in this codebase.
     }
-    return false;
+    return invalid;
   }
 
   let response: Response;
   try {
-    response = await fetch(fileUrl, { headers: { Range: "bytes=0-15" } });
+    response = await fetch(fileUrl);
   } catch {
-    return false;
+    return invalid;
   }
-  if (!response.ok && response.status !== 206) return false;
+  if (!response.ok) return invalid;
 
   const contentType = response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() ?? "";
   const check = SIGNATURES[contentType];
-  if (!check) return false;
+  if (!check) return invalid;
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
   const matches = check(bytes);
   if (!matches) {
     try {
@@ -91,6 +112,12 @@ export async function verifyUploadedFileOrCleanUp(fileUrl: string): Promise<bool
       // orphan-object case already in this codebase (see
       // deleteResource's identical comment).
     }
+    return invalid;
   }
-  return matches;
+
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  const contentHash = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return { valid: true, contentHash };
 }

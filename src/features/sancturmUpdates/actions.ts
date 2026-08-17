@@ -35,7 +35,7 @@ export async function createSancturmUpdate(formData: FormData) {
 
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
 
-  if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
+  if (!(await verifyUploadedFileOrCleanUp(fileUrl)).valid) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 

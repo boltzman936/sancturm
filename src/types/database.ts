@@ -206,6 +206,7 @@ export type Resource = {
   view_count: number;
   uploaded_by_device: string | null;
   uploaded_by_name: string | null;
+  content_hash: string | null;
   created_at: string;
   updated_at: string;
 };

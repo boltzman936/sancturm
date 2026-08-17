@@ -102,7 +102,7 @@ export async function createNotice(formData: FormData) {
   // See resources/actions.ts's uploadResourceDirect for why this
   // exists — confirms the object's actual bytes match its claimed
   // Content-Type before it can be referenced by a published notice.
-  if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
+  if (!(await verifyUploadedFileOrCleanUp(fileUrl)).valid) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
@@ -163,7 +163,7 @@ export async function createNoticeAllBranches(formData: FormData) {
 
   // Verified once — the same uploaded object gets referenced by every
   // (term, target) row built below.
-  if (!(await verifyUploadedFileOrCleanUp(fileUrl))) {
+  if (!(await verifyUploadedFileOrCleanUp(fileUrl)).valid) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 

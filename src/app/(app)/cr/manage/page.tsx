@@ -131,6 +131,7 @@ export default async function CRManagePage() {
     batch_id: notice.batch_id,
     subject_id: null,
     file_url: null,
+    content_hash: null,
     cr_only: notice.cr_only,
   }));
 
@@ -157,6 +158,7 @@ export default async function CRManagePage() {
     batch_id: null,
     subject_id: null,
     file_url: null,
+    content_hash: null,
     cr_only: false,
   }));
 
