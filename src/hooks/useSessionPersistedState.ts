@@ -67,12 +67,22 @@ export function useSessionPersistedState<T extends string>(key: string, initial:
 
   const value = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot) as T;
 
-  function setPersisted(next: T) {
-    cacheByKey.set(key, next);
-    if (next === initial) window.sessionStorage.removeItem(key);
-    else window.sessionStorage.setItem(key, next);
-    for (const listener of getListeners(key)) listener();
-  }
+  // Memoized — every caller passes this straight into other hooks'
+  // dependency arrays (useResetInvalidSelection, effects further up the
+  // tree). An unmemoized function here would get a new identity every
+  // render, making every one of those effects think its inputs changed
+  // and re-run on every single render regardless of whether anything
+  // actually did — the exact "stuck/laggy" symptom a render storm like
+  // that produces once several of these are mounted on the same page.
+  const setPersisted = useCallback(
+    (next: T) => {
+      cacheByKey.set(key, next);
+      if (next === initial) window.sessionStorage.removeItem(key);
+      else window.sessionStorage.setItem(key, next);
+      for (const listener of getListeners(key)) listener();
+    },
+    [key, initial]
+  );
 
   return [value, setPersisted];
 }

@@ -100,6 +100,10 @@ export type ManageableResource = {
   term_id: string | null;
   batch_id: string | null;
   subject_id: string | null;
+  // The content-identity signal groupByContent keys on — see its own
+  // comment. null for "notice"/"update" rows, which have no file at
+  // all.
+  file_url: string | null;
   // Only ever true for a "notice" row — resources/updates have no
   // CR-only concept at all. RLS-enforced (see
   // supabase/add_notice_cr_only.sql), so a student browser never even
@@ -114,48 +118,41 @@ function bySubject(a: ManageableResource, b: ManageableResource) {
   return (a.subject?.name ?? "").localeCompare(b.subject?.name ?? "");
 }
 
-// Same title/subject/term/batch/type published on the same day but to
-// DIFFERENT branches is exactly the shape createNoticeAllBranches /
-// uploadResourceDirectAllBranches produce — one row per branch from a
-// single bulk-publish action. Grouped into one card (see
-// groupByContent below) instead of one repeated card per branch.
-//
-// subject.name, NOT subject_id: subjects are branch-scoped rows in
-// this schema (see add_batches.sql / subjects table) — "Engineering
-// Mechanics" for CSE AIML and "Engineering Mechanics" for CSE Core are
-// two DIFFERENT ids even though a bulk publish resolves each branch to
-// its own matching-named subject on purpose (see
-// uploadResourceDirectAllBranches's resolveSubjectBranchName call).
-// Keying on subject_id meant that resolution step itself defeated the
-// grouping for every subject-tagged upload — the one case that worked
-// before this fix (a Notice) only worked because notices have no
-// subject at all. The name is the one thing that's actually the same
-// concept across branches; the id never is.
-//
-// localDateKey (the calendar day), not the exact timestamp:
-// uploadResourceDirectAllBranches inserts one branch at a time in a
-// loop rather than a single bulk insert, so sibling rows' created_at
-// can differ by the odd millisecond even though they're unmistakably
-// the same publish action. createNoticeAllBranches's own single bulk
-// insert happens to share an identical timestamp already, so the
-// coarser day-level match still groups those correctly too.
+// This is a display/inventory grouping only — it never merges the
+// underlying academic resource assignments. Every row stays its own
+// independent (branch, specialization, term, batch, subject) record
+// in the database and in every query that isn't this Manage list (see
+// each row's own branch_id/specialization_id/term_id/batch_id below,
+// completely untouched by this grouping). All this does is let Manage
+// present several rows that are genuinely the SAME uploaded content —
+// same physical file — as one card instead of one repeated card per
+// academic context.
 type ResourceGroup = { items: ManageableResource[] };
 
-// Includes branch_id — every branch's academic context is now fully
-// independent (see supabase/initialize_2025_26_shared_content.sql: the
-// same source content was deliberately copied into multiple branches
-// as separate, unrelated rows), so grouping must never span them.
-// Without this, resources that only coincidentally share a
-// title/date/subject across branches — no longer "the same publish
-// action," just similar-looking independent content — would render as
-// one collapsible card with a single bulk "Remove (N)" spanning every
-// branch it happens to match, which could delete a resource in one
-// branch as a side effect of removing another's. specialization_id is
-// deliberately NOT included: a genuine admin bulk-publish still fans
-// one upload across several specializations WITHIN one branch in a
-// single action, and grouping those together (with a real shared
-// bulk-delete) still reflects one real event, not a coincidence.
+// Content identity, not title/date/branch: a "resource" row's file_url
+// is the one thing that's actually the SAME across every context that
+// content was initialized into (see supabase/
+// initialize_2025_26_shared_content.sql and its siblings — the exact
+// same file_url gets reused verbatim, never a re-uploaded copy). Title
+// alone is explicitly NOT enough — two independently-uploaded files
+// that happen to share a title (e.g. two different "Physics Notes"
+// PDFs) must stay separate cards, which grouping by file_url already
+// guarantees since they'd never share that value. A row missing
+// file_url (shouldn't happen for a real "resource" row, but handled
+// defensively) falls through to its own id, so it never accidentally
+// merges with anything.
+//
+// "notice"/"update" rows have no file at all, so they keep the
+// original same-publish-action grouping instead (branch/term/batch/
+// subject/title/date, scoped per branch — see
+// createNoticeAllBranches/uploadResourceDirectAllBranches, which fan
+// one bulk-publish action out to one row per branch/specialization).
+// That's a different, still-legitimate kind of grouping ("one real
+// event") and is unrelated to content-identity grouping.
 function contentGroupKey(r: ManageableResource): string {
+  if (r.kind === "resource") {
+    return r.file_url ? `file:${r.file_url}` : `row:${r.id}`;
+  }
   return [
     r.kind,
     r.branch_id ?? "",
@@ -632,15 +629,17 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   );
 }
 
-// Renders one content group — a single card either way, but a
-// multi-branch group (see groupByContent) shows every branch it was
-// published to on one line instead of repeating the whole card once
-// per branch, and its checkbox/Remove act on every row in the group
-// together. Edit only ever applies to a single row (branch/term/batch/
-// subject are genuinely per-row fields, divergent across branches for
-// a bulk-published group), so it's hidden for a multi-branch group;
-// ungrouped items (the common case) render and behave exactly as a
-// single row always has.
+// Renders one content group — a single card either way, but a group
+// with more than one item (see groupByContent) shows an expandable
+// "N contexts" list instead of repeating the whole card once per
+// academic context, and its checkbox/top-level Remove act on every row
+// in the group together. Edit only ever applies to a single row
+// (branch/specialization/term/batch/subject are genuinely per-row
+// fields, independently divergent per context now that grouping is by
+// content identity rather than by shared academic scope), so it's
+// hidden for a grouped card in favor of each expanded row's own Edit;
+// ungrouped items (the common case — most content only ever lives in
+// one context) render and behave exactly as a single row always has.
 function ResourceGroupRow({
   group,
   isAdmin,
@@ -658,33 +657,42 @@ function ResourceGroupRow({
   const [isDeleting, startDelete] = useTransition();
   const [expanded, setExpanded] = useState(false);
 
-  // Admin sees the branch on every row. A CR only ever manages their
-  // own branch's notes_lab items (branch is implied, no need to show
-  // it) — but PYQs are shared across branches, so which branch a PYQ
-  // came from is genuinely useful context even for a CR. Term is only
-  // ever ambiguous for admin (a CR's own term is implied — even a PYQ
-  // stays within their own term, never shown to them cross-term).
-  // Specialization mirrors branch exactly — without it every CSE row
-  // reads as bare "CSE" regardless of whether it's actually Core, AIML,
-  // or AIDS, which is exactly the distinction that matters here (a
-  // group can genuinely span all three, e.g. an admin bulk publish).
-  const showBranch = isAdmin || primary.section === "pyq";
-  const showSpecialization = isAdmin || primary.section === "pyq";
-  const showTerm = isAdmin && primary.term;
-  const showBatch = isAdmin && primary.batch;
+  // A single (ungrouped) item shows its branch/specialization/term/
+  // batch inline, same as always. A grouped card's whole point is that
+  // those fields DIFFER per context — cramming them into the summary
+  // line would either be misleading (picking one arbitrarily) or
+  // unreadable (joining every distinct value across 5+ contexts), so
+  // the summary instead shows only what's actually shared across every
+  // context (term/batch, when uniform) and defers the rest to the
+  // expandable context list below, matching the "don't make the card
+  // excessively large by default" requirement.
+  const showBranch = !isGrouped && (isAdmin || primary.section === "pyq");
+  const showSpecialization = !isGrouped && (isAdmin || primary.section === "pyq");
+  const termLabels = Array.from(
+    new Set(items.map((item) => item.term?.label).filter((label): label is string => !!label))
+  );
+  const batchLabels = Array.from(
+    new Set(items.map((item) => item.batch?.label).filter((label): label is string => !!label))
+  );
+  const showTerm = isAdmin && termLabels.length > 0;
+  const showBatch = isAdmin && batchLabels.length > 0;
+  const termSummary = termLabels.length === 1 ? termLabels[0] : "Multiple semesters";
+  const batchSummary = batchLabels.length === 1 ? batchLabels[0] : "Multiple batches";
   const allSelected = items.every((item) => selectedIds.has(item.id));
-  // Deduped and joined, not just mapped — a bulk publish always fans
-  // out to distinct branches, but this stays correct even if two rows
-  // in the same group somehow shared a branch.
-  const branchNames = Array.from(
-    new Set(items.map((item) => item.branch?.name).filter((name): name is string => !!name))
-  );
-  const specializationNames = Array.from(
-    new Set(items.map((item) => item.specialization?.name).filter((name): name is string => !!name))
-  );
+
+  function contextLabel(item: ManageableResource) {
+    const parts = [item.branch?.name, item.specialization?.name].filter((part): part is string => !!part);
+    const scope = [item.term?.label, item.batch?.label].filter((part): part is string => !!part).join(" · ");
+    return scope ? `${parts.join(" → ")} → ${scope}` : parts.join(" → ");
+  }
 
   function handleGroupDelete() {
-    if (!confirm(`Remove this from ${items.length} branches? This can't be undone.`)) return;
+    if (
+      !confirm(
+        `Remove this content from ${items.length} academic contexts? This can't be undone.`
+      )
+    )
+      return;
     startDelete(async () => {
       await Promise.all(items.map(deleteItem));
     });
@@ -718,25 +726,25 @@ function ResourceGroupRow({
             <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-subtle-foreground">
               {showTerm && (
                 <>
-                  <span>{primary.term?.label}</span>
+                  <span>{termSummary}</span>
                   <span aria-hidden="true">·</span>
                 </>
               )}
               {showBatch && (
                 <>
-                  <span>{primary.batch?.label}</span>
+                  <span>{batchSummary}</span>
                   <span aria-hidden="true">·</span>
                 </>
               )}
-              {showBranch && branchNames.length > 0 && (
+              {showBranch && primary.branch?.name && (
                 <>
-                  <span>{branchNames.join(", ")}</span>
+                  <span>{primary.branch.name}</span>
                   <span aria-hidden="true">·</span>
                 </>
               )}
-              {showSpecialization && specializationNames.length > 0 && (
+              {showSpecialization && primary.specialization?.name && (
                 <>
-                  <span>{specializationNames.join(", ")}</span>
+                  <span>{primary.specialization.name}</span>
                   <span aria-hidden="true">·</span>
                 </>
               )}
@@ -747,6 +755,14 @@ function ResourceGroupRow({
               <span>{formatShortDate(primary.created_at)}</span>
               <span aria-hidden="true">·</span>
               <span>{uploaderLabel(primary)}</span>
+              {isGrouped && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="text-foreground">
+                    {items.length} context{items.length > 1 ? "s" : ""}
+                  </span>
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -760,15 +776,16 @@ function ResourceGroupRow({
             ))}
           {isGrouped ? (
             <>
-              {/* Per-branch Edit/Remove without collapsing the summary
-                  card back into repeated ones — branch/subject can
-                  genuinely diverge per row (subject interchange), so
-                  there's no single Edit that could apply to the whole
-                  group at once. */}
+              {/* Per-context Edit/Remove without collapsing the summary
+                  card back into repeated ones — branch/specialization/
+                  term/batch/subject can all genuinely diverge per row
+                  now that grouping is by content identity, not by
+                  academic context, so there's no single Edit that could
+                  apply to the whole group at once. */}
               <button
                 type="button"
                 onClick={() => setExpanded((prev) => !prev)}
-                aria-label={expanded ? "Hide branches" : "Show branches"}
+                aria-label={expanded ? "Hide contexts" : "Show contexts"}
                 aria-expanded={expanded}
                 className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
               >
@@ -800,10 +817,7 @@ function ResourceGroupRow({
               key={item.id}
               className="flex flex-col gap-2 rounded-md bg-background-secondary/60 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
             >
-              <span className="font-mono text-xs text-subtle-foreground">
-                {item.branch?.name}
-                {item.specialization?.name ? ` — ${item.specialization.name}` : ""}
-              </span>
+              <span className="font-mono text-xs text-subtle-foreground">{contextLabel(item)}</span>
               <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
                 {isAdmin &&
                   (item.kind === "update" ? (
@@ -1037,9 +1051,22 @@ export function ManageResourceList({
 
   const isEmpty = visible.length === 0;
 
-  // Takes an array (not a single id) so a multi-branch group's
-  // checkbox can select/deselect every row it covers as one action —
-  // an ungrouped row just calls this with its own single-id array.
+  // Grouped by content identity independent of which of the two render
+  // paths above is active (flat vs. type-labeled sections) — see
+  // contentGroupKey's own comment. "Select all" and its count operate
+  // on these cards, not raw rows: a same-file card spanning 5 academic
+  // contexts counts as ONE toward "Select all (N)", matching what's
+  // actually rendered, while still selecting/removing every one of its
+  // underlying rows when acted on (selectedIds itself stays a raw-row
+  // id Set — toggleIds already selects a whole group's ids together,
+  // see its own comment — so the actual delete/bulk-delete behavior is
+  // unaffected by this, only the displayed count and "select all"
+  // semantics are).
+  const visibleGroups = useMemo(() => groupByContent(visible), [visible]);
+
+  // Takes an array (not a single id) so a grouped card's checkbox can
+  // select/deselect every row it covers as one action — an ungrouped
+  // row just calls this with its own single-id array.
   function toggleIds(ids: string[]) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -1052,7 +1079,15 @@ export function ManageResourceList({
     });
   }
 
-  const allVisibleSelected = visible.length > 0 && visible.every((r) => selectedIds.has(r.id));
+  const allVisibleSelected =
+    visibleGroups.length > 0 && visibleGroups.every((group) => group.items.every((r) => selectedIds.has(r.id)));
+
+  // How many CARDS have every one of their rows selected — shown next
+  // to the raw selectedIds.size (the actual delete button's own count,
+  // since that's what genuinely gets removed) so a multi-context card
+  // being selected/removed is never ambiguous about how many rows that
+  // really is.
+  const selectedGroupCount = visibleGroups.filter((group) => group.items.every((r) => selectedIds.has(r.id))).length;
 
   function toggleSelectAllVisible() {
     setSelectedIds((prev) => {
@@ -1315,12 +1350,15 @@ export function ManageResourceList({
               onChange={toggleSelectAllVisible}
               className="h-4 w-4 accent-primary"
             />
-            Select all ({visible.length})
+            Select all ({visibleGroups.length})
           </label>
 
           {selectedIds.size > 0 && (
             <div className="flex items-center gap-3">
-              <span className="text-sm text-foreground">{selectedIds.size} selected</span>
+              <span className="text-sm text-foreground">
+                {selectedGroupCount} selected
+                {selectedIds.size !== selectedGroupCount ? ` (${selectedIds.size} items)` : ""}
+              </span>
               <button
                 onClick={() => setSelectedIds(new Set())}
                 className="font-mono text-xs text-subtle-foreground transition-colors hover:text-foreground active:text-foreground"

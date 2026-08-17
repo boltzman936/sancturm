@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useBatches, useBatchTerms, useAllBatchTerms } from "@/features/batches/queries";
 import { useTerms, useTermBySlug } from "@/features/terms/queries";
 import { useBranch } from "@/hooks/useBranch";
@@ -249,9 +249,11 @@ export function useBatchSemesterFilter() {
   // existing string | null meaning unchanged.
   const [rawTermId, setRawTermId] = useSessionPersistedState<string>(SEMESTER_PICK_KEY, "");
   const termId = rawTermId === "" ? null : rawTermId;
-  function setTermIdState(id: string | null) {
-    setRawTermId(id ?? "");
-  }
+  // Memoized — this goes straight into useResetInvalidSelection's own
+  // dependency array below; an unmemoized wrapper here would get a new
+  // identity every render and make that effect re-run on every render
+  // regardless of whether the selection actually changed.
+  const setTermIdState = useCallback((id: string | null) => setRawTermId(id ?? ""), [setRawTermId]);
   const currentTermId = useMemo(() => {
     if (reachedTerms.length === 0) return "";
     return liveCurrentTermId || reachedTerms[reachedTerms.length - 1].term_id;

@@ -50,10 +50,15 @@ function assertValidSection(value: unknown): asserts value is ResourceSection {
 
 /**
  * Takes down an already-published resource — same RLS-enforced
- * "CR or admin deletes" policy as everything else here. Only removes
- * the database row; the underlying file stays in Storage (harmless,
- * just an orphaned object — not worth the extra round trip to also
- * delete it from Storage for this).
+ * "CR or admin deletes" policy as everything else here. Deletes the
+ * database row; the underlying R2 object is only deleted alongside it
+ * once no OTHER resource row still references the same file_url. The
+ * same physical file is deliberately reused across independent
+ * academic contexts (see supabase/initialize_2025_26_shared_content.sql
+ * and its siblings — Manage's own grouped-card view is built on this
+ * exact fact, see contentGroupKey in ManageResourceList.tsx), so
+ * removing ONE context's row must never delete a file four other
+ * contexts still point at.
  */
 export async function deleteResource(resourceId: string) {
   const supabase = await createClient();
@@ -76,7 +81,13 @@ export async function deleteResource(resourceId: string) {
   // matters to whoever clicked delete), so a storage hiccup here
   // shouldn't surface as a failed delete.
   try {
-    await deleteFromR2(data?.file_url);
+    if (data?.file_url) {
+      const { count } = await supabase
+        .from("resources")
+        .select("id", { count: "exact", head: true })
+        .eq("file_url", data.file_url);
+      if (!count) await deleteFromR2(data.file_url);
+    }
   } catch {
     // Orphaned object in R2 — same as before this fix existed, not a
     // new failure mode, so nothing more to do here.
