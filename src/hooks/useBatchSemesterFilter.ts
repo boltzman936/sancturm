@@ -358,10 +358,24 @@ export function useBatchSemesterFilter() {
     setTermIdState(id);
   }
 
+  // Loaded, but genuinely zero batches have reached this Year for this
+  // (branch, specialization) — was always theoretically possible (a
+  // brand-new batch under a later Year tab) but never actually
+  // reachable in practice until a specialization could be excluded
+  // from a whole batch (see isBatchTermHiddenForSpecialization — e.g.
+  // Cyber Security has no 2025-26 cohort at all, so "2nd Year" is
+  // simply unreached for it today). Every caller checks this BEFORE
+  // rendering batchSelect()/semesterSelect() — an empty eligibleBatches
+  // renders a real <select> with zero <option>s, which shows as a
+  // blank, broken-looking dropdown rather than communicating "nothing
+  // here yet, for a real reason."
+  const hasNoReachedBatches = eligibleBatches !== undefined && eligibleBatches.length === 0;
+
   return {
     yearNumber,
     allBatches,
     eligibleBatches,
+    hasNoReachedBatches,
     batchFilter,
     setBatchFilter,
     reachedTerms,

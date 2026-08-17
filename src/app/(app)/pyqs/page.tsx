@@ -21,7 +21,7 @@ import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
 import { localDateKey, formatShortDate } from "@/lib/date";
 import { matchesQuery } from "@/lib/search";
-import { ordinalSemesterLabel } from "@/lib/termLabel";
+import { ordinalSemesterLabel, ordinalYearLabel } from "@/lib/termLabel";
 import { sortByAcademicPriority } from "@/lib/sortByDate";
 import { cn } from "@/lib/utils";
 import type { ResourceType } from "@/features/resources/types";
@@ -50,6 +50,7 @@ export default function PYQsPage() {
   const {
     allBatches,
     eligibleBatches,
+    hasNoReachedBatches,
     batchFilter,
     setBatchFilter,
     reachedTerms,
@@ -63,6 +64,7 @@ export default function PYQsPage() {
     setTermId,
   } = useBatchSemesterFilter();
   const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
+  const specializationName = branchSpecializations?.find((s) => s.slug === specializationSlug)?.name;
 
   // Which specializations WITHIN this viewer's own branch actually
   // pool together — 1st Year splits Core+AIML from AIDS, 2nd Year
@@ -242,6 +244,27 @@ export default function PYQsPage() {
       ))}
     </Select>
   );
+
+  // Same reasoning as Notes & Lab's identical check — a real (branch,
+  // specialization) with zero batches reached for this Year (e.g.
+  // Cyber Security has no 2025-26 cohort), shown instead of a filter
+  // bar whose Batch <select> would render blank.
+  if (!isLoadingReachedTerms && hasNoReachedBatches) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div>
+          <h1 className="text-2xl font-medium text-foreground">PYQs</h1>
+          <p className="text-muted-foreground">
+            Previous year questions for {specializationName ?? branch?.name ?? "your branch"}.
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
+          {specializationName ?? branch?.name ?? "This branch"} hasn&apos;t reached{" "}
+          {yearNumber !== undefined ? ordinalYearLabel(yearNumber) : "this year"} yet.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">

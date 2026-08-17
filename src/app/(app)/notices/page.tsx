@@ -16,7 +16,7 @@ import { Select } from "@/components/shared/Select";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { Notice } from "@/features/notices/types";
 import { localDateKey, formatShortDate } from "@/lib/date";
-import { ordinalSemesterLabel } from "@/lib/termLabel";
+import { ordinalSemesterLabel, ordinalYearLabel } from "@/lib/termLabel";
 import { sortByPinnedThenDate, type DateSortOrder } from "@/lib/sortByDate";
 import { cn, downloadFile } from "@/lib/utils";
 
@@ -45,8 +45,10 @@ export default function NoticesPage() {
   // to) is genuinely reachable/browsable here, not just correctly
   // scoped in the query underneath.
   const {
+    yearNumber,
     allBatches,
     eligibleBatches,
+    hasNoReachedBatches,
     batchFilter,
     setBatchFilter,
     reachedTerms,
@@ -59,6 +61,7 @@ export default function NoticesPage() {
     setTermId,
   } = useBatchSemesterFilter();
   const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
+  const specializationName = branchSpecializations?.find((s) => s.slug === specializationSlug)?.name;
 
   const { data: notices, isLoading, isError } = useNotices(
     branch?.id ?? null,
@@ -135,6 +138,24 @@ export default function NoticesPage() {
       ))}
     </Select>
   );
+
+  // Same reasoning as Notes & Lab / PYQs' identical check.
+  if (!isLoadingReachedTerms && hasNoReachedBatches) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div>
+          <h1 className="text-2xl font-medium text-foreground">Notices</h1>
+          <p className="text-muted-foreground">
+            Official PDFs for {specializationName ?? branch?.name ?? "your branch"}.
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
+          {specializationName ?? branch?.name ?? "This branch"} hasn&apos;t reached{" "}
+          {yearNumber !== undefined ? ordinalYearLabel(yearNumber) : "this year"} yet.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">

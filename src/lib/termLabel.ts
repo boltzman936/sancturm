@@ -25,3 +25,22 @@ export function ordinalSemesterLabel(semesterNumber: number): string {
             : "th";
   return `${semesterNumber}${suffix} Semester`;
 }
+
+// Same ordinal-suffix logic as ordinalSemesterLabel, for a bare Year
+// number instead of a Semester number — used by the "hasn't reached
+// this year yet" empty state (useBatchSemesterFilter's
+// hasNoReachedBatches), which has only yearNumber in hand, not a real
+// term/label to derive text from via shortTermLabel.
+export function ordinalYearLabel(yearNumber: number): string {
+  const suffix =
+    yearNumber % 100 >= 11 && yearNumber % 100 <= 13
+      ? "th"
+      : yearNumber % 10 === 1
+        ? "st"
+        : yearNumber % 10 === 2
+          ? "nd"
+          : yearNumber % 10 === 3
+            ? "rd"
+            : "th";
+  return `${yearNumber}${suffix} Year`;
+}

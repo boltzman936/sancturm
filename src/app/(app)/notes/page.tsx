@@ -20,7 +20,7 @@ import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
 import { localDateKey, formatShortDate } from "@/lib/date";
 import { matchesQuery } from "@/lib/search";
-import { ordinalSemesterLabel } from "@/lib/termLabel";
+import { ordinalSemesterLabel, ordinalYearLabel } from "@/lib/termLabel";
 import { sortByAcademicPriority } from "@/lib/sortByDate";
 import { cn } from "@/lib/utils";
 import type { ResourceType } from "@/features/resources/types";
@@ -57,8 +57,10 @@ export default function NotesAndLabPage() {
   // batches that have actually reached the current Year are pickable
   // choices there.
   const {
+    yearNumber,
     allBatches,
     eligibleBatches,
+    hasNoReachedBatches,
     batchFilter,
     setBatchFilter,
     reachedTerms,
@@ -71,6 +73,7 @@ export default function NotesAndLabPage() {
     setTermId,
   } = useBatchSemesterFilter();
   const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
+  const specializationName = specializations?.find((s) => s.id === specializationId)?.name;
 
   const [resourceType, setResourceType] = useState<NotesOrLab>("notes");
   const [dateSort, setDateSort] = useState<DateSort>("newest");
@@ -218,6 +221,30 @@ export default function NotesAndLabPage() {
       ))}
     </Select>
   );
+
+  // Genuinely zero batches have reached this Year for this (branch,
+  // specialization) — e.g. Cyber Security has no 2025-26 cohort at
+  // all, so "2nd Year" is simply unreached for it today. Shown instead
+  // of the filter bar (whose Batch <select> would otherwise render
+  // with zero options — a blank, broken-looking dropdown) and the
+  // generic "Nothing here yet.", which gave no indication this is
+  // expected rather than a bug.
+  if (!isLoadingReachedTerms && hasNoReachedBatches) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div>
+          <h1 className="text-2xl font-medium text-foreground">Notes & lab</h1>
+          <p className="text-muted-foreground">
+            Notes and lab manuals for {specializationName ?? branch?.name ?? "your branch"}.
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
+          {specializationName ?? branch?.name ?? "This branch"} hasn&apos;t reached{" "}
+          {yearNumber !== undefined ? ordinalYearLabel(yearNumber) : "this year"} yet.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
