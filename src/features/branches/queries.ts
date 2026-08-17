@@ -79,3 +79,24 @@ export function useSpecializationBySlug(branchId: string | null, slug: string | 
   const query = useSpecializations(branchId);
   return { ...query, data: slug ? query.data?.find((s) => s.slug === slug) : undefined };
 }
+
+/**
+ * Every specialization across every branch, unscoped — for a caller
+ * resolving specialization NAMES for a list of rows spanning several
+ * branches at once (the Sancturm Team page's CR list), where calling
+ * useSpecializations(branchId) once per row would mean a hook call
+ * inside a loop. Specializations total in the single digits today, so
+ * "fetch them all" costs nothing extra over the per-branch version.
+ */
+export function useAllSpecializations() {
+  return useQuery({
+    queryKey: ["specializations", "all"],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase.from("specializations").select("*").order("sort_order");
+      if (error) throw error;
+      return data as Specialization[];
+    },
+    staleTime: 5 * 60_000,
+  });
+}

@@ -36,6 +36,16 @@ export type Role =
       // Nullable — a CR scoped to a branch with no specialization
       // concept (anything but CSE) has none.
       specializationId: string | null;
+      // Resolved fresh on every call from (batchId, yearNumber) via
+      // cr_current_term_id() — never a value stored on the CR's own
+      // row. A CR's permanent scope is (branch, specialization, batch,
+      // year); which SEMESTER that resolves to today advances on its
+      // own the moment a new one starts, with zero edits to their
+      // profile. See supabase/cr_dynamic_semester.sql for why this
+      // has to be resolved the identical way in Postgres too (RLS is
+      // the real enforcement boundary, and it calls the exact same
+      // function) — this value existing here is convenience for the
+      // UI, not a second source of truth that could drift from it.
       termId: string;
       batchId: string;
       displayName: string;
@@ -56,20 +66,33 @@ export async function getCurrentRole(): Promise<Role> {
     supabase.from("admins").select("display_name").eq("auth_user_id", user.id).maybeSingle(),
     supabase
       .from("cr_profiles")
-      .select("branch_id, specialization_id, term_id, batch_id, display_name")
+      .select("branch_id, specialization_id, year_number, batch_id, display_name")
       .eq("auth_user_id", user.id)
       .maybeSingle(),
   ]);
 
   if (admin) return { type: "admin", displayName: admin.display_name };
-  if (cr)
+  if (cr) {
+    const { data: termId, error } = await supabase.rpc("cr_current_term_id", {
+      p_batch_id: cr.batch_id,
+      p_year_number: cr.year_number,
+    });
+    if (error || !termId) {
+      // No batch_terms row exists yet for this CR's (batch, year) —
+      // fails closed (no role) rather than handing back a null termId
+      // that every downstream RLS-matching action would then compare
+      // against and never satisfy anyway.
+      console.error("cr_current_term_id resolution failed:", error);
+      return null;
+    }
     return {
       type: "cr",
       branchId: cr.branch_id,
       specializationId: cr.specialization_id,
-      termId: cr.term_id,
+      termId,
       batchId: cr.batch_id,
       displayName: cr.display_name,
     };
+  }
   return null;
 }

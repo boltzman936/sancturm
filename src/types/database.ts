@@ -123,10 +123,29 @@ export type CrProfile = {
   // Nullable — a CR scoped to a branch with no specialization concept
   // (anything but CSE) has none. A CSE CR always has one.
   specialization_id: string | null;
-  term_id: string;
+  // A CR's permanent scope — deliberately NOT a term_id. Which
+  // semester that resolves to right now is computed on every read via
+  // the cr_current_term_id() Postgres function (see
+  // supabase/cr_dynamic_semester.sql), never stored here, so it
+  // advances on its own the moment a new semester starts.
+  year_number: number;
   batch_id: string;
   display_name: string;
   created_at: string;
+};
+
+// The public, safe-subset shape team_directory() (a security-definer
+// Postgres function — see cr_dynamic_semester.sql) returns. Deliberately
+// NOT CrProfile — no id, no auth_user_id, no created_at; this is what's
+// allowed to reach an unauthenticated visitor, which is a strictly
+// smaller set of fields than the table itself has.
+export type TeamDirectoryEntry = {
+  display_name: string;
+  branch_id: string;
+  specialization_id: string | null;
+  batch_id: string;
+  year_number: number;
+  current_term_id: string;
 };
 
 // Singleton config row (id is always `true` — the boolean-PK trick

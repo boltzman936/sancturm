@@ -19,7 +19,7 @@ const NAV_LINKS = [
   { href: "/notices", label: "Notices", icon: Megaphone },
   { href: "/sancturm-updates", label: "Sancturm updates", icon: Sparkles },
   { href: "/support", label: "Support Sancturm", icon: HeartHandshake },
-  { href: "/ownership", label: "Ownership", icon: UserRound },
+  { href: "/ownership", label: "Sancturm Team", icon: UserRound },
 ];
 
 // Below md this renders as an off-canvas drawer (fixed, slides in over

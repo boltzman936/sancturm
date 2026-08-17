@@ -1,6 +1,7 @@
 import { Briefcase } from "lucide-react";
 import { OWNER } from "@/config/ownership";
 import { OwnerPhoto } from "./OwnerPhoto";
+import { TeamList } from "@/features/team/components/TeamList";
 import { WhatsAppIcon, GmailIcon, InstagramIcon, LinkedInIcon } from "@/components/shared/BrandIcons";
 import { cn } from "@/lib/utils";
 
@@ -41,8 +42,12 @@ const PORTFOLIO_BUTTON_CLASS = cn(
   "w-[calc((100%-0.5rem)/2)] sm:w-[calc((100%-0.75rem)/2)]"
 );
 
-// Static — one person's profile, edited directly in
-// src/config/ownership.ts rather than through a database/admin UI.
+// Anurag's card below (the Controller — built and maintains Sancturm)
+// is static, edited directly in src/config/ownership.ts, and stays
+// completely unchanged by the Sancturm Team rename — untouched image,
+// name, role, links, sizing, spacing, all of it. TeamList (added
+// below it) is the one dynamic part of this page — every CR/Admin,
+// read live from the database, not this file.
 export default function OwnershipPage() {
   const activeLinks = LINK_META.filter((link) => OWNER.links[link.key]);
   const hasPortfolio = Boolean(OWNER.links.portfolio);
@@ -51,8 +56,8 @@ export default function OwnershipPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
       <div className="flex flex-col gap-2">
         <div className="text-center sm:text-left">
-          <h1 className="text-2xl font-medium text-foreground">Ownership</h1>
-          <p className="text-muted-foreground">Who built and runs Sancturm.</p>
+          <h1 className="text-2xl font-medium text-foreground">Sancturm Team</h1>
+          <p className="text-muted-foreground">People who build, maintain and help run Sancturm.</p>
         </div>
 
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card p-4 text-center sm:flex-row sm:p-5 sm:text-left">
@@ -88,7 +93,7 @@ export default function OwnershipPage() {
           default) and not stretched to fill the row (col-span-2 is
           only on the wrapper; the button itself is pinned to exactly
           one column's width, see PORTFOLIO_BUTTON_CLASS). */}
-      <div className="grid grid-cols-2 gap-2 pb-14 sm:gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3">
         {activeLinks.map((link) => (
           <a
             key={link.key}
@@ -121,6 +126,10 @@ export default function OwnershipPage() {
             </span>
           )}
         </div>
+      </div>
+
+      <div className="pb-14">
+        <TeamList />
       </div>
     </div>
   );
