@@ -252,6 +252,43 @@ export function IntroExperience() {
     };
   }, [typingDone, prefersReducedMotion]);
 
+  // Cockpit is a fixed, full-bleed media experience — it should never
+  // zoom, on any input method, on any device. The mobile-viewport meta
+  // tag (see the onboarding page's own `viewport` export) already
+  // blocks pinch/double-tap zoom on iOS/Android by itself — that's a
+  // route-scoped Next.js export, so it can't reach here to also cover
+  // desktop, and desktop browsers don't expose an equivalent "disable
+  // zoom" viewport flag at all. Desktop zoom instead arrives as two
+  // separate input events neither of which the meta tag touches:
+  // trackpad pinch / Ctrl+wheel (both fire as a `wheel` event with
+  // ctrlKey set — this is a synthetic flag the browser itself sets for
+  // zoom gestures, wheel's own ctrlKey is otherwise never true from a
+  // real Ctrl+scroll) and Safari's own trackpad-pinch-specific
+  // `gesturestart`/`gesturechange` events (Safari never routes trackpad
+  // pinch through `wheel` at all). Listeners are attached only while
+  // this component is mounted (cleaned up on unmount, e.g. once
+  // enterSancturm() navigates away to /notes) so no other page is
+  // touched. Browser-native zoom keyboard shortcuts (Ctrl/Cmd +/-) are
+  // intentionally not interceptable by any page — no legitimate way
+  // exists to block those, so they're left alone everywhere, Cockpit
+  // included.
+  useEffect(() => {
+    function blockCtrlWheelZoom(event: WheelEvent) {
+      if (event.ctrlKey) event.preventDefault();
+    }
+    function blockGestureZoom(event: Event) {
+      event.preventDefault();
+    }
+    document.addEventListener("wheel", blockCtrlWheelZoom, { passive: false });
+    document.addEventListener("gesturestart", blockGestureZoom);
+    document.addEventListener("gesturechange", blockGestureZoom);
+    return () => {
+      document.removeEventListener("wheel", blockCtrlWheelZoom);
+      document.removeEventListener("gesturestart", blockGestureZoom);
+      document.removeEventListener("gesturechange", blockGestureZoom);
+    };
+  }, []);
+
   function enterSancturm() {
     setExiting(true);
     setTimeout(() => {
@@ -309,7 +346,18 @@ export function IntroExperience() {
       // value (dvh recalculates asynchronously as the mobile toolbar
       // animates) then shows up as a real gap against the true bottom
       // edge, exposing the warm theme background underneath.
-      className="fixed inset-0 w-screen overflow-hidden bg-black"
+      //
+      // touch-none (touch-action: none) — belt-and-suspenders with the
+      // onboarding page's own viewport export (which already sets
+      // user-scalable=no/maximum-scale=1 for this route): that meta
+      // tag blocks pinch/double-tap zoom at the browser level, this
+      // CSS property blocks the same gestures at the element level, so
+      // pinch/double-tap zoom stays off here even on a browser that
+      // only honors one of the two mechanisms. It doesn't disable taps
+      // — the branch/term cards below stay fully clickable — only the
+      // browser's own default pan/zoom gesture handling, which this
+      // fixed, non-scrolling view never needed anyway.
+      className="fixed inset-0 w-screen touch-none overflow-hidden bg-black"
       animate={{ opacity: exiting ? 0 : 1 }}
       transition={{ duration: EXIT_DURATION_S }}
     >
