@@ -1,28 +1,32 @@
 import { cn } from "@/lib/utils";
 
-// Fixed, theme-independent — the ONE piece of Sancturm UI that never
-// changes with the active [data-theme]/[data-mode] (see globals.css's
-// own header comment on why every other color in the app does). Per
-// the brand spec: Deep Navy #0D2C4D + Secondary Warm Cream #F4EDE5 —
-// no icon mark, just this text, so it needs ONE of the two colors
-// picked per placement: navy reads on the cream/light brand ground,
-// but is nearly unreadable on the sidebar chrome, which is a dark
-// anchor color in all 4 themes (see globals.css's --sidebar-background
-// per [data-theme]). `onDark` picks cream there instead. Still just
-// the two fixed brand colors, never a theme token.
-const WORDMARK_COLOR_LIGHT = "#0D2C4D";
-const WORDMARK_COLOR_DARK = "#F4EDE5";
-
 /**
- * The Sancturm wordmark — plain clickable text, no icon mark. Renders
- * in one of the two fixed brand colors regardless of the active theme
- * — see WORDMARK_COLOR_LIGHT/DARK's own comment for which, and when.
+ * The Sancturm wordmark — plain clickable text, no icon mark. Color
+ * comes from whichever surface it's actually sitting on, not a fixed
+ * hex: `surface="sidebar"` uses --sidebar-foreground (already tuned
+ * per theme for contrast against --sidebar-background, which is a
+ * dark anchor color in all 4 themes — see globals.css), `surface=
+ * "content"` uses plain --foreground (already tuned per theme AND
+ * light/dark mode against --background). Both are real design tokens,
+ * already relied on everywhere else in the app for exactly this
+ * "always readable against its own background" property — this reuses
+ * that instead of hardcoding a color that would need to be re-verified
+ * by hand every time a theme or mode is added.
  */
-export function Logo({ className, onDark = false }: { className?: string; onDark?: boolean }) {
+export function Logo({
+  className,
+  surface = "content",
+}: {
+  className?: string;
+  surface?: "sidebar" | "content";
+}) {
   return (
     <span
-      className={cn("font-sans text-lg font-semibold tracking-tight", className)}
-      style={{ color: onDark ? WORDMARK_COLOR_DARK : WORDMARK_COLOR_LIGHT }}
+      className={cn(
+        "font-sans text-lg font-semibold tracking-tight",
+        surface === "sidebar" ? "text-sidebar-foreground" : "text-foreground",
+        className
+      )}
     >
       sancturm
     </span>

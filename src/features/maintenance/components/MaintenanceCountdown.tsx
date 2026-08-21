@@ -8,7 +8,6 @@ import { Wrench, Lock } from "lucide-react";
 import { useMaintenanceConfig } from "@/features/maintenance/queries";
 import { Logo } from "@/components/layout/Logo";
 import { useDeviceTier } from "@/hooks/useDeviceTier";
-import { useColorMode } from "@/hooks/useColorMode";
 
 // India-fixed, not the visitor's own timezone — Sancturm's whole
 // audience is one campus, so "back online at 6:30 PM" should always
@@ -103,7 +102,6 @@ export function MaintenanceCountdown({
         };
 
   const deviceTier = useDeviceTier();
-  const { mode } = useColorMode();
   const backgroundSrc =
     deviceTier === "mobile"
       ? "/media/maintenance-mobile.webp"
@@ -140,7 +138,7 @@ export function MaintenanceCountdown({
           they were, just smaller and lighter over the new artwork. */}
       <div className="relative flex flex-col items-center gap-7">
         <motion.div {...reveal(0)}>
-          <Logo className="text-2xl" onDark={mode === "dark"} />
+          <Logo className="text-2xl" />
         </motion.div>
 
         <motion.div {...reveal(0.08)} className="flex flex-col items-center gap-3">
