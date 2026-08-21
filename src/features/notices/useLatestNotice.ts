@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -94,11 +94,25 @@ export function useLastSeenNotice(branchId: string | null, specializationId: str
   const getSnapshot = () => readSnapshot(key);
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-  function markSeen(noticeId: string) {
-    window.localStorage.setItem(key, noticeId);
-    snapshot = { key, id: noticeId };
-    emitChange();
-  }
+  // useCallback, not a plain function — a caller (notices/page.tsx)
+  // puts this in a useEffect's dependency array to mark the current
+  // notice seen once it's actually rendered. A new markSeen identity
+  // every render meant that effect never stabilized: it fired, called
+  // markSeen, which calls emitChange() and re-renders this component
+  // with a brand new markSeen reference, which the effect saw as
+  // "changed" and fired again — an infinite loop that only showed up
+  // once a real notice existed to mark seen (confirmed live: crashed
+  // exactly when, and only when, a context had an actual notice).
+  // Stable across renders now, only changing when the (branch,
+  // specialization) key itself does.
+  const markSeen = useCallback(
+    (noticeId: string) => {
+      window.localStorage.setItem(key, noticeId);
+      snapshot = { key, id: noticeId };
+      emitChange();
+    },
+    [key]
+  );
 
   return { lastSeenId: state.id, markSeen };
 }
