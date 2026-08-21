@@ -69,6 +69,18 @@ export type VerificationResult = {
 export async function verifyUploadedFileOrCleanUp(fileUrl: string): Promise<VerificationResult> {
   const invalid: VerificationResult = { valid: false, contentHash: null };
 
+  // Every legitimate caller only ever passes back a URL this same
+  // server just minted via r2PublicUrl() (uploadFileToR2 → getUploadUrl
+  // → here) — but every caller of THIS function is itself a Server
+  // Action, callable directly with any string, bypassing that whole
+  // chain. Without this check, a crafted call could point `fileUrl` at
+  // an arbitrary host (an internal service, a cloud metadata endpoint)
+  // and get this server to fetch it — the exact SSRF shape deleteFromR2
+  // already guards against for the same reason, just on the read path
+  // instead of delete.
+  const publicBase = process.env.R2_PUBLIC_URL?.replace(/\/$/, "");
+  if (!publicBase || !fileUrl.startsWith(`${publicBase}/`)) return invalid;
+
   let headResponse: Response;
   try {
     headResponse = await fetch(fileUrl, { method: "HEAD" });
