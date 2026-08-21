@@ -88,14 +88,22 @@ export default function NoticesPage() {
   // A CR can browse another (branch, specialization, term)'s notices
   // like a normal student (no manage powers there) — pinning only
   // works on their own scope, same as everything else in the CR
-  // permission model. Never true under "All semesters" (no single
-  // term to match against), same as it'd correctly fail server-side.
-  const canManage =
-    role?.type === "admin" ||
-    (role?.type === "cr" &&
-      role.branchId === branch?.id &&
-      role.specializationId === specializationId &&
-      role.termId === term?.id);
+  // permission model. Wrapped defensively: this is purely a UI
+  // convenience (RLS is the real enforcement — see role.ts's own
+  // comment), so if `role` is ever malformed in a shape TypeScript
+  // didn't catch, degrading to "can't pin" is the right failure, not a
+  // full page crash.
+  let canManage = false;
+  try {
+    canManage =
+      role?.type === "admin" ||
+      (role?.type === "cr" &&
+        role.branchId === branch?.id &&
+        role.specializationId === specializationId &&
+        role.termId === term?.id);
+  } catch (err) {
+    console.error("canManage computation failed:", err);
+  }
 
   async function handleTogglePin(notice: Notice) {
     await toggleNoticePin(notice.id, !notice.is_pinned);
