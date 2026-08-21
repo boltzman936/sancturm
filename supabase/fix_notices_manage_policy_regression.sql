@@ -1,0 +1,19 @@
+-- Fixes a real regression introduced by scope_notices_cr_manage.sql:
+-- that migration added a "CR or admin manages" policy covering ALL
+-- commands (select/insert/update/delete) scoped only by branch +
+-- specialization + batch. Postgres OR's multiple permissive policies
+-- together for the same command, and this table already had — and
+-- still has — more specific, correct policies for each command:
+--   "CR or admin inserts" (with_check only, term-scoped)
+--   "CR or admin updates" (term-scoped, blocks touching admin-authored rows)
+--   "CR or admin deletes" (term-scoped, blocks touching admin-authored rows)
+--   "Public read" (select)
+-- Because "CR or admin manages" has none of those extra restrictions,
+-- it alone determined the effective permission for update/delete —
+-- any CR could update/delete ANY notice in their branch/specialization/
+-- batch regardless of term or admin-authorship, silently reopening
+-- exactly the vulnerability those specific policies exist to prevent.
+--
+-- All four commands remain fully covered by the four policies above
+-- once this one is dropped — nothing else needs to change.
+drop policy if exists "CR or admin manages" on notices;
