@@ -114,14 +114,14 @@ export function TeamList() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-subtle-foreground">
-                  <th className="px-4 py-2.5 font-normal">#</th>
-                  <th className="px-4 py-2.5 font-normal">Name</th>
-                  <th className="px-4 py-2.5 font-normal">Role</th>
-                  <th className="px-4 py-2.5 font-normal">Branch</th>
-                  <th className="px-4 py-2.5 font-normal">Specialization</th>
-                  <th className="px-4 py-2.5 font-normal">Year</th>
-                  <th className="px-4 py-2.5 font-normal">Semester</th>
-                  <th className="px-4 py-2.5 font-normal">Card</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">No.</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Name</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Role</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Branch</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Specialization</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Year</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Semester</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Card</th>
                 </tr>
               </thead>
               <tbody>
@@ -174,27 +174,27 @@ export function TeamList() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-subtle-foreground">
-                  <th className="px-4 py-2.5 font-normal">#</th>
-                  <th className="px-4 py-2.5 font-normal">Name</th>
-                  <th className="px-4 py-2.5 font-normal">Role</th>
-                  <th className="px-4 py-2.5 font-normal">Branch</th>
-                  <th className="px-4 py-2.5 font-normal">Specialization</th>
-                  <th className="px-4 py-2.5 font-normal">Year</th>
-                  <th className="px-4 py-2.5 font-normal">Semester</th>
-                  <th className="px-4 py-2.5 font-normal">Card</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">No.</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Name</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Role</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Branch</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Specialization</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Year</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Semester</th>
+                  <th className="px-3 py-2 font-normal whitespace-nowrap">Card</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, index) => (
                   <tr key={row.key} className="border-b border-border last:border-b-0">
-                    <td className="px-4 py-3 font-mono text-xs text-subtle-foreground">{index + 1}</td>
-                    <td className="px-4 py-3 font-medium text-foreground">{row.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">Admin · CR</td>
-                    <td className="px-4 py-3 text-muted-foreground">{row.branchName}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{row.specializationName ?? "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{row.yearLabel}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{row.semesterLabel}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-2.5 font-mono text-xs text-subtle-foreground">{index + 1}</td>
+                    <td className="px-3 py-2.5 font-medium text-foreground">{row.name}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">Admin · CR</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{row.branchName}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{row.specializationName ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{row.yearLabel}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{row.semesterLabel}</td>
+                    <td className="px-3 py-2.5">
                       <button
                         type="button"
                         disabled={!row.cardUrl}
