@@ -514,10 +514,19 @@ export function ResourceViewerDialog({
   resource,
   open,
   onOpenChange,
+  fitImage = false,
 }: {
   resource: Viewable | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // Default (false) keeps the deliberate natural-size + scroll
+  // treatment below — right for a scanned notebook photo, which is
+  // routinely far taller than the dialog and would go illegible if
+  // shrunk to fit. A CR card is a single fixed-aspect image (a
+  // portrait ID-card shape, not a multi-page document) where the
+  // opposite is true: seeing the WHOLE card at once is the point, so
+  // TeamList passes fitImage to scale it down instead.
+  fitImage?: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -552,14 +561,22 @@ export function ResourceViewerDialog({
             PdfViewer's own wrapper already gives multi-page PDFs — means
             the whole page is always reachable at a readable size,
             never shrunk past legibility and never cropped. */}
-        <div className="h-[70vh] min-h-0 overflow-y-auto px-6 pb-6">
+        <div
+          className={cn(
+            "h-[70vh] min-h-0 px-6 pb-6",
+            fitImage ? "overflow-hidden" : "overflow-y-auto"
+          )}
+        >
           {resource &&
             (isImageUrl(resource.file_url) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={resource.file_url}
                 alt={resource.title}
-                className="mx-auto w-full rounded-md"
+                className={cn(
+                  "mx-auto rounded-md",
+                  fitImage ? "h-full w-full object-contain" : "w-full"
+                )}
               />
             ) : (
               // key={file_url}: a fresh PdfViewer instance per

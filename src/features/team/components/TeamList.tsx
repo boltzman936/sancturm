@@ -282,6 +282,7 @@ export function TeamList() {
         onOpenChange={(open) => {
           if (!open) setViewingCard(null);
         }}
+        fitImage
       />
     </div>
   );
