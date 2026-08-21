@@ -34,8 +34,12 @@ export function ThemeSwitcher() {
   const { mode, setMode } = useColorMode();
 
   return (
+    // -mt-1 pulls the pill up by exactly the height it gained over its
+    // previous h-8 size (buttons grew h-6 -> h-7, i.e. +4px), so it
+    // grows upward only — its bottom edge (and every sibling below it,
+    // Dashboard/Sign out included) stays exactly where it was.
     <div
-      className="flex items-center gap-1 rounded-full border border-sidebar-border/70 bg-sidebar-foreground/[0.04] p-1"
+      className="-mt-1 flex items-center gap-1 rounded-full border border-sidebar-border/70 bg-sidebar-foreground/[0.04] p-1"
       role="group"
       aria-label="Appearance"
     >
@@ -50,25 +54,26 @@ export function ThemeSwitcher() {
             title={THEME_LABELS[id]}
             onClick={() => setTheme(id)}
             className={cn(
-              "flex h-6 w-6 shrink-0 items-center justify-center rounded-full outline-none transition-all duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring",
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-full outline-none transition-all duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring",
               theme === id ? "ring-1 ring-sidebar-foreground/80 ring-offset-2 ring-offset-sidebar-background" : "opacity-80 hover:opacity-100"
             )}
           >
             <span
-              className="h-3.5 w-3.5 rounded-full border border-black/10"
+              className="h-4 w-4 rounded-full border border-black/10"
               style={{ backgroundColor: SWATCH_STYLE[id] }}
             />
           </button>
         ))}
       </div>
-      <div className="mx-0.5 h-4 w-px shrink-0 bg-sidebar-border/70" aria-hidden="true" />
+      <div className="mx-0.5 h-5 w-px shrink-0 bg-sidebar-border/70" aria-hidden="true" />
       <button
         type="button"
         onClick={() => setMode(mode === "dark" ? "light" : "dark")}
         aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sidebar-muted-foreground outline-none transition-colors duration-150 ease-out hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:bg-sidebar-foreground/10 active:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-sidebar-muted-foreground outline-none transition-colors duration-150 ease-out hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:bg-sidebar-foreground/10 active:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {mode === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+        {mode === "light" ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
+        <span className="text-[11px] font-medium leading-none">{mode === "light" ? "Light" : "Dark"}</span>
       </button>
     </div>
   );
