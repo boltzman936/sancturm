@@ -42,11 +42,22 @@ function cursorClassName(typingDone: boolean, cursorVisible: boolean) {
 
 export function IntroExperience() {
   const router = useRouter();
-  const { setBranch, isLoaded: branchLoaded } = useBranch();
-  const { setTerm, isLoaded: termLoaded } = useTerm();
+  const { branch: savedBranch, setBranch, isLoaded: branchLoaded } = useBranch();
+  const { term: savedTerm, setTerm, isLoaded: termLoaded } = useTerm();
   const { setSpecialization } = useSpecialization();
   const { data: branches } = useBranches();
   const isLoaded = branchLoaded && termLoaded;
+  // A returning visitor who's already picked a branch/term shouldn't
+  // sit through the full typing animation + selector flow every time
+  // they land on "/" (e.g. clicking the sidebar's own "sancturm" link)
+  // — skip straight to where AppLayout would send them anyway. Only
+  // fires once isLoaded is genuinely true (both hooks resolved from
+  // localStorage), so a real first-time visitor (nothing saved yet)
+  // still gets the full intro.
+  const alreadyOnboarded = isLoaded && !!savedBranch && !!savedTerm;
+  useEffect(() => {
+    if (alreadyOnboarded) router.replace("/notes");
+  }, [alreadyOnboarded, router]);
   const queryClient = useQueryClient();
   const prefersReducedMotion = useReducedMotion();
   const deviceTier = useDeviceTier();
@@ -263,7 +274,7 @@ export function IntroExperience() {
     enterSancturm();
   }
 
-  if (!isLoaded) return null;
+  if (!isLoaded || alreadyOnboarded) return null;
 
   return (
     <motion.div
