@@ -46,16 +46,21 @@ export function SelectCard<T>({
     <div
       className={cn(
         // Liquid-glass treatment — frosted (backdrop-blur + saturate),
-        // translucent white overlay, a bright top edge and soft dark
-        // base shadow for real depth, same recipe as Apple's own
+        // translucent white overlay, a thin bright edge and a
+        // restrained shadow for depth, same recipe as Apple's own
         // frosted panels. A modest blur radius (md, ~12px) rather than
         // an extreme one keeps this affordable even on mobile, the one
         // tier where the backdrop is still a playing video (tablet/
         // desktop sit over a static image, where blur cost is a
         // one-time paint, not a per-frame resample) — an earlier
         // version of this card skipped blur entirely for that reason;
-        // "md" is the deliberate middle ground, not an oversight.
-        "w-full max-w-[320px] rounded-2xl border border-white/25 bg-white/10 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-md backdrop-saturate-150",
+        // "md" is the deliberate middle ground, not an oversight. Only
+        // this card's own bounds are blurred — never the page behind
+        // it — so the background media stays sharp everywhere outside
+        // this small box. Compact by design (260px, tighter padding
+        // than the original 320px/p-6): a small, subtle panel reads as
+        // premium against full-bleed art; a big one reads as a modal.
+        "w-full max-w-[260px] rounded-2xl border border-white/20 bg-white/10 p-4 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md backdrop-saturate-150",
         className
       )}
     >

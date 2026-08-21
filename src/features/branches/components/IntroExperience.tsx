@@ -14,7 +14,6 @@ import { BranchSelectCard } from "@/features/branches/components/BranchSelectCar
 import { SpecializationSelectCard } from "@/features/branches/components/SpecializationSelectCard";
 import { TermSelectCard } from "@/features/terms/components/TermSelectCard";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
 import type { Branch } from "@/features/branches/types";
 import type { AcademicTerm, Specialization } from "@/types/database";
 
@@ -35,49 +34,11 @@ function cursorClassName(typingDone: boolean, cursorVisible: boolean) {
   return "ml-1 inline-block w-[2px] text-primary";
 }
 
-// Below this viewport aspect ratio (taller than roughly 9:10 — every
-// phone in portrait, and most tablets in portrait), the 16:9 "contain"
-// box from ASPECT_BREAKPOINT downward shrinks to a thin letterboxed
-// strip with huge dead black bars top/bottom, and everything anchored
-// to that strip gets squeezed into it. Below the threshold the video
-// switches to full-viewport object-cover (cropped sides, no
-// letterboxing) and the overlay anchors to the real viewport instead
-// of a box — trading exact video-frame alignment (which only matters
-// for the wide "cockpit window" look) for something that's actually
-// usable on a phone held upright.
-const PORTRAIT_QUERY = "(max-aspect-ratio: 0.9)";
-
-// Lazy initializer (not useState(false) + an effect-set value) so the
-// FIRST client render already has the real answer, not a placeholder
-// that flips a moment later. That flip used to matter a lot here: the
-// video <source> below depends on this same class of check
-// (useIsMobileWidth), and briefly rendering the WRONG one meant the
-// browser started fetching the desktop cockpit video, then aborted
-// and re-fetched the actual mobile one once the effect caught up —
-// on a phone, exactly the connection where that wasted round trip
-// hurts most. typeof window guards the one place this still runs
-// without a browser: next build's static-generation pass executes
-// this component in Node to prerender "/" — see isLoaded's own
-// server-snapshot gate just below, which already returns null in
-// that same environment regardless, so this only ever affects a REAL
-// client's first paint, never the prerendered HTML.
-function usePortraitLayout() {
-  const [isPortrait, setIsPortrait] = useState(() =>
-    typeof window === "undefined" ? false : window.matchMedia(PORTRAIT_QUERY).matches
-  );
-  useEffect(() => {
-    const mq = window.matchMedia(PORTRAIT_QUERY);
-    const handler = (e: MediaQueryListEvent) => setIsPortrait(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return isPortrait;
-}
-
 // Only an actual phone gets the dedicated mobile video asset — a
-// tablet in portrait still gets the wide tablet/desktop image (just
-// via the isPortrait object-cover fallback below). Tier resolution
-// itself lives in useDeviceTier (shared with Maintenance/offline).
+// tablet gets the wide tablet/desktop image instead (both always
+// object-cover — see the background media's own comment). Tier
+// resolution itself lives in useDeviceTier (shared with Maintenance/
+// offline).
 
 export function IntroExperience() {
   const router = useRouter();
@@ -88,7 +49,6 @@ export function IntroExperience() {
   const isLoaded = branchLoaded && termLoaded;
   const queryClient = useQueryClient();
   const prefersReducedMotion = useReducedMotion();
-  const isPortrait = usePortraitLayout();
   const deviceTier = useDeviceTier();
   const videoRef = useRef<HTMLVideoElement>(null);
   const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -311,37 +271,17 @@ export function IntroExperience() {
       animate={{ opacity: exiting ? 0 : 1 }}
       transition={{ duration: EXIT_DURATION_S }}
     >
-      {/* The video is 16:9 (1280x720). In landscape/wide viewports this
-          box is sized with the classic CSS "contain" formula — width =
-          min(100vw, 100vh * aspect), height = min(100vh, 100vw / aspect)
-          — so it exactly matches the video's own rendered bounds, then
-          centered. Every overlay below is positioned as a percentage of
-          THIS box, not the raw viewport, so the composition (headline
-          inside the "window", card above the "desk") stays consistent
-          as the frame letterboxes top/bottom or side/side — anchoring
-          to vh/vw directly broke on aspect ratios far from 16:9, where
-          the video's visible content shifts away from the viewport
-          edges but the text didn't follow it.
-
-          In portrait (usePortraitLayout) that same contain formula
-          shrinks the box to a thin horizontal sliver — e.g. ~211px
-          tall on a 375×812 phone — squeezing all the overlay content
-          into it with huge dead bars above/below. There the box
-          becomes the full viewport instead and the video switches to
-          object-cover (cropped sides, no letterboxing); exact
-          video-frame alignment only mattered for the wide "cockpit
-          window" look anyway. */}
-      <div
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-        style={
-          isPortrait
-            ? { width: "100vw", height: "100vh" }
-            : {
-                width: "min(100vw, calc(100vh * 16 / 9))",
-                height: "min(100vh, calc(100vw * 9 / 16))",
-              }
-        }
-      >
+      {/* Always full-bleed, edge-to-edge — no letterboxed "contain" box.
+          A fixed-aspect box centered in a viewport whose OWN aspect
+          ratio differs from the media's (any width that isn't exactly
+          16:9, which is most real windows) left visible gaps on the
+          sides or top/bottom, exposing the plain page background
+          around it. object-cover below crops to fill instead — it
+          never distorts the media (aspect ratio is always preserved,
+          only overflow is cropped), it just means the frame reaches
+          every edge on every viewport instead of floating in a
+          smaller box. */}
+      <div className="absolute inset-0">
         {/* Background media — decorative only, not meaningful content,
             so it's hidden from screen readers and never keyboard-
             focusable. Mobile gets a dedicated video (autoplaying,
@@ -351,17 +291,13 @@ export function IntroExperience() {
             looping video would just be ambient weight with no payoff
             (nobody's staring at Cockpit long enough to notice a loop
             seam at tablet/desktop width the way a phone-in-hand moment
-            might). object-cover vs object-contain still follows
-            isPortrait exactly as before — a tablet held upright still
-            gets the wide asset cropped to fill, not letterboxed. */}
+            might). Always object-cover, never object-contain — see
+            this wrapper's own comment for why. */}
         {deviceTier === "mobile" ? (
           <video
             ref={videoRef}
             src="/media/cockpit-mobile.mp4"
-            className={cn(
-              "absolute inset-0 h-full w-full bg-background",
-              isPortrait ? "object-cover" : "object-contain"
-            )}
+            className="absolute inset-0 h-full w-full object-cover"
             autoPlay
             loop
             muted
@@ -381,29 +317,22 @@ export function IntroExperience() {
           // Fixed, known-dimension background art, not a content image;
           // plain <img> avoids next/image's layout-shift-prevention
           // machinery (sizes/fill plumbing) for something already
-          // absolutely positioned and cover/contain-fitted by the
-          // wrapper below.
+          // absolutely positioned and cover-fitted by the wrapper
+          // below.
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={deviceTier === "tablet" ? "/media/cockpit-tablet.webp" : "/media/cockpit-desktop.webp"}
             alt=""
             aria-hidden="true"
-            className={cn(
-              "absolute inset-0 h-full w-full bg-background",
-              isPortrait ? "object-cover" : "object-contain"
-            )}
+            className="absolute inset-0 h-full w-full object-cover"
             onLoad={() => setVideoReady(true)}
           />
         )}
-        {/* Positioned at 22% down the frame on tablet/desktop — lines up
-            with the new artwork's own open cream-sky area (right of
-            the seated figure), not vertically centered, since centering
-            would push the branch card further down each time a new
-            piece fades in, until it overlaps the grass/figure in the
-            lower frame. On mobile the dedicated portrait video has its
-            own separate framing, so the anchor sits a bit lower (19%)
-            with room to spare before the desk. */}
-        <div className="absolute inset-x-0 top-[19%] flex flex-col items-center gap-6 px-6 text-center sm:top-[22%]">
+        {/* Anchored higher than the frame's own open-sky area's exact
+            center so it clears the seated figure/desk lower in frame —
+            moved up from the previous 19%/22% anchor, which read as
+            too low against the intended empty space. */}
+        <div className="absolute inset-x-0 top-[10%] flex flex-col items-center gap-6 px-6 text-center sm:top-[13%]">
           {videoReady && (
             <h1
               // No overlay on the media itself (see the background art's
@@ -427,11 +356,18 @@ export function IntroExperience() {
           )}
 
           {showSelector && (
+            // y-only reveal, no opacity fade — a backdrop-blurred glass
+            // card fading in from opacity:0 visibly ramps its OWN blur
+            // strength as it goes (a 10%-opaque blurred backdrop reads
+            // as barely frosted, 100% reads as fully frosted), which is
+            // exactly the "two-phase" jump this was built to avoid. The
+            // card is at its one, final glass style from the very first
+            // frame it's in the DOM; only its position animates.
             <motion.div
               key={step}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
+              initial={{ y: 12 }}
+              animate={{ y: 0 }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
               className="mt-2 flex flex-col items-center gap-3"
             >
               {step === "branch" && <BranchSelectCard onSelect={handleBranchSelect} />}

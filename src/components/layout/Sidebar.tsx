@@ -108,7 +108,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             middle/bottom zones below match it exactly so logo,
             selectors, nav links and bottom actions all share one
             left/right edge. */}
-        <div className="flex shrink-0 flex-col gap-4 p-4 md:gap-5 lg:p-5">
+        <div className="flex shrink-0 flex-col gap-3 p-3 md:gap-4 lg:p-4">
           {/* -mx-4/lg:-mx-5 cancels this row back out to the sidebar's
               TRUE edges (undoing the parent's own p-4/lg:p-5), so the
               two absolutely-positioned children below are each
@@ -118,7 +118,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               positioned relative to the other. h-8 gives both an
               explicit box to center within (position:absolute takes
               them out of flow, so the row has no other height source). */}
-          <div className="relative -mx-4 h-10 lg:-mx-5">
+          <div className="relative -mx-3 h-9 lg:-mx-4">
             <Link
               href="/"
               onClick={onClose}
@@ -149,8 +149,8 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             sidebar. min-h-0 is required alongside flex-1 for the
             scroll to ever actually kick in instead of the column just
             growing taller than the viewport. */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 lg:px-5">
-          <ul className="flex flex-col gap-1 py-1">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 lg:px-4">
+          <ul className="flex flex-col gap-0.5 py-1">
             {NAV_LINKS.map((link) => {
               const isActive = pathname === link.href;
               return (
@@ -159,7 +159,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                     href={link.href}
                     onClick={onClose}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring md:py-2",
+                      "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
                         ? "bg-sidebar-active/15 text-sidebar-active"
                         : "text-sidebar-muted-foreground hover:bg-sidebar-foreground/10 active:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:text-sidebar-foreground"
@@ -198,11 +198,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             inset (home indicator / gesture bar) on top of the normal
             padding instead of replacing it, so it's a no-op on
             desktop/tablet and only grows on devices that need it. */}
-        <div className="shrink-0 border-t border-sidebar-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:p-5">
-          <div className="flex flex-col gap-3">
+        <div className="shrink-0 border-t border-sidebar-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:p-4">
+          <div className="flex flex-col gap-2.5">
             <ThemeSwitcher />
 
-            <div className="flex flex-col gap-1 border-t border-sidebar-border pt-3">
+            <div className="flex flex-col gap-0.5 border-t border-sidebar-border pt-2.5">
               {/* justify-center: the dashboard link's icon+text center as
                   one group within the link's own full-width row (that
                   row already spans the sidebar's full content width, same
@@ -213,7 +213,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 href="/cr"
                 onClick={onClose}
                 className={cn(
-                  "flex items-center justify-center gap-2.5 rounded-md px-3 py-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring md:py-2",
+                  "flex items-center justify-center gap-2.5 rounded-md px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                   pathname.startsWith("/cr")
                     ? "bg-sidebar-active/15 text-sidebar-active"
                     : "text-sidebar-muted-foreground hover:bg-sidebar-foreground/10 active:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:text-sidebar-foreground"
