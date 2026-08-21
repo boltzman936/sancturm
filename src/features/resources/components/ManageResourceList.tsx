@@ -12,7 +12,7 @@ import { deleteSancturmUpdate, updateSancturmUpdateDate } from "@/features/sanct
 import { useBranches, useSpecializations } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
 import { useBatches, useBatchesForTerm } from "@/features/batches/queries";
-import { useSubjects, useSubjectsForTerms } from "@/features/resources/queries";
+import { useSubjects, useSubjectsForTerms, useCanonicalSubjects } from "@/features/resources/queries";
 import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Calendar } from "@/components/shared/Calendar";
@@ -100,6 +100,12 @@ export type ManageableResource = {
   term_id: string | null;
   batch_id: string | null;
   subject_id: string | null;
+  // Set only for a centralized PYQ (see centralize_pyq_resources.sql) —
+  // when present, branch/specialization/term/batch above are
+  // provenance only; this is what actually scopes visibility, and what
+  // groupByContent groups a "family" of same-subject rows by. null for
+  // "notice"/"update" rows and any legacy per-context resource.
+  canonical_subject_id: string | null;
   // Content-identity signals groupByContent prefers, in order — both
   // null for "notice"/"update" rows, which have no file at all.
   // content_hash catches the SAME file re-uploaded as a genuinely
@@ -155,6 +161,15 @@ type ResourceGroup = { items: ManageableResource[] };
 // event") and is unrelated to content-identity grouping.
 function contentGroupKey(r: ManageableResource): string {
   if (r.kind === "resource") {
+    // Centralized PYQ (canonical_subject_id set) groups as a FAMILY —
+    // every row against the same subject+type, even when they're
+    // different real papers (different content_hash) — so Manage shows
+    // one expandable card per subject instead of scattering its papers
+    // across separate cards. A single-row family renders exactly like
+    // today's plain card (see the render side). This takes priority
+    // over content_hash/file_url below: a centralized row's identity is
+    // its subject, not its bytes.
+    if (r.canonical_subject_id) return `canonical:${r.canonical_subject_id}:${r.resource_type ?? ""}`;
     // content_hash first — the actual byte-content signature, so it
     // correctly merges the SAME file uploaded as a genuinely separate
     // R2 object each time (see its own comment on ManageableResource).
@@ -380,6 +395,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   const [termId, setTermId] = useState(resource.term_id ?? "");
   const [batchId, setBatchId] = useState(resource.batch_id ?? "");
   const [subjectId, setSubjectId] = useState(resource.subject_id ?? "");
+  const [canonicalSubjectId, setCanonicalSubjectId] = useState(resource.canonical_subject_id ?? "");
   const [dateKey, setDateKey] = useState(localDateKey(resource.created_at));
   const [crOnly, setCrOnly] = useState(resource.cr_only);
   const [title, setTitle] = useState(resource.title);
@@ -426,6 +442,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
     setTermId(resource.term_id ?? "");
     setBatchId(resource.batch_id ?? "");
     setSubjectId(resource.subject_id ?? "");
+    setCanonicalSubjectId(resource.canonical_subject_id ?? "");
     setDateKey(localDateKey(resource.created_at));
     setCrOnly(resource.cr_only);
     setTitle(resource.title);
@@ -455,6 +472,10 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
     resource.kind === "resource" ? termId || null : null
   );
   const subjects = allSubjects ? filterSubjectsForResourceType(allSubjects, resourceType) : undefined;
+  // EditResourceButton only ever renders for an admin (see its call
+  // sites below) — the full canonical list, same as CRUploadForm's
+  // admin path, no scoping needed here.
+  const { data: canonicalSubjects } = useCanonicalSubjects();
   // Falls back to the first term-valid batch instead of an effect
   // "syncing" once validBatches loads async — same reasoning as
   // CRUploadForm's identical effectiveBatchId.
@@ -481,7 +502,8 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
             specializationId: effectiveSpecializationId,
             termId,
             batchId: effectiveBatchId,
-            subjectId: subjectId || null,
+            subjectId: isPyqType ? null : subjectId || null,
+            canonicalSubjectId: isPyqType ? canonicalSubjectId || null : null,
             dateKey,
             title: title.trim(),
             description: description.trim() || null,
@@ -540,6 +562,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
                       onClick={() => {
                         setResourceType(kind);
                         setSubjectId("");
+                        setCanonicalSubjectId("");
                       }}
                       className={cn(
                         "min-w-[7rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
@@ -652,7 +675,27 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
               </label>
             )}
 
-            {resource.kind === "resource" && (
+            {resource.kind === "resource" && isPyqType && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-xs text-subtle-foreground">
+                  Subject <span className="ml-1.5 normal-case text-subtle-foreground/70">(centralized — visible everywhere it applies)</span>
+                </label>
+                <Select
+                  value={canonicalSubjectId}
+                  onChange={(event) => setCanonicalSubjectId(event.target.value)}
+                  className="bg-background"
+                >
+                  <option value="">Select a subject…</option>
+                  {canonicalSubjects?.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.canonical_name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+
+            {resource.kind === "resource" && !isPyqType && (
               <div className="flex flex-col gap-1">
                 <label className="font-mono text-xs text-subtle-foreground">Subject</label>
                 <Select
