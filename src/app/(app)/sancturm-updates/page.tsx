@@ -2,17 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download, Eye, Pin, Search, Sparkles } from "lucide-react";
+import { Eye, Pin, Search, Sparkles } from "lucide-react";
 import { useSancturmUpdates } from "@/features/sancturmUpdates/queries";
 import { DeleteUpdateButton } from "@/features/sancturmUpdates/components/DeleteUpdateButton";
 import { toggleSancturmUpdatePin } from "@/features/sancturmUpdates/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { DownloadButton } from "@/components/shared/DownloadButton";
+import { Skeleton } from "@/components/shared/Skeleton";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { SancturmUpdate } from "@/features/sancturmUpdates/types";
 import { localDateKey, formatShortDate } from "@/lib/date";
-import { cn, downloadFile } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -88,9 +90,23 @@ export default function SancturmUpdatesPage() {
       </div>
 
       {isLoading && (
-        <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
-          Loading…
-        </div>
+        // Mirrors the real timeline's own shape (dot + connecting line +
+        // card) so the loading state doesn't jump/reflow once entries
+        // swap in.
+        <ol className="relative flex flex-col gap-5 border-l border-border pl-6" aria-hidden="true">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <li key={i} className="relative">
+              <span
+                aria-hidden="true"
+                className="absolute -left-[27px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-border"
+              />
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
+                <Skeleton className="h-4 w-1/2 max-w-xs" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </li>
+          ))}
+        </ol>
       )}
 
       {isError && (
@@ -107,7 +123,12 @@ export default function SancturmUpdatesPage() {
 
       {filtered.length > 0 && (
         <ol className="relative flex flex-col gap-5 border-l border-border pl-6">
-          {filtered.map((update) => (
+          {filtered.map((update) => {
+            const pdfUrlWithoutQuery = update.pdf_url?.split("?")[0] ?? "";
+            const pdfExtension = pdfUrlWithoutQuery.includes(".")
+              ? pdfUrlWithoutQuery.slice(pdfUrlWithoutQuery.lastIndexOf("."))
+              : "";
+            return (
             <li key={update.id} className="relative">
               <span
                 aria-hidden="true"
@@ -152,21 +173,11 @@ export default function SancturmUpdatesPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!update.pdf_url) return;
-                            const withoutQuery = update.pdf_url.split("?")[0];
-                            const ext = withoutQuery.includes(".")
-                              ? withoutQuery.slice(withoutQuery.lastIndexOf("."))
-                              : "";
-                            downloadFile(update.pdf_url, `${update.title}${ext}`);
-                          }}
-                          aria-label="Download"
+                        <DownloadButton
+                          url={update.pdf_url}
+                          filename={`${update.title}${pdfExtension}`}
                           className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
-                        >
-                          <Download className="h-4 w-4" />
-                        </button>
+                        />
                       </>
                     )}
                     {canManage && <DeleteUpdateButton updateId={update.id} />}
@@ -180,7 +191,8 @@ export default function SancturmUpdatesPage() {
                 )}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ol>
       )}
 

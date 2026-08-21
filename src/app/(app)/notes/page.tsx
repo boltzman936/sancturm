@@ -16,6 +16,7 @@ import {
 } from "@/features/resources/queries";
 import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
+import { ResourceListSkeleton } from "@/features/resources/components/ResourceListSkeleton";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { Select } from "@/components/shared/Select";
@@ -471,11 +472,7 @@ export default function NotesAndLabPage() {
         Resources
       </h2>
 
-      {(isLoading || isLoadingReachedTerms) && (
-        <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
-          Loading…
-        </div>
-      )}
+      {(isLoading || isLoadingReachedTerms) && <ResourceListSkeleton />}
 
       {isError && (
         <div className="rounded-lg border border-destructive/40 bg-card p-8 text-center text-destructive">

@@ -238,6 +238,7 @@ function FilterSelect({
   options,
   fullWidth = false,
   fixedWidth = false,
+  loading = false,
 }: {
   label: string;
   value: string;
@@ -256,6 +257,12 @@ function FilterSelect({
   // fixedWidth pins it so the control is byte-identical everywhere
   // regardless of which term's subjects are loaded.
   fixedWidth?: boolean;
+  // While the underlying catalog (branches/terms/batches/subjects)
+  // hasn't loaded yet, `options` is genuinely `[]` — indistinguishable
+  // from "this scope really has zero of these" without this flag. A
+  // disabled, explicitly-labeled "Loading…" state closes that gap
+  // instead of silently rendering an empty-looking dropdown.
+  loading?: boolean;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -263,13 +270,22 @@ function FilterSelect({
       <Select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={cn(fullWidth && "w-full min-w-0", fixedWidth && "w-[190px] shrink-0")}
+        disabled={loading}
+        className={cn(
+          fullWidth && "w-full min-w-0",
+          fixedWidth && "w-[190px] shrink-0",
+          loading && "opacity-60"
+        )}
       >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
+        {loading ? (
+          <option value={value}>Loading…</option>
+        ) : (
+          options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))
+        )}
       </Select>
     </div>
   );
@@ -1287,6 +1303,7 @@ export function ManageResourceList({
             value={termFilter}
             onChange={handleTermFilterChange}
             options={[{ value: ALL, label: "All years" }, ...termOptions.map((t) => ({ value: t, label: t }))]}
+            loading={!terms}
           />
         )}
 
@@ -1296,6 +1313,7 @@ export function ManageResourceList({
             value={branchFilter}
             onChange={handleBranchFilterChange}
             options={[{ value: ALL, label: "All branches" }, ...branchOptions.map((b) => ({ value: b, label: b }))]}
+            loading={!branches}
           />
         )}
 
@@ -1308,6 +1326,7 @@ export function ManageResourceList({
               { value: ALL, label: "All specializations" },
               ...specializationOptions.map((s) => ({ value: s, label: s })),
             ]}
+            loading={!specializationsForFilter}
           />
         )}
 
@@ -1317,6 +1336,7 @@ export function ManageResourceList({
             value={batchFilter}
             onChange={handleBatchFilterChange}
             options={[{ value: ALL, label: "All batches" }, ...batchOptions.map((b) => ({ value: b, label: b }))]}
+            loading={!batches}
           />
         )}
 
@@ -1337,6 +1357,7 @@ export function ManageResourceList({
             onChange={setSubjectFilter}
             options={[{ value: ALL, label: "All subjects" }, ...subjectOptions.map((s) => ({ value: s, label: s }))]}
             fixedWidth
+            loading={!termSubjects}
           />
         )}
 
@@ -1376,6 +1397,7 @@ export function ManageResourceList({
               onChange={handleTermFilterChange}
               options={[{ value: ALL, label: "All years" }, ...termOptions.map((t) => ({ value: t, label: t }))]}
               fullWidth
+              loading={!terms}
             />
             <FilterSelect
               label="Branch"
@@ -1386,6 +1408,7 @@ export function ManageResourceList({
                 ...branchOptions.map((b) => ({ value: b, label: b })),
               ]}
               fullWidth
+              loading={!branches}
             />
           </div>
         )}
@@ -1401,6 +1424,7 @@ export function ManageResourceList({
                 ...specializationOptions.map((s) => ({ value: s, label: s })),
               ]}
               fullWidth
+              loading={!specializationsForFilter}
             />
           </div>
         )}
@@ -1416,6 +1440,7 @@ export function ManageResourceList({
                 ...batchOptions.map((b) => ({ value: b, label: b })),
               ]}
               fullWidth
+              loading={!batches}
             />
           </div>
         )}
@@ -1441,6 +1466,7 @@ export function ManageResourceList({
                 ...subjectOptions.map((s) => ({ value: s, label: s })),
               ]}
               fullWidth
+              loading={!termSubjects}
             />
           )}
         </div>

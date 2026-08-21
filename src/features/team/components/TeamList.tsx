@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useTeamDirectory } from "@/features/team/queries";
 import { useBranches, useAllSpecializations } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
+import { Skeleton } from "@/components/shared/Skeleton";
 import { shortTermLabel, ordinalSemesterLabel } from "@/lib/termLabel";
 import type { TeamDirectoryEntry } from "@/types/database";
 
@@ -91,7 +92,46 @@ export function TeamList() {
       <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">Admins · CRs</h2>
 
       {(isLoading || !rows) && !isError && (
-        <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">Loading…</div>
+        <>
+          {/* Desktop/tablet — same column count as the real table so
+              nothing reflows once rows swap in. */}
+          <div className="hidden overflow-x-auto rounded-lg border border-border bg-card sm:block" aria-hidden="true">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-subtle-foreground">
+                  <th className="px-4 py-2.5 font-normal">#</th>
+                  <th className="px-4 py-2.5 font-normal">Name</th>
+                  <th className="px-4 py-2.5 font-normal">Role</th>
+                  <th className="px-4 py-2.5 font-normal">Branch</th>
+                  <th className="px-4 py-2.5 font-normal">Specialization</th>
+                  <th className="px-4 py-2.5 font-normal">Year</th>
+                  <th className="px-4 py-2.5 font-normal">Semester</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <tr key={i} className="border-b border-border last:border-b-0">
+                    {Array.from({ length: 7 }).map((__, col) => (
+                      <td key={col} className="px-4 py-3">
+                        <Skeleton className="h-3.5 w-16" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile — stacked cards matching the real card shape. */}
+          <div className="flex flex-col gap-2 sm:hidden" aria-hidden="true">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-3.5">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {isError && (

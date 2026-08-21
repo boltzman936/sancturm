@@ -15,6 +15,7 @@ import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { DownloadButton } from "@/components/shared/DownloadButton";
 import { Select } from "@/components/shared/Select";
+import { ResourceListSkeleton } from "@/features/resources/components/ResourceListSkeleton";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { Notice } from "@/features/notices/types";
 import { localDateKey, formatShortDate } from "@/lib/date";
@@ -245,11 +246,7 @@ export default function NoticesPage() {
         )}
       </div>
 
-      {(isLoading || isLoadingReachedTerms) && (
-        <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
-          Loading…
-        </div>
-      )}
+      {(isLoading || isLoadingReachedTerms) && <ResourceListSkeleton count={3} />}
 
       {isError && (
         <div className="rounded-lg border border-destructive/40 bg-card p-8 text-center text-destructive">
