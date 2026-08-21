@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download, Eye, Pin, Search } from "lucide-react";
+import { Eye, Pin, Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useSpecialization } from "@/hooks/useSpecialization";
 import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
@@ -13,13 +13,14 @@ import { toggleNoticePin } from "@/features/notices/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
+import { DownloadButton } from "@/components/shared/DownloadButton";
 import { Select } from "@/components/shared/Select";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { Notice } from "@/features/notices/types";
 import { localDateKey, formatShortDate } from "@/lib/date";
 import { ordinalSemesterLabel, ordinalYearLabel } from "@/lib/termLabel";
 import { sortByPinnedThenDate, type DateSortOrder } from "@/lib/sortByDate";
-import { cn, downloadFile } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 function matchesSearch(notice: Notice, query: string) {
   if (!query.trim()) return true;
@@ -264,7 +265,12 @@ export default function NoticesPage() {
 
       {filtered.length > 0 && (
         <ul className="flex flex-col gap-3">
-          {filtered.map((notice) => (
+          {filtered.map((notice) => {
+            const pdfUrlWithoutQuery = notice.pdf_url?.split("?")[0] ?? "";
+            const pdfExtension = pdfUrlWithoutQuery.includes(".")
+              ? pdfUrlWithoutQuery.slice(pdfUrlWithoutQuery.lastIndexOf("."))
+              : "";
+            return (
             <li
               key={notice.id}
               className={cn(
@@ -310,21 +316,11 @@ export default function NoticesPage() {
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!notice.pdf_url) return;
-                          const withoutQuery = notice.pdf_url.split("?")[0];
-                          const ext = withoutQuery.includes(".")
-                            ? withoutQuery.slice(withoutQuery.lastIndexOf("."))
-                            : "";
-                          downloadFile(notice.pdf_url, `${notice.title}${ext}`);
-                        }}
-                        aria-label="Download"
+                      <DownloadButton
+                        url={notice.pdf_url}
+                        filename={`${notice.title}${pdfExtension}`}
                         className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary hover:text-foreground active:text-foreground"
-                      >
-                        <Download className="h-4 w-4" />
-                      </button>
+                      />
                     </>
                   )}
                 </div>
@@ -336,7 +332,8 @@ export default function NoticesPage() {
                 </p>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 

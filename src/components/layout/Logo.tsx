@@ -24,7 +24,7 @@ export function Logo({ className }: { className?: string }) {
           nothing here and adds a request-shape mismatch risk for an
           SVG this size. */}
       <img src="/brand/logo-mark.svg" alt="" aria-hidden="true" className="h-full w-auto" />
-      <span className="font-sans text-lg font-semibold tracking-tight" style={{ color: WORDMARK_COLOR }}>
+      <span className="font-sans text-xl font-semibold tracking-tight" style={{ color: WORDMARK_COLOR }}>
         sancturm
       </span>
     </span>

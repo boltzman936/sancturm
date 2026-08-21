@@ -138,7 +138,7 @@ export function MaintenanceCountdown({
           they were, just smaller and lighter over the new artwork. */}
       <div className="relative flex flex-col items-center gap-7">
         <motion.div {...reveal(0)}>
-          <Logo className="h-6 w-auto" />
+          <Logo className="h-8 w-auto" />
         </motion.div>
 
         <motion.div {...reveal(0.08)} className="flex flex-col items-center gap-3">

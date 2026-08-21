@@ -9,6 +9,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export type DownloadProgress = {
+  loaded: number;
+  // null when the server didn't send Content-Length (some R2/CDN
+  // responses don't for range-less GETs) — callers should render an
+  // indeterminate state rather than a stalled 0% in that case.
+  total: number | null;
+};
+
 /**
  * Forces an actual file download instead of navigating to the URL.
  * window.open(url)/an <a href> pointed straight at the R2 file just
@@ -17,23 +25,47 @@ export function cn(...inputs: ClassValue[]) {
  * fallback the way desktop sometimes does, so nothing ever reached the
  * device. Fetching the bytes and downloading via a blob URL (same-
  * origin to the page, unlike the R2 URL) is what actually triggers a
- * save everywhere. Falls back to the old open-in-tab behavior only if
- * the fetch itself fails, so a network hiccup doesn't lose the file
- * entirely.
+ * save everywhere.
+ *
+ * Reads the response body as a stream (not response.blob(), which
+ * buffers silently with zero visibility into how far along it is) so
+ * `onProgress` can report real loaded/total bytes for a large scanned-
+ * notes PDF — see ResourceCard's own Preparing/Downloading/Completed/
+ * Failed states, which is what actually consumes this.
+ *
+ * Throws on failure rather than silently falling back to
+ * window.open — a caller that hides a real failure behind "well, it
+ * opened in a new tab instead" is exactly the dishonest status this
+ * was asked to stop doing; an explicit Retry (re-calling this again)
+ * is the caller's own responsibility now.
  */
-export async function downloadFile(url: string, filename: string) {
-  try {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(blobUrl);
-  } catch {
-    window.open(url, "_blank", "noopener,noreferrer");
+export async function downloadFile(url: string, filename: string, onProgress?: (progress: DownloadProgress) => void) {
+  const response = await fetch(url);
+  if (!response.ok || !response.body) {
+    throw new Error(`Download failed (${response.status}).`);
   }
+
+  const totalHeader = response.headers.get("content-length");
+  const total = totalHeader ? Number(totalHeader) : null;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.length;
+    onProgress?.({ loaded, total: total && Number.isFinite(total) ? total : null });
+  }
+
+  const blob = new Blob(chunks as BlobPart[]);
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(blobUrl);
 }

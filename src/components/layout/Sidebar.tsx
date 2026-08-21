@@ -118,13 +118,13 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               positioned relative to the other. h-8 gives both an
               explicit box to center within (position:absolute takes
               them out of flow, so the row has no other height source). */}
-          <div className="relative -mx-4 h-8 lg:-mx-5">
+          <div className="relative -mx-4 h-10 lg:-mx-5">
             <Link
               href="/"
               onClick={onClose}
               className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm px-1 outline-none transition-opacity hover:opacity-80 active:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <Logo className="h-6 w-auto" />
+              <Logo className="h-9 w-auto" />
             </Link>
             <button
               onClick={onClose}

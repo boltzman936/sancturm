@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Download, Eye, Pin, Share2 } from "lucide-react";
+import { Check, Eye, Pin, Share2 } from "lucide-react";
 import { useIncrementResourceCounter, type ResourceWithSubject } from "@/features/resources/queries";
 import { toggleResourcePin } from "@/features/resources/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
+import { DownloadButton } from "@/components/shared/DownloadButton";
 import { formatShortDate } from "@/lib/date";
-import { cn, downloadFile } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 // Students never log in, so there's no real name to show for them —
 // "Student submission" is the honest ceiling there. A CR/admin direct
@@ -60,12 +61,10 @@ export function ResourceCard({
     onView(resource);
   }
 
-  function handleDownload() {
-    incrementDownload.mutate(resource.id);
-    const withoutQuery = resource.file_url.split("?")[0];
-    const ext = withoutQuery.includes(".") ? withoutQuery.slice(withoutQuery.lastIndexOf(".")) : "";
-    downloadFile(resource.file_url, `${resource.title}${ext}`);
-  }
+  const fileUrlWithoutQuery = resource.file_url.split("?")[0];
+  const fileExtension = fileUrlWithoutQuery.includes(".")
+    ? fileUrlWithoutQuery.slice(fileUrlWithoutQuery.lastIndexOf("."))
+    : "";
 
   async function handleShare() {
     // navigator.share opens the OS share sheet (WhatsApp, any AI app,
@@ -141,9 +140,12 @@ export function ResourceCard({
         <button onClick={handleShare} aria-label="Share" className={ICON_BUTTON_CLASS}>
           {copied ? <Check className="h-4 w-4 text-primary" /> : <Share2 className="h-4 w-4" />}
         </button>
-        <button onClick={handleDownload} aria-label="Download" className={ICON_BUTTON_CLASS}>
-          <Download className="h-4 w-4" />
-        </button>
+        <DownloadButton
+          url={resource.file_url}
+          filename={`${resource.title}${fileExtension}`}
+          onDownloadStart={() => incrementDownload.mutate(resource.id)}
+          className={ICON_BUTTON_CLASS}
+        />
       </div>
     </li>
   );
