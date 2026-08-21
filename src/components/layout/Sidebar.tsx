@@ -124,7 +124,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               onClick={onClose}
               className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm px-1 outline-none transition-opacity hover:opacity-80 active:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <Logo className="h-9 w-auto" />
+              <Logo onDark />
             </Link>
             <button
               onClick={onClose}
