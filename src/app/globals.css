@@ -312,20 +312,24 @@ html {
      text, labels, buttons, icons, cards, and spacing all together
      proportionally, without touching every component's className
      individually, and without any of them shifting relative to each
-     other (a uniform scale, not a redesign). */
-  font-size: 105%;
+     other (a uniform scale, not a redesign). 105% * 1.1: the base was
+     105%, then a further ~10% site-wide bump on top per an explicit
+     request for larger text everywhere — kept as a multiply (not a
+     single flattened percentage) so the "10% on top of the existing
+     base" relationship stays legible and re-tunable later. */
+  font-size: calc(105% * 1.1);
 }
 
 /* Desktop only (1024px = the `lg` breakpoint already used everywhere
    else in this app to mean "desktop" vs "mobile/tablet") — an
-   additional ~15% on top of the site-wide 105% above, per an explicit
+   additional ~15% on top of the site-wide size above, per an explicit
    request to make the desktop UI feel larger while leaving
    mobile/tablet exactly as they already are. calc() keeps the "~15%
    bigger than the current site-wide size" relationship correct even
-   if that 105% base is ever changed later. */
+   if that base is ever changed later. */
 @media (min-width: 1024px) {
   html {
-    font-size: calc(105% * 1.15);
+    font-size: calc(105% * 1.1 * 1.15);
   }
 }
 
