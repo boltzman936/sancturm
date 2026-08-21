@@ -15,6 +15,7 @@ import {
   type ResourceWithSubject,
 } from "@/features/resources/queries";
 import { useHistoricalSharedResources, mergeHistoricalSharedResources } from "@/features/resources/historicalSharing";
+import { useCanonicalPyqResources, mergeCanonicalPyqResources } from "@/features/resources/centralizedPyq";
 import { pyqSharingSpecializationIds } from "@/features/resources/pyqSharing";
 import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
@@ -186,9 +187,24 @@ export default function PYQsPage() {
     () => [...(sharedPyq ?? []), ...(sharedPyqSolution ?? [])],
     [sharedPyq, sharedPyqSolution]
   );
-  const resources = useMemo(
+  const legacyResources = useMemo(
     () => mergeHistoricalSharedResources(ownResources, sharedResources, allTermSubjects),
     [ownResources, sharedResources, allTermSubjects]
+  );
+
+  // Centralized PYQs (any batch/year, not just the 2025-26/Year-1
+  // legacy exception above) — see centralizedPyq.ts. Own-branch
+  // uploads of a centralized PYQ already come back through
+  // ownResources too (branch_id still matches); mergeCanonicalPyqResources
+  // dedupes by id so that row shows exactly once either way.
+  const { data: canonicalPyq } = useCanonicalPyqResources({ localSubjects: allTermSubjects, resourceType: "pyq" });
+  const { data: canonicalPyqSolution } = useCanonicalPyqResources({
+    localSubjects: allTermSubjects,
+    resourceType: "pyq_solution",
+  });
+  const resources = useMemo(
+    () => mergeCanonicalPyqResources([legacyResources, canonicalPyq, canonicalPyqSolution], allTermSubjects),
+    [legacyResources, canonicalPyq, canonicalPyqSolution, allTermSubjects]
   );
 
   // Resets subjectFilter same as Notes & Lab's tab switch — a subject

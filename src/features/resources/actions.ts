@@ -118,6 +118,9 @@ export async function updateResourceFields(
     termId?: string;
     batchId?: string;
     subjectId?: string | null;
+    // Centralized PYQ — set/change which canonical subject this row is
+    // scoped to; null clears it back to a plain per-context resource.
+    canonicalSubjectId?: string | null;
     dateKey?: string;
     title?: string;
     description?: string | null;
@@ -145,6 +148,7 @@ export async function updateResourceFields(
   if (fields.termId !== undefined) assertValidId(fields.termId, "year");
   if (fields.batchId !== undefined) assertValidId(fields.batchId, "batch");
   if (fields.subjectId !== undefined) assertValidIdOrNull(fields.subjectId, "subject");
+  if (fields.canonicalSubjectId !== undefined) assertValidIdOrNull(fields.canonicalSubjectId, "subject");
   if (fields.dateKey !== undefined) assertValidDateKey(fields.dateKey, "date");
   if (fields.title !== undefined) assertValidString(fields.title, "Title", { maxLength: MAX_TITLE_LENGTH });
   if (fields.description !== undefined) {
@@ -179,7 +183,12 @@ export async function updateResourceFields(
   // Same reasoning: EditResourceButton's cascade always resends
   // subjectId alongside branch/term when any of them change, so this
   // is a real check for every real request, not just UI-narrowing.
-  if (fields.subjectId !== undefined && fields.branchId !== undefined && fields.termId !== undefined) {
+  if (
+    fields.subjectId !== undefined &&
+    fields.branchId !== undefined &&
+    fields.termId !== undefined &&
+    !fields.canonicalSubjectId
+  ) {
     await assertSubjectMatchesScope(supabase, fields.subjectId, fields.branchId, fields.specializationId ?? null, fields.termId);
   }
 
@@ -189,6 +198,12 @@ export async function updateResourceFields(
   if (fields.termId !== undefined) update.term_id = fields.termId;
   if (fields.batchId !== undefined) update.batch_id = fields.batchId;
   if (fields.subjectId !== undefined) update.subject_id = fields.subjectId;
+  if (fields.canonicalSubjectId !== undefined) {
+    update.canonical_subject_id = fields.canonicalSubjectId;
+    // Setting a canonical subject supersedes the per-context subject —
+    // keeps the two mutually exclusive, same invariant upload enforces.
+    if (fields.canonicalSubjectId) update.subject_id = null;
+  }
   if (fields.title !== undefined) update.title = fields.title;
   if (fields.description !== undefined) update.description = fields.description;
   if (fields.resourceType !== undefined) update.resource_type = fields.resourceType;
@@ -207,6 +222,62 @@ export async function updateResourceFields(
   if (Object.keys(update).length > 0) {
     const { error: updateError } = await supabase.from("resources").update(update).eq("id", resourceId);
     if (updateError) throw safeDbError(updateError);
+  }
+
+  revalidatePath("/notes");
+  revalidatePath("/pyqs");
+  revalidatePath("/cr");
+  revalidatePath("/cr/manage");
+}
+
+/**
+ * Admin-only: resolves a "possible duplicate" family in Manage (same
+ * canonical subject, same title/resource_type, but a different
+ * content_hash — so never auto-consolidated, see
+ * scratch_consolidate_pyq_duplicates.mjs) after a human has actually
+ * looked at each row's file and decided they're the same paper.
+ * Deletes `discardIds` outright (same delete semantics as
+ * deleteResource — the R2 object behind a discarded row is only
+ * removed if no other row still references its file_url). Never runs
+ * automatically; always one explicit admin action per confirmed group.
+ */
+export async function mergeCanonicalPyqResources(keepId: string, discardIds: string[]) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const role = await getCurrentRole();
+  if (role?.type !== "admin") throw new Error("Admin only.");
+  await checkRateLimit("mergeCanonicalPyqResources", user.id, 20, 60_000);
+
+  assertValidId(keepId, "resource");
+  if (!Array.isArray(discardIds) || discardIds.length === 0) throw new Error("Nothing to merge.");
+  for (const id of discardIds) {
+    assertValidId(id, "resource");
+    if (id === keepId) throw new Error("Can't discard the resource being kept.");
+  }
+
+  for (const discardId of discardIds) {
+    const { data, error } = await supabase
+      .from("resources")
+      .delete()
+      .eq("id", discardId)
+      .select("file_url")
+      .single();
+    if (error) throw safeDbError(error);
+    try {
+      if (data?.file_url) {
+        const { count } = await supabase
+          .from("resources")
+          .select("id", { count: "exact", head: true })
+          .eq("file_url", data.file_url);
+        if (!count) await deleteFromR2(data.file_url);
+      }
+    } catch {
+      // Best-effort, same as deleteResource.
+    }
   }
 
   revalidatePath("/notes");
@@ -259,6 +330,12 @@ export async function uploadResourceDirect(formData: FormData) {
   const termId = formData.get("termId") as string;
   const batchId = formData.get("batchId") as string;
   const subjectId = (formData.get("subjectId") as string) || null;
+  // Centralized PYQ: set instead of subjectId when this upload picked
+  // a canonical subject (see centralize_pyq_resources.sql) — the
+  // resulting row is visible everywhere that subject applies, not just
+  // this (branch, specialization, term). Only ever set for
+  // section="pyq"; ignored otherwise.
+  const canonicalSubjectId = (formData.get("canonicalSubjectId") as string) || null;
   const section = formData.get("section") as string;
   const resourceType = formData.get("resourceType") as string;
   const title = formData.get("title") as string;
@@ -282,6 +359,7 @@ export async function uploadResourceDirect(formData: FormData) {
   assertValidId(termId, "year");
   assertValidId(batchId, "batch");
   assertValidIdOrNull(subjectId, "subject");
+  assertValidIdOrNull(canonicalSubjectId, "subject");
   assertValidSection(section);
   assertValidResourceType(resourceType);
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
@@ -291,8 +369,16 @@ export async function uploadResourceDirect(formData: FormData) {
     assertNotFutureTimestamp(customCreatedAt, "Date");
   }
 
+  const isCentralizedPyq = section === "pyq" && !!canonicalSubjectId;
+
   await assertBatchTermReached(supabase, batchId, termId, specializationId);
-  await assertSubjectMatchesScope(supabase, subjectId, branchId, specializationId, termId);
+  // Scope no longer means anything for a centralized row (its
+  // visibility comes entirely from canonical_subject_id, resolved at
+  // read time) — skip the per-context check rather than validating
+  // subjectId=null against a scope it isn't actually bound to.
+  if (!isCentralizedPyq) {
+    await assertSubjectMatchesScope(supabase, subjectId, branchId, specializationId, termId);
+  }
 
   // The presigned PUT already constrained WHICH Content-Type header
   // could be set on this object; this confirms the object's actual
@@ -305,12 +391,27 @@ export async function uploadResourceDirect(formData: FormData) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
+  if (isCentralizedPyq && verification.contentHash) {
+    const { data: existingDup } = await supabase
+      .from("resources")
+      .select("id")
+      .eq("canonical_subject_id", canonicalSubjectId!)
+      .eq("resource_type", resourceType)
+      .eq("content_hash", verification.contentHash)
+      .eq("status", "approved")
+      .maybeSingle();
+    if (existingDup) {
+      throw new Error("This exact file has already been uploaded for this subject.");
+    }
+  }
+
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
     specialization_id: specializationId,
     term_id: termId,
     batch_id: batchId,
-    subject_id: subjectId,
+    subject_id: isCentralizedPyq ? null : subjectId,
+    canonical_subject_id: isCentralizedPyq ? canonicalSubjectId : null,
     section,
     resource_type: resourceType,
     title,
@@ -366,6 +467,8 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   const termId = formData.get("termId") as string;
   const batchId = formData.get("batchId") as string;
   const subjectName = (formData.get("subjectName") as string) || null;
+  // Centralized PYQ — see uploadResourceDirect's identical field.
+  const canonicalSubjectId = (formData.get("canonicalSubjectId") as string) || null;
   const section = formData.get("section") as string;
   const resourceType = formData.get("resourceType") as string;
   const title = formData.get("title") as string;
@@ -381,6 +484,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   assertValidId(termId, "year");
   assertValidId(batchId, "batch");
   assertValidString(subjectName ?? "", "Subject", { maxLength: MAX_TITLE_LENGTH, required: false });
+  assertValidIdOrNull(canonicalSubjectId, "subject");
   assertValidSection(section);
   assertValidResourceType(resourceType);
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
@@ -435,6 +539,52 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   const verification = await verifyUploadedFileOrCleanUp(fileUrl);
   if (!verification.valid) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
+  }
+
+  // Centralized PYQ: exactly ONE row, visible everywhere the canonical
+  // subject applies — never fanned out across the selected
+  // specializations. branch_id/specialization_id/term_id/batch_id are
+  // still recorded (the uploader's own context) but are provenance
+  // only; canonical_subject_id is what actually scopes visibility (see
+  // centralize_pyq_resources.sql).
+  if (section === "pyq" && canonicalSubjectId) {
+    if (verification.contentHash) {
+      const { data: existingDup } = await supabase
+        .from("resources")
+        .select("id")
+        .eq("canonical_subject_id", canonicalSubjectId)
+        .eq("resource_type", resourceType)
+        .eq("content_hash", verification.contentHash)
+        .eq("status", "approved")
+        .maybeSingle();
+      if (existingDup) {
+        throw new Error("This exact file has already been uploaded for this subject.");
+      }
+    }
+    const { error: insertError } = await supabase.from("resources").insert({
+      branch_id: branchId,
+      specialization_id: specializationIds[0] ?? null,
+      term_id: termId,
+      batch_id: batchId,
+      subject_id: null,
+      canonical_subject_id: canonicalSubjectId,
+      section,
+      resource_type: resourceType,
+      title,
+      description,
+      file_url: fileUrl,
+      content_hash: verification.contentHash,
+      status: "approved",
+      uploaded_by_device: null,
+      uploaded_by_name: role.displayName,
+      ...(customCreatedAt ? { created_at: customCreatedAt } : {}),
+    });
+    if (insertError) throw safeDbError(insertError);
+
+    revalidatePath("/notes");
+    revalidatePath("/pyqs");
+    revalidatePath("/cr");
+    return;
   }
 
   const rawTargets = specializationIds.length > 0 ? specializationIds : [null];

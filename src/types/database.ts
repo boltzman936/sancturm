@@ -206,6 +206,13 @@ export type Resource = {
   term_id: string;
   batch_id: string;
   subject_id: string | null;
+  // Set only for a centralized PYQ (see centralize_pyq_resources.sql) —
+  // when present, this is the SOLE source of visibility scope (every
+  // branch/specialization/term whose subjects row shares this
+  // canonical_subject_id sees this resource); branch_id/specialization_id/
+  // term_id/batch_id on this row are then provenance only (the
+  // uploader's own context), never used to scope who sees it.
+  canonical_subject_id: string | null;
   section: ResourceSection;
   resource_type: ResourceType | null;
   title: string;

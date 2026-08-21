@@ -405,3 +405,93 @@ export function useIncrementResourceCounter(columnName: "download_count" | "view
     },
   });
 }
+
+// ---- Centralized PYQ subject picker ----
+
+export type CanonicalSubjectOption = { id: string; canonical_name: string };
+
+/**
+ * Every canonical subject, unrestricted — the PYQ upload/edit picker's
+ * source for an admin, who can centralize a PYQ against any subject in
+ * the college, not just their own branch's.
+ */
+export function useCanonicalSubjects() {
+  return useQuery({
+    queryKey: ["canonical-subjects", "all"],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("canonical_subjects")
+        .select("id, canonical_name")
+        .order("canonical_name", { ascending: true });
+      if (error) throw error;
+      return data as CanonicalSubjectOption[];
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Canonical subjects reachable from one (branch, specialization pool,
+ * term) — a CR's own upload picker. A CR can still only centralize a
+ * PYQ against a subject that actually exists somewhere in their own
+ * academic context; they just no longer have to re-upload it once per
+ * context that shares it. specializationIds empty + hasSpecializations
+ * false means "specialization_id is null" (same convention as
+ * useSubjects).
+ */
+export function useCanonicalSubjectsForScope(
+  branchId: string | null,
+  specializationIds: string[],
+  hasSpecializations: boolean,
+  termId: string | null
+) {
+  return useQuery({
+    queryKey: ["canonical-subjects", "scope", branchId, [...specializationIds].sort(), hasSpecializations, termId],
+    queryFn: async () => {
+      const supabase = createClient();
+      let query = supabase
+        .from("subjects")
+        .select("canonical_subject_id, canonical_subjects!inner(id, canonical_name)")
+        .eq("branch_id", branchId!)
+        .eq("term_id", termId!)
+        .not("canonical_subject_id", "is", null);
+      query = hasSpecializations ? query.in("specialization_id", specializationIds) : query.is("specialization_id", null);
+      const { data, error } = await query;
+      if (error) throw error;
+      const seen = new Map<string, CanonicalSubjectOption>();
+      for (const row of data ?? []) {
+        const cs = (row as unknown as { canonical_subjects: CanonicalSubjectOption }).canonical_subjects;
+        if (cs) seen.set(cs.id, cs);
+      }
+      return Array.from(seen.values()).sort((a, b) => a.canonical_name.localeCompare(b.canonical_name));
+    },
+    enabled: !!branchId && !!termId && (!hasSpecializations || specializationIds.length > 0),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Duplicate guard for a centralized PYQ upload — scoped purely by
+ * canonical_subject_id (never branch/term/batch, unlike
+ * useExistingResourceTitles), since a centralized PYQ is meant to be
+ * the same one row regardless of which context it's uploaded from.
+ */
+export function useExistingCanonicalPyqTitles(canonicalSubjectId: string | null, resourceTypes: string[]) {
+  return useQuery({
+    queryKey: ["resources", "titles", "canonical", canonicalSubjectId, resourceTypes],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("resources")
+        .select("title")
+        .eq("canonical_subject_id", canonicalSubjectId!)
+        .eq("status", "approved")
+        .in("resource_type", resourceTypes);
+      if (error) throw error;
+      return new Set((data ?? []).map((r) => r.title.trim().toLowerCase()));
+    },
+    enabled: !!canonicalSubjectId && resourceTypes.length > 0,
+    staleTime: 15_000,
+  });
+}

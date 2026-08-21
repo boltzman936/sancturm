@@ -1,7 +1,13 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { useSubjects, useExistingResourceTitles } from "@/features/resources/queries";
+import {
+  useSubjects,
+  useExistingResourceTitles,
+  useCanonicalSubjects,
+  useCanonicalSubjectsForScope,
+  useExistingCanonicalPyqTitles,
+} from "@/features/resources/queries";
 import { pyqSharingSpecializationIds } from "@/features/resources/pyqSharing";
 import { useSpecializations } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
@@ -265,6 +271,30 @@ export function CRUploadForm({
     subjectValue || null,
     effectiveBatchId || null
   );
+
+  // Centralized PYQ subject picker (see centralize_pyq_resources.sql) —
+  // replaces the per-context Subject select above for resourceType
+  // "pyq" only. Admin (bulk) gets the full canonical list; a CR is
+  // restricted to canonical subjects actually reachable from their own
+  // (branch, sharing pool, term) — reusing the exact scope this file
+  // already computes for the duplicate check above, so the two can't
+  // drift apart.
+  const isPyqUpload = resourceType === "pyq";
+  const { data: allCanonicalSubjects } = useCanonicalSubjects();
+  const { data: scopedCanonicalSubjects } = useCanonicalSubjectsForScope(
+    branchIdForDuplicateCheck || null,
+    specializationIdsForDuplicateCheck,
+    hasSpecializationsForDuplicateCheck,
+    effectiveTermId || null
+  );
+  const canonicalSubjectOptions = isPyqUpload ? (canBulkPublish ? allCanonicalSubjects : scopedCanonicalSubjects) : undefined;
+  const resourceTypesForCanonicalDuplicateCheck = pyqKind === "pyq" ? ["pyq", "pdf"] : ["pyq_solution"];
+  const { data: existingCanonicalTitles } = useExistingCanonicalPyqTitles(
+    isPyqUpload ? subjectValue || null : null,
+    resourceTypesForCanonicalDuplicateCheck
+  );
+  const effectiveExistingTitles = isPyqUpload ? existingCanonicalTitles : existingTitles;
+
   // Same title-per-file logic handleSubmit itself will use — computed
   // here too so the warning shown BEFORE publishing matches exactly
   // what would actually get inserted.
@@ -282,13 +312,15 @@ export function CRUploadForm({
   function fallbackTitleForFile(file: File) {
     const fromFileName = titleFromFileName(file.name);
     if (!looksLikeMeaninglessName(fromFileName)) return fromFileName;
-    const subjectName = subjects?.find((subject) => subject.id === subjectValue)?.name;
+    const subjectName = isPyqUpload
+      ? canonicalSubjectOptions?.find((subject) => subject.id === subjectValue)?.canonical_name
+      : subjects?.find((subject) => subject.id === subjectValue)?.name;
     return subjectName ? `${subjectName} — ${formatShortDate(new Date().toISOString())}` : "Untitled upload";
   }
   const duplicateFileNames = new Set(
     files
       .filter((file, index) =>
-        existingTitles?.has(titleForFile(file, index, files.length).trim().toLowerCase())
+        effectiveExistingTitles?.has(titleForFile(file, index, files.length).trim().toLowerCase())
       )
       .map((file) => file.name)
   );
@@ -324,7 +356,8 @@ export function CRUploadForm({
 
     const section = resourceType === "pyq" ? "pyq" : "notes_lab";
     const bulkResourceType = resourceType === "pyq" ? pyqKind : resourceType;
-    const subjectName = subjects?.find((subject) => subject.id === subjectValue)?.name ?? "";
+    const subjectName = isPyqUpload ? "" : subjects?.find((subject) => subject.id === subjectValue)?.name ?? "";
+    const canonicalSubjectId = isPyqUpload ? subjectValue : "";
     const filesToUpload = files;
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -354,6 +387,7 @@ export function CRUploadForm({
               JSON.stringify(bulkBranchHasSpecializations ? selectedSpecializationIds : [])
             );
             formData.set("subjectName", subjectName);
+            if (canonicalSubjectId) formData.set("canonicalSubjectId", canonicalSubjectId);
             formData.set("section", section);
             formData.set("resourceType", bulkResourceType);
             formData.set("title", title);
@@ -371,7 +405,8 @@ export function CRUploadForm({
             formData.set("specializationId", specializationId ?? "");
             formData.set("termId", effectiveTermId);
             formData.set("batchId", effectiveBatchId);
-            formData.set("subjectId", subjectValue);
+            formData.set("subjectId", isPyqUpload ? "" : subjectValue);
+            if (canonicalSubjectId) formData.set("canonicalSubjectId", canonicalSubjectId);
             formData.set("section", section);
             formData.set("resourceType", resourceType === "pyq" ? pyqKind : resourceType);
             formData.set("title", title);
@@ -746,21 +781,44 @@ export function CRUploadForm({
         <label htmlFor="subject" className="font-mono text-xs text-subtle-foreground">
           Subject
         </label>
-        <Select
-          key={`${resourceType}-${subjectReferenceBranchId}-${subjectReferenceSpecializationId}-${effectiveTermId}`}
-          id="subject"
-          name="subject"
-          value={subjectValue}
-          onChange={(event) => setSubjectValue(event.target.value)}
-          className="bg-background"
-        >
-          <option value="">Extra</option>
-          {subjects?.map((subject) => (
-            <option key={subject.id} value={subject.id}>
-              {subject.name}
-            </option>
-          ))}
-        </Select>
+        {isPyqUpload ? (
+          // Centralized picker — one canonical subject, shared by
+          // every branch/specialization/term/batch it reaches (see
+          // centralize_pyq_resources.sql). No "Extra" option here: a
+          // centralized PYQ always has a real subject, that's the
+          // whole point of the model.
+          <Select
+            key={`pyq-${canBulkPublish ? "admin" : "cr"}-${branchIdForDuplicateCheck}-${effectiveTermId}`}
+            id="subject"
+            name="subject"
+            value={subjectValue}
+            onChange={(event) => setSubjectValue(event.target.value)}
+            className="bg-background"
+          >
+            <option value="">Select a subject…</option>
+            {canonicalSubjectOptions?.map((subject) => (
+              <option key={subject.id} value={subject.id}>
+                {subject.canonical_name}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <Select
+            key={`${resourceType}-${subjectReferenceBranchId}-${subjectReferenceSpecializationId}-${effectiveTermId}`}
+            id="subject"
+            name="subject"
+            value={subjectValue}
+            onChange={(event) => setSubjectValue(event.target.value)}
+            className="bg-background"
+          >
+            <option value="">Extra</option>
+            {subjects?.map((subject) => (
+              <option key={subject.id} value={subject.id}>
+                {subject.name}
+              </option>
+            ))}
+          </Select>
+        )}
       </div>
 
       <div className="flex flex-col gap-1">
