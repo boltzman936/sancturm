@@ -14,6 +14,7 @@ import {
   useSubjectsForPyqScopeTerms,
   type ResourceWithSubject,
 } from "@/features/resources/queries";
+import { useHistoricalSharedResources, mergeHistoricalSharedResources } from "@/features/resources/historicalSharing";
 import { pyqSharingSpecializationIds } from "@/features/resources/pyqSharing";
 import { LAB_ONLY_SUBJECT_SLUGS } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
@@ -152,11 +153,42 @@ export default function PYQsPage() {
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [allTermSubjects]);
 
-  const { data: resources, isLoading, isError } = usePyqResources(
+  const { data: ownResources, isLoading, isError } = usePyqResources(
     branch?.id ?? null,
     pyqSpecializationIds,
     branch?.has_specializations ?? false,
     isAllSemesters ? effectiveTermIds : term?.id ?? null
+  );
+
+  // 2025-26's own 1st Year (Sem 1 + Sem 2) pools PYQs/Solutions across
+  // every branch/specialization by canonical subject identity — see
+  // historicalSharing.ts's own header comment. usePyqResources fetches
+  // both resource_type "pyq" and "pyq_solution" together (kind is
+  // filtered client-side, see `filtered` below), so both are fetched
+  // here the same way and concatenated before merging.
+  const batchFilterIsAllOrHistorical =
+    batchFilter === ALL_BATCHES || allBatches?.find((b) => b.id === batchFilter)?.label === "2025-26";
+  const { data: sharedPyq } = useHistoricalSharedResources({
+    localSubjects: allTermSubjects,
+    section: "pyq",
+    resourceType: "pyq",
+    yearNumber,
+    batchFilterIsAllOrHistorical,
+  });
+  const { data: sharedPyqSolution } = useHistoricalSharedResources({
+    localSubjects: allTermSubjects,
+    section: "pyq",
+    resourceType: "pyq_solution",
+    yearNumber,
+    batchFilterIsAllOrHistorical,
+  });
+  const sharedResources = useMemo(
+    () => [...(sharedPyq ?? []), ...(sharedPyqSolution ?? [])],
+    [sharedPyq, sharedPyqSolution]
+  );
+  const resources = useMemo(
+    () => mergeHistoricalSharedResources(ownResources, sharedResources, allTermSubjects),
+    [ownResources, sharedResources, allTermSubjects]
   );
 
   // Resets subjectFilter same as Notes & Lab's tab switch — a subject

@@ -169,6 +169,14 @@ export type Subject = {
   term_id: string;
   name: string;
   slug: string;
+  // Nullable — a handful of existing subjects (Biotechnology's own
+  // "Elementary Mathematics I/II" and "Graphics") have no confirmed
+  // canonical match yet, deliberately left unmapped rather than
+  // guessed (see supabase/add_canonical_subjects.sql). Links this
+  // subject to the ~48 real underlying courses in canonical_subjects
+  // — the identity historicalSharing.ts resolves cross-context
+  // resource visibility through for the 2025-26 1st Year exception.
+  canonical_subject_id: string | null;
   sort_order: number;
   created_at: string;
 };

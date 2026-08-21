@@ -14,6 +14,7 @@ import {
   useSubjectsForBranchAndTerms,
   type ResourceWithSubject,
 } from "@/features/resources/queries";
+import { useHistoricalSharedResources, mergeHistoricalSharedResources } from "@/features/resources/historicalSharing";
 import { filterSubjectsForResourceType } from "@/features/resources/labSubjects";
 import { ResourceCard } from "@/features/resources/components/ResourceCard";
 import { ResourceListSkeleton } from "@/features/resources/components/ResourceListSkeleton";
@@ -152,11 +153,30 @@ export default function NotesAndLabPage() {
   );
   useResetInvalidSelection(subjectFilter, validSubjectValues, ALL_SUBJECTS, setSubjectFilter);
 
-  const { data: resources, isLoading, isError } = useNotesAndLabResources(
+  const { data: ownResources, isLoading, isError } = useNotesAndLabResources(
     branch?.id ?? null,
     specializationId,
     isAllSemesters ? effectiveTermIds : term?.id ?? null,
     resourceType
+  );
+
+  // 2025-26's own 1st Year (Sem 1 + Sem 2) pools Notes/Lab across every
+  // branch/specialization by canonical subject identity — see
+  // historicalSharing.ts's own header comment. Every other year/batch
+  // is a complete no-op (the hook returns nothing extra), so this is
+  // purely additive for the one historical exception.
+  const batchFilterIsAllOrHistorical =
+    batchFilter === ALL_BATCHES || allBatches?.find((b) => b.id === batchFilter)?.label === "2025-26";
+  const { data: sharedResources } = useHistoricalSharedResources({
+    localSubjects: allSubjects,
+    section: "notes_lab",
+    resourceType,
+    yearNumber,
+    batchFilterIsAllOrHistorical,
+  });
+  const resources = useMemo(
+    () => mergeHistoricalSharedResources(ownResources, sharedResources, allSubjects),
+    [ownResources, sharedResources, allSubjects]
   );
 
   // Newest batch always groups first, regardless of dateSort direction
