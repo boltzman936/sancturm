@@ -33,27 +33,34 @@ export const viewport: Viewport = {
 // very first frame, before any client JS runs at all.
 export default function OnboardingPage() {
   return (
-    // w-screen h-dvh (literal viewport size), not just inset-0 —
-    // globals.css sets `scrollbar-gutter: stable` on <html> site-wide,
-    // which reserves a thin strip on the right edge for a scrollbar
-    // even when nothing here scrolls. That reserved strip isn't
-    // painted by this div when it's sized by inset-0 alone (a
-    // percentage of the containing block, which the gutter reservation
-    // shrinks) — it fell through to <body>'s own background instead,
-    // showing as a thin colored line in whichever theme's background
-    // color the viewer has picked (e.g. Theme 4's pale green). w-screen
-    // is a literal viewport-width value, unaffected by the gutter
-    // reservation, so this now always fully covers it.
+    // w-screen (literal viewport-width value), not just inset-0's own
+    // left/right — globals.css sets `scrollbar-gutter: stable` on
+    // <html> site-wide, which reserves a thin strip on the right edge
+    // for a scrollbar even when nothing here scrolls; inset-0's
+    // right:0 lands at the edge of that shrunk containing block, not
+    // the true window edge, leaving the reserved strip unpainted and
+    // exposing <body>'s own background as a thin colored line there.
+    // w-screen is immune to that gutter reservation, so this always
+    // fully covers it.
     //
-    // h-dvh, not h-screen (100vh) — on mobile Chrome/Safari, 100vh is
-    // measured against the LARGEST possible viewport (as if the
-    // address bar/nav bar were fully collapsed), which is taller than
-    // what's actually visible once those bars are showing. That left a
-    // real gap at the bottom exposing <body>'s own warm theme
-    // background underneath the media. 100dvh tracks the viewport
-    // Chrome/Safari are ACTUALLY showing right now, so this div always
-    // matches the real visible area with no gap.
-    <div className="fixed inset-0 h-dvh w-screen bg-black">
+    // Height, deliberately, is NOT set explicitly (no h-screen/h-dvh)
+    // — inset-0 already includes top:0 + bottom:0, which for a `fixed`
+    // element is sized against the real, current viewport with no vh
+    // unit involved at all, so it's exact on every reflow. Every vh-
+    // based unit tried here (h-screen's static 100vh, then h-dvh) went
+    // wrong in a different way: 100vh measures mobile Chrome/Safari's
+    // LARGEST possible viewport (bars collapsed), taller than what's
+    // visible with the bars showing; 100dvh should track the real
+    // toolbar state but still left a gap on real Android devices,
+    // because setting an explicit height on a `fixed inset-0` element
+    // over-constrains the box and makes the browser DROP the bottom:0
+    // constraint in favor of top:0 + height — so any lag/inaccuracy in
+    // that height value (dvh recalculates asynchronously as the
+    // toolbar animates) shows up as a literal gap against the real
+    // bottom edge. Leaving height unset keeps bottom:0 in force, which
+    // has no such lag — it's just "the real bottom of the viewport,"
+    // recomputed directly by layout rather than approximated by a unit.
+    <div className="fixed inset-0 w-screen bg-black">
       <Suspense fallback={null}>
         <IntroExperience />
       </Suspense>

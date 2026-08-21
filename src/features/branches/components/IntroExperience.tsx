@@ -290,20 +290,26 @@ export function IntroExperience() {
       // colored flash behind the media for the split second before the
       // video/image has actually painted a frame. Black is neutral
       // against art of any hue and reads as "not loaded yet" rather
-      // than as a colored placeholder. w-screen h-dvh (literal
-      // viewport size), not just inset-0 — see the onboarding page's
-      // own wrapper for why: <html>'s site-wide scrollbar-gutter:
-      // stable reserves a thin strip on the right that inset-0 alone
-      // doesn't cover, letting the viewer's own theme background
-      // (sometimes green) show through as a colored line on that edge.
-      // h-dvh, not h-screen (100vh) — same mobile-viewport fix as the
-      // onboarding page's own wrapper: 100vh is measured against
-      // mobile Chrome/Safari's LARGEST possible viewport (bars
-      // collapsed), taller than what's actually visible with the bars
-      // showing, which left the real warm theme background exposed as
-      // a gap below the media. 100dvh always matches the real visible
-      // viewport.
-      className="fixed inset-0 h-dvh w-screen overflow-hidden bg-black"
+      // than as a colored placeholder. w-screen (literal viewport-
+      // width value), not just inset-0's own left/right — see the
+      // onboarding page's own wrapper for why: <html>'s site-wide
+      // scrollbar-gutter: stable reserves a thin strip on the right
+      // that inset-0 alone doesn't cover, letting the viewer's own
+      // theme background (sometimes green) show through as a colored
+      // line on that edge.
+      //
+      // Height is deliberately left unset (no h-screen/h-dvh) — see
+      // the onboarding page's own wrapper for the full reasoning.
+      // Short version: inset-0's top:0 + bottom:0 sizes a `fixed`
+      // element against the real, current viewport with no vh-based
+      // unit involved, so it's exact on every reflow. Explicit
+      // height (both 100vh and 100dvh were tried) over-constrains the
+      // box and makes the browser drop the bottom:0 constraint in
+      // favor of top:0 + height instead — any lag in that height
+      // value (dvh recalculates asynchronously as the mobile toolbar
+      // animates) then shows up as a real gap against the true bottom
+      // edge, exposing the warm theme background underneath.
+      className="fixed inset-0 w-screen overflow-hidden bg-black"
       animate={{ opacity: exiting ? 0 : 1 }}
       transition={{ duration: EXIT_DURATION_S }}
     >
