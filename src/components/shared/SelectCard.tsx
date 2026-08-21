@@ -44,6 +44,12 @@ export function SelectCard<T>({
 
   return (
     <div
+      // will-change promotes this to its own compositor layer before
+      // the first paint instead of on it — without it, backdrop-blur
+      // can render one frame unblurred (a plain translucent white
+      // panel) before the browser actually applies the filter, which
+      // read as the glass "turning on" a beat after the card appeared.
+      style={{ willChange: "backdrop-filter" }}
       className={cn(
         // Liquid-glass treatment — frosted (backdrop-blur + saturate),
         // translucent white overlay, a thin bright edge and a
@@ -82,12 +88,21 @@ export function SelectCard<T>({
             aria-live="polite"
             aria-label={loadingLabel}
           >
+            {/* Same border/padding/rounded box as the real option
+                buttons below (not a fixed pixel height) — a skeleton
+                with its own guessed height swapped out for a
+                differently-sized real button is exactly what read as
+                the panel visibly resizing between its loading and
+                loaded state. Mirroring the button's own box makes the
+                swap a pure content/shimmer change at a fixed size. */}
             {Array.from({ length: skeletonCount }).map((_, i) => (
               <div
                 key={i}
-                className="h-[46px] animate-shimmer rounded-lg bg-[linear-gradient(90deg,rgba(255,255,255,0.04)_25%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.04)_75%)] bg-[length:200%_100%]"
+                className="animate-shimmer rounded-lg border border-white/15 bg-[linear-gradient(90deg,rgba(255,255,255,0.04)_25%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.04)_75%)] bg-[length:200%_100%] px-3.5 py-2 lg:px-4 lg:py-2.5"
                 style={{ animationDelay: reduceMotion ? "0s" : `${i * 0.08}s` }}
-              />
+              >
+                &nbsp;
+              </div>
             ))}
           </motion.div>
         ) : isError ? (

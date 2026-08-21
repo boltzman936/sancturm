@@ -285,7 +285,13 @@ export function IntroExperience() {
 
   return (
     <motion.div
-      className="fixed inset-0 overflow-hidden bg-background"
+      // bg-black, not bg-background — the theme token is a warm cream/
+      // brown in every palette (see globals.css), which read as a
+      // colored flash behind the media for the split second before the
+      // video/image has actually painted a frame. Black is neutral
+      // against art of any hue and reads as "not loaded yet" rather
+      // than as a colored placeholder.
+      className="fixed inset-0 overflow-hidden bg-black"
       animate={{ opacity: exiting ? 0 : 1 }}
       transition={{ duration: EXIT_DURATION_S }}
     >
@@ -356,7 +362,7 @@ export function IntroExperience() {
             card's bottom edge to reach the seated figure lower in the
             art; desktop's figure sits further down relative to the
             card so 11% was already clear. */}
-        <div className="absolute inset-x-0 top-[3%] flex flex-col items-center gap-6 px-6 text-center sm:top-[5%] lg:top-[11%]">
+        <div className="absolute inset-x-0 top-[3%] flex flex-col items-center gap-2 px-6 text-center sm:top-[5%] sm:gap-4 lg:top-[11%] lg:gap-6">
           {videoReady && (
             <h1
               // No overlay on the media itself (see the background art's
