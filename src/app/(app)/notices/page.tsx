@@ -6,10 +6,10 @@ import { Eye, Pin, Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useSpecialization } from "@/hooks/useSpecialization";
 import { useTerm } from "@/hooks/useTerm";
-import { useLiveTermForYear } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
 import { useTermBySlug, useTerms } from "@/features/terms/queries";
 import { useNotices } from "@/features/notices/queries";
+import { useCurrentNoticeTermId } from "@/features/notices/currentSemester";
 import { useLatestNotice, useLastSeenNotice } from "@/features/notices/useLatestNotice";
 import { toggleNoticePin } from "@/features/notices/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
@@ -42,16 +42,18 @@ export default function NoticesPage() {
     ? branchSpecializations?.find((s) => s.slug === specializationSlug)?.id ?? null
     : null;
 
-  // No Batch dimension here at all — a notice is scoped purely by
-  // Branch + Specialization + Year + whichever semester is genuinely
-  // live right now, worked out automatically (see useLiveTermForYear's
-  // own comment). Unlike Notes & Lab / PYQs, there's no Semester picker
-  // either: Notices represents "what's current," not a browsable
-  // archive.
+  // No Batch/Semester/Year/Branch/Specialization filters anywhere on
+  // this page — a notice's visibility is entirely automatic: Branch +
+  // Specialization come from the sidebar (same as always), and the
+  // Semester is resolved from the sidebar's Year through a small fixed
+  // map of the two Notice contexts that actually exist right now (see
+  // currentSemester.ts's own comment for why this is hardcoded rather
+  // than date-computed). No filter the viewer touches anywhere else in
+  // the app can change what shows up here.
   const { term: sidebarTermSlug } = useTerm();
   const { data: sidebarTerm } = useTermBySlug(sidebarTermSlug);
   const yearNumber = sidebarTerm?.year_number;
-  const liveTermId = useLiveTermForYear(yearNumber);
+  const liveTermId = useCurrentNoticeTermId(yearNumber);
   const isLoadingReachedTerms = yearNumber !== undefined && liveTermId === undefined;
   const hasNoReachedBatches = liveTermId === null;
   const { data: allTerms } = useTerms();

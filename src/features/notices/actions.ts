@@ -8,6 +8,7 @@ import { withDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
 import { assertBatchTermReached } from "@/features/batches/academicValidation";
+import { YEAR_TO_CURRENT_SEMESTER_NUMBER } from "@/features/notices/activeNoticeContexts";
 import {
   assertValidId,
   assertValidIdOrNull,
@@ -68,6 +69,35 @@ async function resolveCurrentBatchId(
 }
 
 /**
+ * A CR can only ever post a Notice for one of the two Notice contexts
+ * that actually exist right now (see activeNoticeContexts.ts) — even
+ * though a CR's own termId is already fixed to their own current
+ * context by construction (NoticeComposer never lets them pick),
+ * "their own current context" and "an active Notice context" can
+ * still diverge once their year has moved past semester 1/3 and
+ * nobody's updated the map yet, which would otherwise let them
+ * publish a notice into a context Notices never actually shows —
+ * confusing for a CR ("I posted it, why can't anyone see it?"), not a
+ * security issue. Admin is exempt (checked by the caller, not here) —
+ * "full Notice upload access... any current Year + Semester + Branch
+ * + Specialisation" is the explicit admin exception.
+ */
+async function assertIsActiveNoticeContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  termId: string
+) {
+  const { data: term, error } = await supabase
+    .from("academic_terms")
+    .select("year_number, semester_number")
+    .eq("id", termId)
+    .single();
+  if (error) throw safeDbError(error);
+  if (YEAR_TO_CURRENT_SEMESTER_NUMBER[term.year_number] !== term.semester_number) {
+    throw new Error("Notices can only be posted for the current semester.");
+  }
+}
+
+/**
  * Only a CR (own branch) or admin (any branch) can ever call this
  * successfully — there's no "anyone can submit" policy on `notices`
  * like there is on `resources`. Postgres RLS ("CR or admin manages",
@@ -98,6 +128,9 @@ export async function createNotice(formData: FormData) {
   assertValidId(termId, "year");
   assertValidId(batchId, "batch");
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
+
+  // Admin exception — see assertIsActiveNoticeContext's own comment.
+  if (role?.type !== "admin") await assertIsActiveNoticeContext(supabase, termId);
 
   // See resources/actions.ts's uploadResourceDirect for why this
   // exists — confirms the object's actual bytes match its claimed
@@ -270,6 +303,9 @@ export async function createCustomNotice(formData: FormData) {
   assertValidId(batchId, "batch");
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
   assertValidString(body, "Body", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
+
+  // Admin exception — see assertIsActiveNoticeContext's own comment.
+  if (role?.type !== "admin") await assertIsActiveNoticeContext(supabase, termId);
 
   const { error: insertError } = await supabase.from("notices").insert({
     branch_id: branchId,

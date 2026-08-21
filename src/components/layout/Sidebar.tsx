@@ -12,12 +12,12 @@ import { Logo } from "@/components/layout/Logo";
 import { useBranch } from "@/hooks/useBranch";
 import { useSpecialization } from "@/hooks/useSpecialization";
 import { useTerm } from "@/hooks/useTerm";
-import { useLiveTermForYear } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useSpecializationBySlug } from "@/features/branches/queries";
 import { useTermBySlug } from "@/features/terms/queries";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { SignOutButton } from "@/lib/auth/SignOutButton";
 import { useLatestNotice, useLastSeenNotice } from "@/features/notices/useLatestNotice";
+import { useCurrentNoticeTermId } from "@/features/notices/currentSemester";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
@@ -48,13 +48,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   // access is a branch CR, so "CR dashboard" stays accurate for them.
   const dashboardLabel = role?.type === "admin" ? "Controller's dashboard" : "CR dashboard";
 
-  // Unread-notice red dot — same (branch, specialization, live term)
-  // scope as the Notices page itself now uses, so the dot only ever
-  // lights up for a notice the viewer would actually see there.
+  // Unread-notice red dot — same (branch, specialization, current
+  // Notice term) scope the Notices page itself uses, resolved through
+  // the exact same hardcoded map (see currentSemester.ts) so the dot
+  // can never light up for a context the page wouldn't actually show.
   const specializationId = currentBranch?.has_specializations ? (currentSpecialization?.id ?? null) : null;
   const { term: sidebarTermSlug } = useTerm();
   const { data: sidebarTerm } = useTermBySlug(sidebarTermSlug);
-  const liveTermId = useLiveTermForYear(sidebarTerm?.year_number);
+  const liveTermId = useCurrentNoticeTermId(sidebarTerm?.year_number);
   const { data: latestNotice } = useLatestNotice(
     currentBranch?.id ?? null,
     specializationId,

@@ -15,21 +15,16 @@ import type { Notice } from "./types";
  * specialization's. specializationId null matches specialization_id
  * is null (every non-CSE branch).
  *
- * termId also accepts an array — same "All semesters" case
- * useNotesAndLabResources/usePyqResources support, driven by the same
- * useBatchSemesterFilter hook, so a notice posted for a SPECIFIC
- * semester (not just whichever one the sidebar's Year switcher
- * currently resolves to) is still genuinely reachable/browsable, not
- * just correctly scoped in the query.
- *
- * No Batch dimension at all — a notice is scoped purely by Branch +
- * Specialization + Year/Semester (termId), matching a real notice's
- * meaning (a live announcement for whoever's in that academic context
- * right now), not an archival, per-cohort resource like Notes/PYQ.
- * Callers resolve termId to whichever semester is genuinely live for
- * the viewer's Year via useLiveTermForYear (see useBatchSemesterFilter.ts)
- * — this hook itself has no notion of "current," it just fetches
- * whatever termId it's given.
+ * No Batch/Semester/Year filter of any kind — a notice is scoped
+ * purely by Branch + Specialization + termId, matching a real
+ * notice's meaning (a live announcement for whoever's in that academic
+ * context right now), not an archival, per-cohort resource like
+ * Notes/PYQ. This hook has no notion of "current" itself; callers
+ * resolve termId through useCurrentNoticeTermId (see
+ * currentSemester.ts) — a small fixed map of the two Notice contexts
+ * that actually exist right now, not a date computation. termId still
+ * accepts an array for signature parity with the other resource
+ * hooks, but nothing in the Notice flow ever passes more than one.
  */
 export function useNotices(
   branchId: string | null,
