@@ -1,9 +1,11 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { localDateKey } from "@/lib/date";
 import { isDateReached } from "@/features/batches/academicChronology";
+import { useAllBatchTerms } from "@/features/batches/queries";
 import type { AcademicTerm } from "@/types/database";
 
 /**
@@ -57,35 +59,41 @@ export function useTermBySlug(slug: string | null) {
  * term for callers that genuinely need the full list (Manage's Year
  * filter, the upload form's Year picker, both of which SHOULD offer
  * every semester, not just the current one).
+ *
+ * Built on useAllBatchTerms() rather than its own fetch — that hook
+ * already pulls every (batch_terms, academic_terms) row this
+ * reduction needs (a strict superset of the columns), and
+ * useBatchSemesterFilter (mounted on the same Notes/PYQ pages this
+ * sidebar switcher renders alongside) already fetches it. This used to
+ * be a second, undeduped network round trip firing in parallel with
+ * everything else on page load — on a slow connection that's exactly
+ * why the Year switcher was still showing "Select year" long after
+ * other data had arrived. Same query key, same cache entry, zero
+ * extra round trips now.
  */
 export function useCurrentTermsByYear() {
-  return useQuery({
-    queryKey: ["terms", "current-by-year"],
-    queryFn: async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("batch_terms")
-        .select("start_date, term:academic_terms(*)")
-        .order("start_date", { ascending: true });
-      if (error) throw error;
+  const { data: allBatchTerms, ...rest } = useAllBatchTerms();
 
-      const todayKey = localDateKey(new Date().toISOString());
-      const byYear = new Map<number, AcademicTerm>();
-      for (const row of data ?? []) {
-        const term = (Array.isArray(row.term) ? row.term[0] : row.term) as AcademicTerm | null;
-        if (!term) continue;
-        const alreadyStarted = isDateReached(row.start_date, todayKey);
-        // First row seen for a year always fills the slot (so a year
-        // with only future semesters still shows its soonest upcoming
-        // one) — after that, only a row that's actually started can
-        // overwrite it. Ascending order means the LAST started row we
-        // see for a year is the most recently begun one, i.e. current.
-        if (!byYear.has(term.year_number) || alreadyStarted) {
-          byYear.set(term.year_number, term);
-        }
+  const data = useMemo(() => {
+    if (!allBatchTerms) return undefined;
+    const todayKey = localDateKey(new Date().toISOString());
+    const byYear = new Map<number, AcademicTerm>();
+    // Already ordered by start_date ascending (see useAllBatchTerms) —
+    // first row seen for a year always fills the slot (so a year with
+    // only future semesters still shows its soonest upcoming one),
+    // after that only a row that's actually started can overwrite it.
+    // The LAST started row we see for a year is the most recently
+    // begun one, i.e. current.
+    for (const row of allBatchTerms) {
+      const term = row.term;
+      if (!term) continue;
+      const alreadyStarted = isDateReached(row.start_date, todayKey);
+      if (!byYear.has(term.year_number) || alreadyStarted) {
+        byYear.set(term.year_number, term);
       }
-      return [...byYear.values()].sort((a, b) => a.year_number - b.year_number);
-    },
-    staleTime: 5 * 60_000,
-  });
+    }
+    return [...byYear.values()].sort((a, b) => a.year_number - b.year_number);
+  }, [allBatchTerms]);
+
+  return { ...rest, data };
 }

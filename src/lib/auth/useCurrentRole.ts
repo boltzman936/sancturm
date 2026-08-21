@@ -9,6 +9,20 @@ export function useCurrentRole() {
     queryKey: ["current-role"],
     queryFn: async (): Promise<Role> => {
       const supabase = createClient();
+      // getSession() reads the already-stored session from localStorage
+      // — no network round trip. The overwhelming majority of visitors
+      // (students, never logged in) have no session at all, so this
+      // lets them skip getUser()'s real network call to Supabase Auth
+      // entirely — one fewer round trip on every single page load for
+      // ~100% of traffic. getUser() still runs afterward, but only for
+      // the rare signed-in CR/admin, where its stronger (server-
+      // revalidated, not just locally-trusted) guarantee actually
+      // matters.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) return null;
+
       const {
         data: { user },
       } = await supabase.auth.getUser();

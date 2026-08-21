@@ -19,13 +19,25 @@ export function Providers({ children }: { children: React.ReactNode }) {
     () =>
       new QueryClient({
         defaultOptions: {
-          // The default (0) treats every cached result as stale
-          // immediately, so switching between pages/tabs re-fetched
-          // and re-showed a loading spinner even for data fetched a
-          // second ago. One minute is long enough to kill that
-          // re-navigation flicker; individual queries can still set
-          // their own shorter staleTime where freshness matters more.
-          queries: { staleTime: 60_000 },
+          queries: {
+            // The default (0) treats every cached result as stale
+            // immediately, so switching between pages/tabs re-fetched
+            // and re-showed a loading spinner even for data fetched a
+            // second ago. One minute is long enough to kill that
+            // re-navigation flicker; individual queries can still set
+            // their own shorter staleTime where freshness matters more.
+            staleTime: 60_000,
+            // TanStack's own default is 3 retries with exponential
+            // backoff (up to a 30s cap per attempt) — on a genuinely
+            // slow/lossy connection, a query that's actually going to
+            // fail sits retrying for many extra seconds before the UI
+            // can show an error, which just reads as "stuck loading"
+            // for far longer than any one request's real timeout. 2
+            // retries with a capped 5s backoff still absorbs a normal
+            // transient blip without dragging out a real failure.
+            retry: 2,
+            retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 5_000),
+          },
         },
       })
   );
