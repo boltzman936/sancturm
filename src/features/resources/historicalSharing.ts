@@ -181,13 +181,26 @@ export function mergeHistoricalSharedResources<T extends ResourceWithSubject>(
   );
 
   const relabeledShared: T[] = [];
+  // Filling a gap means picking exactly ONE other branch's resource
+  // per (canonical subject, resource_type) — without tracking that
+  // here too, two DIFFERENT branches that each independently uploaded
+  // their own copy for the same canonical subject (neither "own",
+  // both genuinely separate rows) would both get admitted, showing as
+  // same-titled "duplicate" cards even though ownCanonicalCoverage
+  // above only ever checked the viewer's OWN resources, not each
+  // other's. Confirmed live: CSE AIML pulled in BOTH Core's and AIDS's
+  // own "PPS PYQ's LIST" at once for exactly this reason.
+  const filledByShare = new Set<string>();
   for (const r of shared) {
     if (ownIds.has(r.id)) continue; // already covered by the own-context fetch
     const canonicalId = r.subject?.canonical_subject_id ?? null;
     if (!canonicalId) continue;
-    if (ownCanonicalCoverage.has(`${canonicalId}:${r.resource_type}`)) continue; // gap already filled locally
+    const coverageKey = `${canonicalId}:${r.resource_type}`;
+    if (ownCanonicalCoverage.has(coverageKey)) continue; // gap already filled locally
+    if (filledByShare.has(coverageKey)) continue; // gap already filled by an earlier shared-in resource
     const localSubject = localByCanonical.get(canonicalId);
     if (!localSubject) continue; // defensive — see this function's own comment
+    filledByShare.add(coverageKey);
     relabeledShared.push({
       ...r,
       subject: { id: localSubject.id, name: localSubject.name, sort_order: localSubject.sort_order },

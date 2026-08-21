@@ -120,7 +120,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               them out of flow, so the row has no other height source). */}
           <div className="relative -mx-3 h-9 lg:-mx-4">
             <Link
-              href="/"
+              href="/?cockpit=1"
               onClick={onClose}
               className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm px-1 outline-none transition-opacity hover:opacity-80 active:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
             >

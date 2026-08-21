@@ -77,7 +77,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         >
           <Menu className="h-5 w-5 shrink-0" />
         </button>
-        <Link href="/" className="shrink-0 transition-opacity hover:opacity-80 active:opacity-80">
+        <Link href="/?cockpit=1" className="shrink-0 transition-opacity hover:opacity-80 active:opacity-80">
           <Logo surface="sidebar" />
         </Link>
         {/* Spacer matching the button's width so the wordmark stays

@@ -57,10 +57,13 @@ export function SelectCard<T>({
         // "md" is the deliberate middle ground, not an oversight. Only
         // this card's own bounds are blurred — never the page behind
         // it — so the background media stays sharp everywhere outside
-        // this small box. Compact by design (260px, tighter padding
-        // than the original 320px/p-6): a small, subtle panel reads as
-        // premium against full-bleed art; a big one reads as a modal.
-        "w-full max-w-[260px] rounded-2xl border border-white/20 bg-white/10 p-4 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md backdrop-saturate-150",
+        // this small box. Compact by design, and smaller still on
+        // mobile/tablet (220px) than desktop (280px) — a card sized
+        // for a laptop screen was disproportionately large against a
+        // phone/tablet's own much smaller viewport; a small, subtle
+        // panel reads as premium against full-bleed art at every size,
+        // a big one reads as a modal.
+        "w-full max-w-[220px] rounded-2xl border border-white/20 bg-white/10 p-3 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md backdrop-saturate-150 sm:max-w-[240px] sm:p-3.5 lg:max-w-[280px] lg:p-4",
         className
       )}
     >

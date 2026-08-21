@@ -312,12 +312,13 @@ html {
      text, labels, buttons, icons, cards, and spacing all together
      proportionally, without touching every component's className
      individually, and without any of them shifting relative to each
-     other (a uniform scale, not a redesign). 105% * 1.1: the base was
-     105%, then a further ~10% site-wide bump on top per an explicit
-     request for larger text everywhere — kept as a multiply (not a
-     single flattened percentage) so the "10% on top of the existing
-     base" relationship stays legible and re-tunable later. */
-  font-size: calc(105% * 1.1);
+     other (a uniform scale, not a redesign). Reverted back to this
+     original 105% — a later "+10% on top" experiment caused
+     widespread overflow/truncation across the app (long branch names,
+     the CR table's Year·Sem column, etc.) once every rem-based size
+     grew with it, so it's been undone rather than patched component
+     by component. */
+  font-size: 105%;
 }
 
 /* Desktop only (1024px = the `lg` breakpoint already used everywhere
@@ -329,7 +330,7 @@ html {
    if that base is ever changed later. */
 @media (min-width: 1024px) {
   html {
-    font-size: calc(105% * 1.1 * 1.15);
+    font-size: calc(105% * 1.15);
   }
 }
 
