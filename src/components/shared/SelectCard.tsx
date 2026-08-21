@@ -62,24 +62,23 @@ export function SelectCard<T>({
         // for a laptop screen was disproportionately large against a
         // phone/tablet's own much smaller viewport; a small, subtle
         // panel reads as premium against full-bleed art at every size,
-        // a big one reads as a modal.
-        "w-full max-w-[220px] rounded-2xl border border-white/20 bg-white/10 p-3 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md backdrop-saturate-150 sm:max-w-[240px] sm:p-3.5 lg:max-w-[280px] lg:p-4",
+        // a big one reads as a modal. A further ~10% pass (200/215/
+        // 250px, was 220/240/280) on top of that.
+        "w-full max-w-[200px] rounded-2xl border border-white/20 bg-white/10 p-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md backdrop-saturate-150 sm:max-w-[215px] sm:p-3 lg:max-w-[250px] lg:p-3.5",
         className
       )}
     >
-      {/* mb-3/gap-1.5/py-2.5 on mobile+tablet (~10% shorter overall
-          than desktop's mb-4/gap-2/py-3, not a flat shrink) — still a
-          real ~40px tap target with normal line-height, just tighter
-          rhythm between title/options so the whole card takes less
-          vertical room on a phone/tablet screen. */}
-      <h2 className="mb-3 text-center font-mono text-xs tracking-[0.08em] text-foreground/80 lg:mb-4">{title}</h2>
+      {/* mb-2.5/gap-1/py-2 (was mb-3/gap-1.5/py-2.5) — a second ~10%
+          rhythm pass on every tier, not just mobile/tablet this time,
+          matching the card's own outer shrink above. */}
+      <h2 className="mb-2.5 text-center font-mono text-xs tracking-[0.08em] text-foreground/80 lg:mb-3.5">{title}</h2>
       <AnimatePresence mode="wait" initial={false}>
         {isLoading ? (
           <motion.div
             key="loading"
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.2 }}
-            className="flex flex-col gap-1.5 lg:gap-2"
+            className="flex flex-col gap-1 lg:gap-1.5"
             aria-live="polite"
             aria-label={loadingLabel}
           >
@@ -116,7 +115,7 @@ export function SelectCard<T>({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.2 }}
-            className="flex flex-col gap-2"
+            className="flex flex-col gap-1 lg:gap-1.5"
           >
             {items?.map((item, i) => (
               <motion.button
@@ -132,7 +131,7 @@ export function SelectCard<T>({
                 whileHover={{ scale: 1.015 }}
                 whileTap={{ scale: 0.985 }}
                 onClick={() => onSelect(item)}
-                className="rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-left text-foreground transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:py-3"
+                className="rounded-lg border border-white/15 bg-white/5 px-3.5 py-2 text-left text-foreground transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:px-4 lg:py-2.5"
               >
                 {getLabel(item)}
               </motion.button>
