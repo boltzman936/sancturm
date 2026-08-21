@@ -2,14 +2,29 @@
 
 import { useEffect, useState } from "react";
 
-// 640px/1024px match the same sm/lg breakpoints used everywhere else
-// in the app (Sidebar's own width steps, Tailwind's own defaults) —
-// one shared definition of "mobile/tablet/desktop" for anywhere that
-// needs to pick a different asset per tier (Cockpit, Maintenance, the
-// offline/error page), rather than three components each re-deriving
-// their own breakpoint numbers.
+// 640px matches the same sm breakpoint used everywhere else in the
+// app (Sidebar's own width steps, Tailwind's own defaults) — one
+// shared definition of "mobile" for anywhere that needs to pick a
+// different asset per tier (Cockpit, Maintenance, the offline/error
+// page), rather than three components each re-deriving their own
+// number.
+//
+// tablet vs. desktop is NOT a width check — a plain "min-width: 1024px
+// = desktop" breakpoint misclassifies any tablet whose width happens
+// to reach 1024px (an iPad Pro is 1024px wide in portrait, 1366px in
+// landscape — both comfortably past that threshold despite being
+// exactly the tablet case this tier exists for). The actual signal
+// that distinguishes them isn't a screen-size number at all — it's
+// whether the device's PRIMARY input is touch (a tablet/phone) or a
+// mouse/trackpad (a laptop/desktop), which is what `pointer` reports
+// (not `any-pointer`, which would also flag a touchscreen laptop with
+// a trackpad as "coarse" just because touch is AVAILABLE — `pointer`
+// reflects which one is primary). This is why the tier now genuinely
+// tracks device/layout kind, not a handful of hardcoded resolutions —
+// any tablet at any width/orientation resolves correctly without a
+// device-specific exception ever being added here.
 const MOBILE_WIDTH_QUERY = "(max-width: 640px)";
-const DESKTOP_WIDTH_QUERY = "(min-width: 1024px)";
+const TOUCH_PRIMARY_QUERY = "(pointer: coarse)";
 
 export type DeviceTier = "mobile" | "tablet" | "desktop";
 
@@ -31,8 +46,8 @@ const SERVER_TIER: DeviceTier = "desktop";
 
 function resolveTier(): DeviceTier {
   if (window.matchMedia(MOBILE_WIDTH_QUERY).matches) return "mobile";
-  if (window.matchMedia(DESKTOP_WIDTH_QUERY).matches) return "desktop";
-  return "tablet";
+  if (window.matchMedia(TOUCH_PRIMARY_QUERY).matches) return "tablet";
+  return "desktop";
 }
 
 /**
@@ -50,13 +65,13 @@ export function useDeviceTier(): DeviceTier {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTier(resolveTier());
     const mobileQuery = window.matchMedia(MOBILE_WIDTH_QUERY);
-    const desktopQuery = window.matchMedia(DESKTOP_WIDTH_QUERY);
+    const touchQuery = window.matchMedia(TOUCH_PRIMARY_QUERY);
     const handler = () => setTier(resolveTier());
     mobileQuery.addEventListener("change", handler);
-    desktopQuery.addEventListener("change", handler);
+    touchQuery.addEventListener("change", handler);
     return () => {
       mobileQuery.removeEventListener("change", handler);
-      desktopQuery.removeEventListener("change", handler);
+      touchQuery.removeEventListener("change", handler);
     };
   }, []);
   return tier;

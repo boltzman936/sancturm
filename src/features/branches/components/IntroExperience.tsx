@@ -342,35 +342,25 @@ export function IntroExperience() {
             tabIndex={-1}
             onLoadedData={() => setVideoReady(true)}
           />
-        ) : deviceTier === "tablet" ? (
+        ) : (
+          // Tablet and desktop share the exact same full-bleed
+          // object-cover treatment now — only the source image
+          // differs. (A previous version sized the desktop image by
+          // width instead, to avoid ever cropping the composition —
+          // reverted per explicit request: fill 100vw x 100vh with no
+          // black bars is the priority now, cropping is accepted.
+          // object-cover never distorts — aspect ratio is always
+          // preserved, only overflow is cropped.) Which of the two
+          // this device gets is decided by useDeviceTier's touch-vs-
+          // pointer check, not a width breakpoint — see that hook's
+          // own comment for why a width check alone misclassifies a
+          // tablet like iPad Pro (1024-1366px wide) as desktop.
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src="/media/cockpit-tablet.webp"
+            src={deviceTier === "tablet" ? "/media/cockpit-tablet.webp" : "/media/cockpit-desktop.webp"}
             alt=""
             aria-hidden="true"
             className="absolute inset-0 h-full w-full object-cover"
-            onLoad={() => setVideoReady(true)}
-          />
-        ) : (
-          // Desktop only — sized by WIDTH (w-full h-auto), never
-          // object-cover: a laptop's own aspect ratio (14"/15.6"/16"
-          // are all close to but not exactly 16:9/16:10) is close
-          // enough to this artwork's own ratio that a fixed-height
-          // cover crop was cutting real composition off the top/bottom
-          // on some screens. This always shows the complete image at
-          // exactly 100% of the viewport width, aspect ratio intact
-          // (never stretched/distorted), scaling proportionally with
-          // the viewport — top/bottom is preferred over browsers, and
-          // this content and the black background (see this page's own
-          // bg-black wrapper — no warm/colored bar sneaks in). Vertical
-          // centering, not top-anchored, so any letterboxing is spread
-          // evenly rather than pushed to one edge.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src="/media/cockpit-desktop.webp"
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-x-0 top-1/2 h-auto w-full -translate-y-1/2"
             onLoad={() => setVideoReady(true)}
           />
         )}
