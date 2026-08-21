@@ -115,6 +115,8 @@ function PdfViewer({ url }: { url: string }) {
     let loadingTask: PDFDocumentLoadingTask | null = null;
     let rafId: number | null = null;
     let scrollHandler: (() => void) | null = null;
+    let resizeRafId: number | null = null;
+    let resizeObserver: ResizeObserver | null = null;
     const activeRenderTasks = new Map<number, RenderTask>();
     const renderedPages = new Set<number>();
     // Captured once, not re-read as containerRef.current inside the
@@ -198,30 +200,51 @@ function PdfViewer({ url }: { url: string }) {
             });
         }
 
-        // Sized once against the modal's current width — the modal
-        // itself is already responsive (see ResourceViewerDialog's
-        // className), so whatever width it has at open time on
-        // mobile/tablet/desktop is what pages render to fill, with no
-        // horizontal overflow and no separate per-breakpoint logic
-        // needed here.
-        const containerWidth = wrapper.clientWidth;
+        // Fit-to-page, not fit-to-width: the old `scale =
+        // containerWidth / pageWidth` filled the viewer's width and
+        // let height do whatever it wanted, which for any page taller
+        // (in aspect ratio) than the viewer's own box — the common
+        // case, since a portrait scanned page in a wide desktop dialog
+        // almost always is — cropped the bottom behind an internal
+        // scroll instead of showing the whole page at once. Fitting
+        // against BOTH available dimensions (whichever is more
+        // constraining wins) guarantees the complete page is visible
+        // top-to-bottom the moment it renders, on every breakpoint,
+        // with no separate mobile/tablet/desktop logic needed — same
+        // "Fit Page" behavior a native PDF viewer defaults to.
+        //
+        // fitScaleRef (not a local const) because it's recomputed by
+        // recomputeFit() below whenever the wrapper resizes (a window
+        // resize, an orientation change, or the dialog itself changing
+        // size) — every call site that reads it does so at call time,
+        // never captures a stale value.
+        const fitScaleRef = { current: 1 };
         const dpr = Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR);
+        // Small breathing room so a fitted page doesn't touch the
+        // scroll container's literal edge — "minimal surrounding empty
+        // space", not a layout gutter.
+        const FIT_MARGIN_PX = 8;
+
+        function computeFitScale(nativeWidth: number, nativeHeight: number): number {
+          const availableWidth = wrapper!.clientWidth - FIT_MARGIN_PX * 2;
+          const availableHeight = wrapper!.clientHeight - FIT_MARGIN_PX * 2;
+          if (nativeWidth <= 0 || nativeHeight <= 0 || availableWidth <= 0 || availableHeight <= 0) return 1;
+          return Math.min(availableWidth / nativeWidth, availableHeight / nativeHeight);
+        }
 
         async function renderPage(pageNumber: number, page: PDFPageProxy, placeholder: HTMLDivElement) {
           if (renderedPages.has(pageNumber) || cancelled) return;
           renderedPages.add(pageNumber);
 
-          const unscaledViewport = page.getViewport({ scale: 1 });
-          const scale = (containerWidth / unscaledViewport.width) * dpr;
-          const viewport = page.getViewport({ scale });
+          const viewport = page.getViewport({ scale: fitScaleRef.current * dpr });
 
           const canvas = document.createElement("canvas");
           canvas.width = Math.round(viewport.width);
           canvas.height = Math.round(viewport.height);
           // The canvas's actual pixel buffer is dpr-scaled for
-          // sharpness; its CSS size fills the placeholder (which is
-          // already sized to the display dimensions), so it still
-          // occupies exactly containerWidth on screen.
+          // sharpness; its CSS size fills the placeholder, which is
+          // already sized (in both dimensions) to the fitted display
+          // size, so it occupies exactly that fitted box on screen.
           canvas.className = "block h-full w-full rounded-md bg-white shadow-md";
           placeholder.replaceChildren(canvas);
 
@@ -304,17 +327,19 @@ function PdfViewer({ url }: { url: string }) {
         if (cancelled) return;
         const firstUnscaled = firstPage.getViewport({ scale: 1 });
         // Every subsequent page's placeholder is pre-sized off page
-        // 1's aspect ratio — true for the overwhelming majority of
-        // real documents (uniform page size throughout), and even
-        // when a later page's actual size differs slightly, it's a
-        // one-time layout nudge when that page renders rather than
-        // something that blocks anything up front.
-        const pageAspectRatio = firstUnscaled.height / firstUnscaled.width;
-        const placeholderHeight = Math.round(containerWidth * pageAspectRatio);
+        // 1's own native dimensions — true for the overwhelming
+        // majority of real documents (uniform page size throughout),
+        // and even when a later page's actual size differs slightly,
+        // it's a one-time layout nudge when that page renders rather
+        // than something that blocks anything up front.
+        fitScaleRef.current = computeFitScale(firstUnscaled.width, firstUnscaled.height);
+        let placeholderWidth = Math.round(firstUnscaled.width * fitScaleRef.current);
+        let placeholderHeight = Math.round(firstUnscaled.height * fitScaleRef.current);
 
         const placeholders: HTMLDivElement[] = [];
         for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
           const placeholder = document.createElement("div");
+          placeholder.style.width = `${placeholderWidth}px`;
           placeholder.style.height = `${placeholderHeight}px`;
           placeholder.className = "mx-auto mb-3 last:mb-0";
           placeholder.dataset.pageNumber = String(pageNumber);
@@ -373,6 +398,49 @@ function PdfViewer({ url }: { url: string }) {
         scrollHandler = onScroll;
         wrapper.addEventListener("scroll", onScroll, { passive: true });
         updateVisiblePages();
+
+        // Recomputes the fit whenever the viewer's own box changes —
+        // a browser window resize, a device orientation flip, or
+        // (since this observes the wrapper element itself) the dialog
+        // being resized by anything else in its layout. ResizeObserver
+        // over a plain window "resize" listener specifically because
+        // orientation changes and dialog-level layout shifts don't
+        // reliably fire "resize" on window at all on some mobile
+        // browsers, but always change this element's own box.
+        function recomputeFit() {
+          if (cancelled || !wrapper) return;
+          const newScale = computeFitScale(firstUnscaled.width, firstUnscaled.height);
+          // Ignores sub-percent jitter (ResizeObserver can fire for a
+          // fraction-of-a-pixel layout settle) so this doesn't evict
+          // and re-render every visible page over nothing.
+          if (Math.abs(newScale - fitScaleRef.current) / fitScaleRef.current < 0.01) return;
+          fitScaleRef.current = newScale;
+          placeholderWidth = Math.round(firstUnscaled.width * newScale);
+          placeholderHeight = Math.round(firstUnscaled.height * newScale);
+          for (const placeholder of placeholders) {
+            placeholder.style.width = `${placeholderWidth}px`;
+            placeholder.style.height = `${placeholderHeight}px`;
+          }
+          // Whatever was already rendered was rendered at the OLD
+          // scale — evicting and letting updateVisiblePages() below
+          // re-enqueue reuses the exact same render path a normal
+          // scroll-into-view already goes through, rather than a
+          // second, parallel "resize re-render" code path to keep in
+          // sync with it.
+          for (const pageNumber of [...renderedPages]) {
+            evictPage(pageNumber, placeholders[pageNumber - 1]);
+          }
+          updateVisiblePages();
+        }
+
+        resizeObserver = new ResizeObserver(() => {
+          if (resizeRafId !== null) return;
+          resizeRafId = requestAnimationFrame(() => {
+            resizeRafId = null;
+            recomputeFit();
+          });
+        });
+        resizeObserver.observe(wrapper);
       } catch {
         if (!cancelled) setStatus("error");
       }
@@ -384,6 +452,8 @@ function PdfViewer({ url }: { url: string }) {
       cancelled = true;
       if (scrollHandler) wrapper.removeEventListener("scroll", scrollHandler);
       if (rafId !== null) cancelAnimationFrame(rafId);
+      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+      resizeObserver?.disconnect();
       for (const task of activeRenderTasks.values()) task.cancel();
       loadingTask?.destroy();
       container.replaceChildren();
