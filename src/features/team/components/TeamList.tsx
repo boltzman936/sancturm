@@ -111,14 +111,14 @@ export function TeamList() {
           {/* Desktop/tablet — same column count as the real table so
               nothing reflows once rows swap in. */}
           <div className="hidden overflow-x-auto rounded-lg border border-border bg-card sm:block" aria-hidden="true">
-            <table className="w-full table-fixed text-left text-sm">
+            <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-subtle-foreground">
-                  <th className="w-10 px-3 py-2 font-normal">No.</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">No.</th>
                   <th className="px-3 py-2 font-normal">Name</th>
                   <th className="px-3 py-2 font-normal">Branch</th>
-                  <th className="w-28 px-3 py-2 font-normal">Year · Sem</th>
-                  <th className="w-16 px-3 py-2 font-normal">Card</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">Year · Sem</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">Card</th>
                 </tr>
               </thead>
               <tbody>
@@ -172,36 +172,40 @@ export function TeamList() {
               sm:hidden) — five compact columns comfortably fit at sm+
               without ever needing it in practice. */}
           <div className="hidden overflow-x-auto rounded-lg border border-border bg-card sm:block">
-            <table className="w-full table-fixed text-left text-sm">
+            {/* Auto table layout (not table-fixed) — each column's
+                width is driven by its own widest cell, so No./Card
+                stay compact naturally and Year · Sem always gets
+                exactly the room its longest value ("2nd Year · 3rd
+                Semester") actually needs instead of a guessed fixed
+                px cap that truncated it. Name/Branch absorb whatever
+                width is left over. */}
+            <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-subtle-foreground">
-                  <th className="w-10 px-3 py-2 font-normal">No.</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">No.</th>
                   <th className="px-3 py-2 font-normal">Name</th>
                   <th className="px-3 py-2 font-normal">Branch</th>
-                  <th className="w-28 px-3 py-2 font-normal">Year · Sem</th>
-                  <th className="w-16 px-3 py-2 font-normal">Card</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">Year · Sem</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">Card</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, index) => (
                   <tr key={row.key} className="border-b border-border last:border-b-0">
-                    <td className="px-3 py-2.5 font-mono text-xs text-subtle-foreground">{index + 1}</td>
-                    <td className="truncate px-3 py-2.5 font-medium text-foreground" title={row.name}>
-                      {row.name}
+                    <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-subtle-foreground">
+                      {index + 1}
                     </td>
-                    <td
-                      className="truncate px-3 py-2.5 text-muted-foreground"
-                      title={row.specializationName ? `${row.branchName} — ${row.specializationName}` : row.branchName}
-                    >
+                    <td className="px-3 py-2.5 font-medium text-foreground">{row.name}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">
                       {row.branchName}
                       {row.specializationName && (
                         <span className="text-subtle-foreground"> — {row.specializationName}</span>
                       )}
                     </td>
-                    <td className="truncate px-3 py-2.5 text-muted-foreground">
+                    <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
                       {row.yearLabel} · {row.semesterLabel}
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className="whitespace-nowrap px-3 py-2.5">
                       <button
                         type="button"
                         disabled={!row.cardUrl}
