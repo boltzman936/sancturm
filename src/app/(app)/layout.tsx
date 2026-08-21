@@ -9,6 +9,7 @@ import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
 import { useCommandPaletteShortcut } from "@/hooks/useCommandPaletteShortcut";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { Logo } from "@/components/layout/Logo";
 
 // Dynamically imported (not a top-level import) — cmdk's own JS isn't
 // needed until someone actually opens the palette (Ctrl+K or the
@@ -63,7 +64,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // read as "shrinking/distorting". dvh tracks the real, current
     // viewport instead of recalculating against a moving target.
     <div className="flex min-h-dvh flex-col md:flex-row">
-      <header className="flex shrink-0 items-center justify-between border-b border-border bg-background-secondary p-4 md:hidden">
+      <header className="flex shrink-0 items-center justify-between border-b border-sidebar-border bg-sidebar-background p-4 md:hidden">
         <button
           onClick={() => setNavOpen(true)}
           aria-label="Open menu"
@@ -72,12 +73,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           // top of the dvh fix above, so this button's box can never
           // be squeezed by anything upstream, ever, regardless of
           // cause.
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sidebar-muted-foreground transition-colors hover:bg-sidebar-foreground/10 active:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:text-sidebar-foreground"
         >
           <Menu className="h-5 w-5 shrink-0" />
         </button>
-        <Link href="/" className="shrink-0 font-mono text-lg font-medium text-terminal-blue transition-opacity hover:opacity-80 active:opacity-80">
-          sancturm
+        <Link href="/" className="shrink-0 transition-opacity hover:opacity-80 active:opacity-80">
+          <Logo className="h-6 w-auto" />
         </Link>
         {/* Spacer matching the button's width so the wordmark stays
             visually centered instead of drifting toward the button. */}

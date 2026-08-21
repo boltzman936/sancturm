@@ -45,11 +45,29 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
 export default function NotesAndLabPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
-  const { specialization: specializationSlug } = useSpecialization();
+  const { specialization: specializationSlug, clearSpecialization } = useSpecialization();
   const { data: specializations } = useSpecializations(branch?.has_specializations ? branch.id : null);
   const specializationId = branch?.has_specializations
     ? specializations?.find((s) => s.slug === specializationSlug)?.id ?? null
     : null;
+
+  // A stale specialization slug (renamed/removed since the sidebar
+  // last stored it — specializations have been reseeded more than
+  // once) would otherwise silently resolve to a null specializationId
+  // above, which the query below reads as "match specialization_id IS
+  // NULL" — a real, valid query, just one that returns zero rows for
+  // a branch that always has a non-null specialization_id. No error,
+  // no stale-cache symptom, the page just renders "nothing here" even
+  // though real content exists. Resets back to unset (never to some
+  // OTHER specialization the user didn't pick) once `specializations`
+  // has actually loaded and confirms the stored slug isn't one of
+  // them — a genuinely-unset slug (null) is left alone, that's a
+  // normal "hasn't chosen yet" state, not staleness.
+  const validSpecializationSlugs = useMemo(() => {
+    if (!branch?.has_specializations || !specializations) return undefined;
+    return [null, ...specializations.map((s) => s.slug)];
+  }, [branch, specializations]);
+  useResetInvalidSelection(specializationSlug, validSpecializationSlugs, null, clearSpecialization);
 
   // Selected Batch + sidebar Year jointly determine which semesters
   // exist (an exact match, not a cumulative history) — see

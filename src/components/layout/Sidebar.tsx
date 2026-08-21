@@ -7,10 +7,14 @@ import { FileText, HeartHandshake, HelpCircle, Megaphone, ShieldCheck, Sparkles,
 import { BranchSwitcher } from "@/components/layout/BranchSwitcher";
 import { SpecializationSwitcher } from "@/components/layout/SpecializationSwitcher";
 import { TermSwitcher } from "@/components/layout/TermSwitcher";
+import { ThemeSwitcher } from "@/components/layout/ThemeSwitcher";
+import { Logo } from "@/components/layout/Logo";
 import { useBranch } from "@/hooks/useBranch";
-import { useBranchBySlug } from "@/features/branches/queries";
+import { useSpecialization } from "@/hooks/useSpecialization";
+import { useBranchBySlug, useSpecializationBySlug } from "@/features/branches/queries";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { SignOutButton } from "@/lib/auth/SignOutButton";
+import { useLatestNotice, useLastSeenNotice } from "@/features/notices/useLatestNotice";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
@@ -32,9 +36,27 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const { data: role } = useCurrentRole();
   const { branch } = useBranch();
   const { data: currentBranch } = useBranchBySlug(branch);
+  const { specialization: specializationSlug } = useSpecialization();
+  const { data: currentSpecialization } = useSpecializationBySlug(
+    currentBranch?.has_specializations ? (currentBranch?.id ?? null) : null,
+    specializationSlug
+  );
   // Anurag is the one admin account — everyone else with dashboard
   // access is a branch CR, so "CR dashboard" stays accurate for them.
   const dashboardLabel = role?.type === "admin" ? "Controller's dashboard" : "CR dashboard";
+
+  // Unread-notice red dot — see useLatestNotice's own comment for why
+  // this is a separate, deliberately narrower query than the Notices
+  // page's own useNotices(), and why it's scoped only to branch/
+  // specialization, not term/batch.
+  const specializationId = currentBranch?.has_specializations ? (currentSpecialization?.id ?? null) : null;
+  const { data: latestNotice } = useLatestNotice(
+    currentBranch?.id ?? null,
+    specializationId,
+    currentBranch?.has_specializations ?? false
+  );
+  const { lastSeenId } = useLastSeenNotice(currentBranch?.id ?? null, specializationId);
+  const hasUnreadNotice = !!latestNotice && latestNotice.id !== lastSeenId;
 
   return (
     <>
@@ -60,7 +82,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           // below. min-h-0 here is what lets that middle child actually
           // shrink instead of forcing the whole nav taller than the
           // viewport (the classic flex-column overflow gotcha).
-          "fixed left-0 top-0 z-50 flex h-dvh min-h-0 w-72 max-w-[85vw] shrink-0 flex-col border-r border-border bg-background-secondary transition-transform duration-200 ease-out",
+          "fixed left-0 top-0 z-50 flex h-dvh min-h-0 w-72 max-w-[85vw] shrink-0 flex-col border-r border-sidebar-border bg-sidebar-background transition-transform duration-200 ease-out",
           // md:sticky (not md:static) — static let the sidebar scroll
           // away with the page's own scroll, so a long resource list
           // meant scrolling all the way through it just to reach
@@ -100,14 +122,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             <Link
               href="/"
               onClick={onClose}
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm px-1 font-mono text-base font-medium text-terminal-blue outline-none transition-opacity hover:opacity-80 active:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm px-1 outline-none transition-opacity hover:opacity-80 active:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
             >
-              sancturm
+              <Logo className="h-6 w-auto" />
             </Link>
             <button
               onClick={onClose}
               aria-label="Close menu"
-              className="absolute right-6 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-card active:bg-card hover:text-foreground active:text-foreground md:hidden"
+              className="absolute right-6 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-sidebar-muted-foreground transition-colors hover:bg-sidebar-foreground/10 active:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:text-sidebar-foreground md:hidden"
             >
               <X className="h-4 w-4" />
             </button>
@@ -139,11 +161,25 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                     className={cn(
                       "flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring md:py-2",
                       isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
+                        ? "bg-sidebar-active/15 text-sidebar-active"
+                        : "text-sidebar-muted-foreground hover:bg-sidebar-foreground/10 active:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:text-sidebar-foreground"
                     )}
                   >
-                    <link.icon className="h-4 w-4 shrink-0" />
+                    <span className="relative shrink-0">
+                      <link.icon className="h-4 w-4" />
+                      {/* Only ever rendered on the Notices link — see
+                          hasUnreadNotice's own comment. Purely visual
+                          (aria-hidden): the link's own accessible name
+                          is still just "Notices", the dot doesn't need
+                          its own label since it conveys no action of
+                          its own. */}
+                      {link.href === "/notices" && hasUnreadNotice && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-destructive"
+                        />
+                      )}
+                    </span>
                     {link.label}
                   </Link>
                 </li>
@@ -162,37 +198,41 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             inset (home indicator / gesture bar) on top of the normal
             padding instead of replacing it, so it's a no-op on
             desktop/tablet and only grows on devices that need it. */}
-        <div className="shrink-0 border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:p-5">
-          <div className="flex flex-col gap-1">
-            {/* justify-center: the dashboard link's icon+text center as
-                one group within the link's own full-width row (that
-                row already spans the sidebar's full content width, same
-                as every nav item above) — background/hover/active
-                colors are unaffected, only the inner content's
-                horizontal position changes. */}
-            <Link
-              href="/cr"
-              onClick={onClose}
-              className={cn(
-                "flex items-center justify-center gap-2.5 rounded-md px-3 py-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring md:py-2",
-                pathname.startsWith("/cr")
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-card active:bg-card hover:text-foreground active:text-foreground"
-              )}
-            >
-              <ShieldCheck className="h-4 w-4 shrink-0" />
-              {dashboardLabel}
-            </Link>
+        <div className="shrink-0 border-t border-sidebar-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:p-5">
+          <div className="flex flex-col gap-3">
+            <ThemeSwitcher />
 
-            {/* Only shown once someone's actually signed in — a plain
-                student browsing anonymously has no session to end. This
-                is what lets a test login (or the previous CR, handing
-                a branch off) clear the way for the next person.
-                text-center: SignOutButton's own button element stretches
-                to the same full-width row as the link above it (flex-col
-                parent's default stretch), so centering its text lines it
-                up directly under the centered dashboard link. */}
-            {role && <SignOutButton className="px-3 py-1 text-center" />}
+            <div className="flex flex-col gap-1 border-t border-sidebar-border pt-3">
+              {/* justify-center: the dashboard link's icon+text center as
+                  one group within the link's own full-width row (that
+                  row already spans the sidebar's full content width, same
+                  as every nav item above) — background/hover/active
+                  colors are unaffected, only the inner content's
+                  horizontal position changes. */}
+              <Link
+                href="/cr"
+                onClick={onClose}
+                className={cn(
+                  "flex items-center justify-center gap-2.5 rounded-md px-3 py-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring md:py-2",
+                  pathname.startsWith("/cr")
+                    ? "bg-sidebar-active/15 text-sidebar-active"
+                    : "text-sidebar-muted-foreground hover:bg-sidebar-foreground/10 active:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:text-sidebar-foreground"
+                )}
+              >
+                <ShieldCheck className="h-4 w-4 shrink-0" />
+                {dashboardLabel}
+              </Link>
+
+              {/* Only shown once someone's actually signed in — a plain
+                  student browsing anonymously has no session to end. This
+                  is what lets a test login (or the previous CR, handing
+                  a branch off) clear the way for the next person.
+                  text-center: SignOutButton's own button element stretches
+                  to the same full-width row as the link above it (flex-col
+                  parent's default stretch), so centering its text lines it
+                  up directly under the centered dashboard link. */}
+              {role && <SignOutButton className="px-3 py-1 text-center text-sidebar-muted-foreground" />}
+            </div>
           </div>
         </div>
       </nav>

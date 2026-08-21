@@ -42,8 +42,21 @@ function matchesSearch(resource: ResourceWithSubject, query: string) {
 export default function PYQsPage() {
   const { branch: branchSlug } = useBranch();
   const { data: branch } = useBranchBySlug(branchSlug);
-  const { specialization: specializationSlug } = useSpecialization();
+  const { specialization: specializationSlug, clearSpecialization } = useSpecialization();
   const { data: branchSpecializations } = useSpecializations(branch?.has_specializations ? branch.id : null);
+
+  // A stale specialization slug would otherwise silently zero out
+  // pyqSpecializationIds below (pyqSharingSpecializationIds returns []
+  // for an unrecognized slug — see its own comment), which disables
+  // usePyqResources entirely with no error or loading state — the page
+  // just renders "nothing here" indefinitely even though real PYQs
+  // exist. Same fix as Notes & Lab's identical guard; see its comment
+  // for why null itself is left alone.
+  const validSpecializationSlugs = useMemo(() => {
+    if (!branch?.has_specializations || !branchSpecializations) return undefined;
+    return [null, ...branchSpecializations.map((s) => s.slug)];
+  }, [branch, branchSpecializations]);
+  useResetInvalidSelection(specializationSlug, validSpecializationSlugs, null, clearSpecialization);
 
   // Selected Batch + sidebar Year jointly determine which semesters
   // exist — see useBatchSemesterFilter's own doc comment (shared with

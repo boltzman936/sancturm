@@ -8,6 +8,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useBranch } from "@/hooks/useBranch";
 import { useTerm } from "@/hooks/useTerm";
 import { useSpecialization } from "@/hooks/useSpecialization";
+import { useDeviceTier } from "@/hooks/useDeviceTier";
 import { useBranches } from "@/features/branches/queries";
 import { BranchSelectCard } from "@/features/branches/components/BranchSelectCard";
 import { SpecializationSelectCard } from "@/features/branches/components/SpecializationSelectCard";
@@ -73,28 +74,10 @@ function usePortraitLayout() {
   return isPortrait;
 }
 
-// Separate from PORTRAIT_QUERY on purpose: that one also matches a
-// tablet held upright (per its own comment), but only an actual phone
-// should get the dedicated portrait-shot video — a tablet in portrait
-// still gets the wide cockpit video (just via the isPortrait
-// object-cover fallback below, unchanged). 640px matches the same
-// mobile/desktop split (`sm:`) used everywhere else in the app.
-const MOBILE_WIDTH_QUERY = "(max-width: 640px)";
-
-function useIsMobileWidth() {
-  // Same lazy-initializer reasoning as usePortraitLayout above — this
-  // is the one whose first-render value picks the video <src> itself.
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window === "undefined" ? false : window.matchMedia(MOBILE_WIDTH_QUERY).matches
-  );
-  useEffect(() => {
-    const mq = window.matchMedia(MOBILE_WIDTH_QUERY);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return isMobile;
-}
+// Only an actual phone gets the dedicated mobile video asset — a
+// tablet in portrait still gets the wide tablet/desktop image (just
+// via the isPortrait object-cover fallback below). Tier resolution
+// itself lives in useDeviceTier (shared with Maintenance/offline).
 
 export function IntroExperience() {
   const router = useRouter();
@@ -106,7 +89,7 @@ export function IntroExperience() {
   const queryClient = useQueryClient();
   const prefersReducedMotion = useReducedMotion();
   const isPortrait = usePortraitLayout();
-  const isMobileWidth = useIsMobileWidth();
+  const deviceTier = useDeviceTier();
   const videoRef = useRef<HTMLVideoElement>(null);
   const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -129,13 +112,16 @@ export function IntroExperience() {
   // issue) doesn't leave the intro blank forever.
   const [videoReady, setVideoReady] = useState(false);
 
-  // The video is always muted, so autoplay never needs a user gesture
-  // or permission prompt — no gate button, no volume fade, no audio at
-  // all. This call is just a defensive nudge for browsers that don't
-  // reliably honor the autoPlay attribute on mount.
+  // The video (mobile only — tablet/desktop render a static image, see
+  // the background media JSX below) is always muted, so autoplay never
+  // needs a user gesture or permission prompt — no gate button, no
+  // volume fade, no audio at all. This call is just a defensive nudge
+  // for browsers that don't reliably honor the autoPlay attribute on
+  // mount.
   useEffect(() => {
+    if (deviceTier !== "mobile") return;
     videoRef.current?.play().catch(() => {});
-  }, []);
+  }, [deviceTier]);
 
   useEffect(() => {
     const fallback = setTimeout(() => setVideoReady(true), 2500);
@@ -356,46 +342,70 @@ export function IntroExperience() {
               }
         }
       >
-        {/* Background video — decorative only, not meaningful content,
-            so it's hidden from screen readers and never keyboard-focusable.
-            Always muted: no audio, no permission prompt, no controls.
-            A phone-width viewport gets a dedicated portrait (9:16) shot
-            instead of a cropped slice of the wide 16:9 one — same scene,
-            framed so the window/stars area lines up with the headline's
-            anchor point without cutting off the sides. Tablet and desktop
-            keep the original video regardless of orientation. */}
-        <video
-          ref={videoRef}
-          src={isMobileWidth ? "/videos/intro-mobile.mp4" : "/videos/intro-cockpit.mp4"}
-          className={cn(
-            "absolute inset-0 h-full w-full bg-background",
-            isPortrait ? "object-cover" : "object-contain"
-          )}
-          autoPlay
-          loop
-          muted
-          playsInline
-          // Some mobile browsers default to metadata-only preloading
-          // on cellular connections as a data-saving heuristic, even
-          // with autoplay present — this is the first thing on the
-          // page and the one thing everything else (the typed
-          // headline, the year/branch cards) is waiting on, so it
-          // shouldn't be left to that heuristic.
-          preload="auto"
-          aria-hidden="true"
-          tabIndex={-1}
-          onLoadedData={() => setVideoReady(true)}
-        />
+        {/* Background media — decorative only, not meaningful content,
+            so it's hidden from screen readers and never keyboard-
+            focusable. Mobile gets a dedicated video (autoplaying,
+            muted, looping); tablet and desktop get a static image
+            instead — a still frame reads as intentional at those
+            sizes and costs nothing after the one download, where a
+            looping video would just be ambient weight with no payoff
+            (nobody's staring at Cockpit long enough to notice a loop
+            seam at tablet/desktop width the way a phone-in-hand moment
+            might). object-cover vs object-contain still follows
+            isPortrait exactly as before — a tablet held upright still
+            gets the wide asset cropped to fill, not letterboxed. */}
+        {deviceTier === "mobile" ? (
+          <video
+            ref={videoRef}
+            src="/media/cockpit-mobile.mp4"
+            className={cn(
+              "absolute inset-0 h-full w-full bg-background",
+              isPortrait ? "object-cover" : "object-contain"
+            )}
+            autoPlay
+            loop
+            muted
+            playsInline
+            // Some mobile browsers default to metadata-only preloading
+            // on cellular connections as a data-saving heuristic, even
+            // with autoplay present — this is the first thing on the
+            // page and the one thing everything else (the typed
+            // headline, the year/branch cards) is waiting on, so it
+            // shouldn't be left to that heuristic.
+            preload="auto"
+            aria-hidden="true"
+            tabIndex={-1}
+            onLoadedData={() => setVideoReady(true)}
+          />
+        ) : (
+          // Fixed, known-dimension background art, not a content image;
+          // plain <img> avoids next/image's layout-shift-prevention
+          // machinery (sizes/fill plumbing) for something already
+          // absolutely positioned and cover/contain-fitted by the
+          // wrapper below.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={deviceTier === "tablet" ? "/media/cockpit-tablet.webp" : "/media/cockpit-desktop.webp"}
+            alt=""
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-0 h-full w-full bg-background",
+              isPortrait ? "object-cover" : "object-contain"
+            )}
+            onLoad={() => setVideoReady(true)}
+          />
+        )}
         <div className="absolute inset-0 bg-black/35" />
 
-        {/* Positioned at 15% down the frame on tablet/desktop (the
-            window/stars area) — not vertically centered, since
-            centering would push the branch card further down each time
-            a new piece fades in, until it overlaps the desk in the
-            lower frame. On mobile the dedicated portrait video has more
-            open sky above the desk, so the anchor sits a bit lower
-            (19%) with room to spare before the desk. */}
-        <div className="absolute inset-x-0 top-[19%] flex flex-col items-center gap-6 px-6 text-center sm:top-[15%]">
+        {/* Positioned at 22% down the frame on tablet/desktop — lines up
+            with the new artwork's own open cream-sky area (right of
+            the seated figure), not vertically centered, since centering
+            would push the branch card further down each time a new
+            piece fades in, until it overlaps the grass/figure in the
+            lower frame. On mobile the dedicated portrait video has its
+            own separate framing, so the anchor sits a bit lower (19%)
+            with room to spare before the desk. */}
+        <div className="absolute inset-x-0 top-[19%] flex flex-col items-center gap-6 px-6 text-center sm:top-[22%]">
           {videoReady && (
             <h1
               className="whitespace-nowrap font-mono text-[24px] font-medium tracking-[0.02em] text-foreground sm:text-[30px] sm:tracking-[0.08em] md:text-[40px] lg:text-[56px]"

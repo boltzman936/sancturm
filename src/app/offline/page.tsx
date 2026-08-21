@@ -40,57 +40,56 @@ export default function OfflinePage() {
       {/* unoptimized: this page's whole point is to render with no
           network available — going through Next's /_next/image
           resizing endpoint would need a live server round-trip it
-          can't make. Both sources are pre-compressed to ~100KB WebPs
-          (see OfflineWatcher's preload) so there's nothing left for
-          the optimizer to usefully do anyway.
-          Two images, not one <Image> with `sizes` — a portrait crop
-          for phones, the original landscape scene for tablet/desktop;
-          `sizes` can pick a resolution but can't swap the actual
-          artwork. sm is the mobile/tablet line here (640px). */}
+          can't make. All three are pre-compressed WebPs (see
+          OfflineWatcher's preload) so there's nothing left for the
+          optimizer to usefully do anyway.
+          Three images, not one <Image> with `sizes` — a distinct crop
+          per tier, not just a resolution pick; `sizes` can't swap the
+          actual artwork. sm/lg match the same mobile/tablet/desktop
+          breakpoints used everywhere else in the app. */}
+      <Image src="/media/error-mobile.webp" alt="" fill priority unoptimized className="object-cover sm:hidden" />
       <Image
-        src="/images/no-internet-bg-mobile.webp"
+        src="/media/error-tablet.webp"
         alt=""
         fill
         priority
         unoptimized
-        className="object-cover sm:hidden"
+        className="hidden object-cover sm:block lg:hidden"
       />
       <Image
-        src="/images/no-internet-bg.webp"
+        src="/media/error-desktop.webp"
         alt=""
         fill
         priority
         unoptimized
-        className="hidden object-cover sm:block"
+        className="hidden object-cover lg:block"
       />
       {/* Dark overlay for text legibility — deliberately light (30%)
           so the artwork stays the visual focus, not hidden behind it. */}
       <div className="absolute inset-0 bg-black/30" />
 
+      {/* Content sized down proportionally from the original (see item
+          22 of the redesign brief) — every piece scaled together, same
+          approach as the Maintenance page's identical treatment. */}
       <motion.div
         variants={container}
         initial="hidden"
         animate="show"
-        className="relative flex min-h-screen flex-col items-center justify-center gap-5 px-6 text-center"
+        className="relative flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center"
       >
         <motion.div variants={item}>
-          <WifiOff
-            aria-hidden="true"
-            size={56}
-            strokeWidth={1.75}
-            className="text-[#FF4A2D] opacity-95"
-          />
+          <WifiOff aria-hidden="true" size={44} strokeWidth={1.75} className="text-primary opacity-95" />
         </motion.div>
 
         <motion.h1
           variants={item}
-          className="font-mono text-[34px] font-medium tracking-[0.08em] text-[#F5F7FA] md:text-[42px] lg:text-[52px]"
-          style={{ textShadow: "0 0 12px rgba(255,74,45,.15)" }}
+          className="font-mono text-[27px] font-medium tracking-[0.08em] text-foreground md:text-[34px] lg:text-[42px]"
+          style={{ textShadow: "0 0 12px var(--glow-red)" }}
         >
           No Internet
         </motion.h1>
 
-        <motion.p variants={item} className={cn(inter.className, "text-[18px] text-[#A9B3C4]")}>
+        <motion.p variants={item} className={cn(inter.className, "text-[15px] text-muted-foreground")}>
           Unable to connect to Sancturm.
         </motion.p>
 
@@ -98,10 +97,10 @@ export default function OfflinePage() {
           variants={item}
           onClick={handleRetry}
           className={cn(
-            "mt-2 rounded-[14px] border px-[34px] py-4 text-[#F5F7FA] transition-all duration-300",
-            "bg-[rgba(20,20,25,0.35)] border-[rgba(255,255,255,0.12)] backdrop-blur-[18px]",
-            "hover:scale-[1.03] hover:border-[rgba(255,74,45,0.5)] hover:shadow-[0_0_24px_rgba(255,74,45,0.25)]",
-            "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4A2D]"
+            "mt-2 rounded-[14px] border px-7 py-3 text-foreground transition-all duration-300",
+            "border-white/10 bg-black/35 backdrop-blur-[18px]",
+            "hover:scale-[1.03] hover:border-primary/50 hover:shadow-[0_0_24px_-4px_var(--glow-red)]",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           )}
         >
           Retry

@@ -15,6 +15,7 @@ import {
   assertValidIdOrNull,
   assertValidString,
   assertValidDateKey,
+  assertNotFutureTimestamp,
   safeDbError,
   MAX_TITLE_LENGTH,
   MAX_DESCRIPTION_LENGTH,
@@ -285,7 +286,10 @@ export async function uploadResourceDirect(formData: FormData) {
   assertValidResourceType(resourceType);
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
   assertValidString(description ?? "", "Description", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
-  if (customCreatedAt !== null) assertValidString(customCreatedAt, "Date", { maxLength: 40 });
+  if (customCreatedAt !== null) {
+    assertValidString(customCreatedAt, "Date", { maxLength: 40 });
+    assertNotFutureTimestamp(customCreatedAt, "Date");
+  }
 
   await assertBatchTermReached(supabase, batchId, termId, specializationId);
   await assertSubjectMatchesScope(supabase, subjectId, branchId, specializationId, termId);
@@ -381,7 +385,10 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   assertValidResourceType(resourceType);
   assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
   assertValidString(description ?? "", "Description", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
-  if (customCreatedAt !== null) assertValidString(customCreatedAt, "Date", { maxLength: 40 });
+  if (customCreatedAt !== null) {
+    assertValidString(customCreatedAt, "Date", { maxLength: 40 });
+    assertNotFutureTimestamp(customCreatedAt, "Date");
+  }
 
   // The form's multi-select sends exactly which specializations were
   // checked — falls back to every specialization the branch has only

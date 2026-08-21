@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Search, Calendar as CalendarIcon, Pencil, ChevronDown } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DeleteResourceButton } from "@/features/resources/components/DeleteResourceButton";
@@ -379,6 +379,49 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
       : (resource.resource_type as "notes" | "lab_manual" | "pyq" | "pyq_solution" | null) ?? "notes"
   );
 
+  // This button (and every useState above) stays mounted for the
+  // row's entire lifetime — only the Dialog's own content mounts/
+  // unmounts via Radix's `open` prop, so those useState initializers
+  // only ever run ONCE, at this button's first mount. Without this
+  // effect, opening Edit, changing a field, and closing WITHOUT saving
+  // (there's no explicit Cancel — only the dialog's X/Escape/backdrop,
+  // none of which reset anything) left every field holding the
+  // discarded edit the next time Edit was opened for this exact
+  // resource, or — worse — whatever an entirely DIFFERENT resource's
+  // stale in-progress edit happened to leave behind if this same
+  // component instance got reused across resources (it doesn't here,
+  // since each row gets its own EditResourceButton keyed by resource
+  // id, but the underlying bug was real regardless: reopening was
+  // never guaranteed to reflect the resource's actual current values).
+  // Re-syncing every field fresh from `resource` on each genuine open
+  // (not on close, not on every render) is what actually fixes it.
+  useEffect(() => {
+    if (!open) return;
+    // Deliberate — this is exactly React's own documented "reset state
+    // when a dialog opens" exception (re-keying DialogContent by
+    // resource.id would be the alternative, but the trigger button and
+    // this state deliberately live in the SAME always-mounted
+    // component — see the comment above). Guarded by `open` itself, so
+    // this never fires on every render, only on a genuine open
+    // transition.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBranchId(resource.branch_id ?? "");
+    setSpecializationId(resource.specialization_id ?? "");
+    setTermId(resource.term_id ?? "");
+    setBatchId(resource.batch_id ?? "");
+    setSubjectId(resource.subject_id ?? "");
+    setDateKey(localDateKey(resource.created_at));
+    setCrOnly(resource.cr_only);
+    setTitle(resource.title);
+    setDescription(resource.description ?? "");
+    setResourceType(
+      resource.resource_type === "pdf"
+        ? "pyq"
+        : (resource.resource_type as "notes" | "lab_manual" | "pyq" | "pyq_solution" | null) ?? "notes"
+    );
+    setError(null);
+  }, [open, resource]);
+
   const { data: branches } = useBranches();
   const { data: terms } = useTerms();
   const { data: validBatches } = useBatchesForTerm(termId || null);
@@ -542,7 +585,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
 
             <div className="flex flex-col gap-1">
               <label className="font-mono text-xs text-subtle-foreground">
-                Branch{isPyqType && <span className="ml-1.5 normal-case text-subtle-foreground/70">(on record)</span>}
+                Branch{isPyqType && <span className="ml-1.5 normal-case text-subtle-foreground/70">(where this was uploaded)</span>}
               </label>
               <Select
                 value={branchId}

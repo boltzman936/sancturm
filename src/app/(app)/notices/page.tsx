@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Download, Eye, Pin, Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
@@ -8,6 +8,7 @@ import { useSpecialization } from "@/hooks/useSpecialization";
 import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
 import { useNotices } from "@/features/notices/queries";
+import { useLatestNotice, useLastSeenNotice } from "@/features/notices/useLatestNotice";
 import { toggleNoticePin } from "@/features/notices/actions";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
@@ -72,6 +73,25 @@ export default function NoticesPage() {
   );
   const { data: role } = useCurrentRole();
   const queryClient = useQueryClient();
+
+  // Sidebar's own unread red dot (see useLatestNotice's comment) only
+  // clears once the ACTUAL latest notice — not just any notice for
+  // this branch — is genuinely present in the term/batch the viewer
+  // is currently looking at. If the real latest notice lives in a
+  // different semester than the one currently selected here, opening
+  // Notices on the WRONG semester correctly does NOT clear the dot —
+  // "opened the notices list" alone was explicitly not supposed to be
+  // enough (see the sidebar's own comment).
+  const { data: latestNotice } = useLatestNotice(
+    branch?.id ?? null,
+    specializationId,
+    branch?.has_specializations ?? false
+  );
+  const { markSeen } = useLastSeenNotice(branch?.id ?? null, specializationId);
+  useEffect(() => {
+    if (!latestNotice || !notices) return;
+    if (notices.some((n) => n.id === latestNotice.id)) markSeen(latestNotice.id);
+  }, [latestNotice, notices, markSeen]);
 
   // A CR can browse another (branch, specialization, term)'s notices
   // like a normal student (no manage powers there) — pinning only

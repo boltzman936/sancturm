@@ -4,11 +4,11 @@ import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 const OFFLINE_PATH = "/offline";
-// Both variants — the page picks between them with a CSS breakpoint
+// All three tiers — the page picks between them with a CSS breakpoint
 // (see offline/page.tsx), so whichever one ends up visible needs to
 // already be cached regardless of which width the device is at right
-// now. Combined they're still under 200KB.
-const OFFLINE_BG_SRCS = ["/images/no-internet-bg.webp", "/images/no-internet-bg-mobile.webp"];
+// now.
+const OFFLINE_BG_SRCS = ["/media/error-desktop.webp", "/media/error-tablet.webp", "/media/error-mobile.webp"];
 // Where to send the student back to once they're reconnected —
 // sessionStorage (not a ref) because the redirect to /offline is a
 // full route change, and this needs to survive that.

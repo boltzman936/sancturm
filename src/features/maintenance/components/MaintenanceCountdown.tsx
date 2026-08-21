@@ -6,6 +6,22 @@ import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import { Wrench, Lock } from "lucide-react";
 import { useMaintenanceConfig } from "@/features/maintenance/queries";
+import { Logo } from "@/components/layout/Logo";
+import { useDeviceTier } from "@/hooks/useDeviceTier";
+
+// India-fixed, not the visitor's own timezone — Sancturm's whole
+// audience is one campus, so "back online at 6:30 PM" should always
+// mean IST regardless of which timezone a visitor's device happens to
+// be set to (a laptop with the wrong system clock/region is common
+// enough that trusting it here would just be confusing).
+function formatIstTime(iso: string) {
+  return new Date(iso).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
 
 function computeClockOffset(serverNow: string) {
   return Date.parse(serverNow) - Date.now();
@@ -85,8 +101,21 @@ export function MaintenanceCountdown({
           transition: { duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] as const },
         };
 
+  const deviceTier = useDeviceTier();
+  const backgroundSrc =
+    deviceTier === "mobile"
+      ? "/media/maintenance-mobile.webp"
+      : deviceTier === "tablet"
+        ? "/media/maintenance-tablet.webp"
+        : "/media/maintenance-desktop.webp";
+
   return (
     <main className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden bg-background px-6 text-center">
+      {/* eslint-disable-next-line @next/next/no-img-element -- fixed
+          background art per responsive tier, not a content image. */}
+      <img src={backgroundSrc} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" />
+      <div className="absolute inset-0 bg-background/55" />
+
       {/* Ambient glow — the same --glow-red/--glow-blue tokens every
           other deliberate accent in this app draws from (see
           globals.css), just larger and softer here since this page has
@@ -95,37 +124,39 @@ export function MaintenanceCountdown({
           a flat spotlight. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-[12%] h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-[var(--glow-red)] blur-[130px]"
+        className="pointer-events-none absolute left-1/2 top-[12%] h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[var(--glow-red)] blur-[130px]"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute bottom-[8%] right-[12%] h-[420px] w-[420px] rounded-full bg-[var(--glow-blue)] blur-[130px]"
+        className="pointer-events-none absolute bottom-[8%] right-[12%] h-[340px] w-[340px] rounded-full bg-[var(--glow-blue)] blur-[130px]"
       />
 
-      <div className="relative flex flex-col items-center gap-10">
-        <motion.span
-          {...reveal(0)}
-          className="font-mono text-sm font-medium tracking-[0.1em] text-terminal-blue"
-        >
-          sancturm
-        </motion.span>
+      {/* Content sized down proportionally from the original (see item
+          22 of the redesign brief) — every piece scaled together
+          rather than the page wrapped in one blanket zoom, so relative
+          proportions (icon vs headline vs countdown) stay exactly what
+          they were, just smaller and lighter over the new artwork. */}
+      <div className="relative flex flex-col items-center gap-7">
+        <motion.div {...reveal(0)}>
+          <Logo className="h-6 w-auto" />
+        </motion.div>
 
-        <motion.div {...reveal(0.08)} className="flex flex-col items-center gap-4">
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card">
+        <motion.div {...reveal(0.08)} className="flex flex-col items-center gap-3">
+          <div className="relative flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card">
             {!prefersReducedMotion && (
               <span
                 aria-hidden="true"
                 className="absolute inset-0 animate-ping rounded-full bg-primary/15 [animation-duration:2.4s]"
               />
             )}
-            <Wrench className="h-5 w-5 text-primary" strokeWidth={1.75} />
+            <Wrench className="h-4 w-4 text-primary" strokeWidth={1.75} />
           </div>
 
-          <div className="flex flex-col items-center gap-3">
-            <h1 className="text-balance font-mono text-[32px] font-medium tracking-[0.05em] text-foreground md:text-[44px]">
+          <div className="flex flex-col items-center gap-2">
+            <h1 className="text-balance font-mono text-[24px] font-medium tracking-[0.05em] text-foreground md:text-[32px]">
               Under maintenance
             </h1>
-            <p className="max-w-sm text-balance text-base text-muted-foreground md:text-lg">
+            <p className="max-w-xs text-balance text-sm text-muted-foreground md:text-base">
               {effectiveMessage || "Sancturm is briefly offline for maintenance. Back shortly."}
             </p>
           </div>
@@ -133,18 +164,24 @@ export function MaintenanceCountdown({
 
         <motion.div
           {...reveal(0.16)}
-          className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-card px-10 py-6 shadow-[0_0_50px_-16px_var(--glow-red)]"
+          className="flex flex-col items-center gap-1 rounded-xl border border-border bg-card px-8 py-4 shadow-[0_0_50px_-16px_var(--glow-red)]"
         >
-          <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-subtle-foreground">
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-subtle-foreground">
             Back online in
           </span>
-          <span className="font-mono text-4xl font-medium tabular-nums text-primary md:text-5xl">
+          <span className="font-mono text-3xl font-medium tabular-nums text-primary md:text-4xl">
             {formatRemaining(remaining)}
+          </span>
+          {/* IST, always — Sancturm's whole audience is one campus, so
+              this shouldn't read differently on a visitor's device set
+              to a different timezone (see formatIstTime's own comment). */}
+          <span className="font-mono text-[11px] text-subtle-foreground">
+            around {formatIstTime(effectiveUntil)} IST
           </span>
         </motion.div>
 
-        <motion.div {...reveal(0.24)} className="flex flex-col items-center gap-4">
-          <p className="font-mono text-xs text-subtle-foreground">This page updates automatically.</p>
+        <motion.div {...reveal(0.24)} className="flex flex-col items-center gap-3">
+          <p className="font-mono text-[11px] text-subtle-foreground">This page updates automatically.</p>
           {/* /login is deliberately excluded from middleware's
               maintenance redirect (see middleware.ts's own matcher
               comment) so an admin can always sign back in and end/
@@ -159,10 +196,10 @@ export function MaintenanceCountdown({
               full control. */}
           <Link
             href="/login"
-            className="group inline-flex items-center gap-2 rounded-full border border-border bg-card px-5 py-2.5 font-mono text-xs font-medium text-foreground transition-all duration-200 hover:border-primary/50 hover:shadow-[0_0_28px_-10px_var(--glow-red)] active:scale-[0.97]"
+            className="group inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 font-mono text-[11px] font-medium text-foreground transition-all duration-200 hover:border-primary/50 hover:shadow-[0_0_28px_-10px_var(--glow-red)] active:scale-[0.97]"
           >
             <Lock
-              className="h-3.5 w-3.5 text-subtle-foreground transition-colors duration-200 group-hover:text-primary"
+              className="h-3 w-3 text-subtle-foreground transition-colors duration-200 group-hover:text-primary"
               strokeWidth={2}
             />
             Admin sign in

@@ -37,6 +37,14 @@ export const LAB_SUBJECT_SLUGS = new Set([
   "c-programming",
   "manufacturing",
   "soft-skill",
+  // "Chemistry" — lab-only companion to AIDS Sem 1's own "Engineering
+  // Chemistry" (notes) and to AIML/Core Sem 2's own "Engineering
+  // Chemistry" (notes, mirrored from AIDS) — see
+  // add_cse_chemistry_lab_subject.sql. Bare "chemistry" slug (no
+  // branch/specialization prefix) matches every other CSE-own subject
+  // slug's convention (e.g. "engineering-chemistry", "c-programming");
+  // uniqueness is per (specialization_id, term_id, slug), not global.
+  "chemistry",
   // Biotechnology — 1st Year Semester 1 (lab-only, see below)
   "biotech-physics",
   "biotech-biotechnology",
@@ -116,6 +124,7 @@ export const LAB_SUBJECT_SLUGS = new Set([
 export const LAB_ONLY_SUBJECT_SLUGS = new Set([
   "engineering-graphics", // AIML / Core — lab only, no notes
   "soft-skill", // AIDS — lab only, no notes
+  "chemistry", // AIDS Sem 1 + AIML/Core Sem 2 — lab only, no notes (see LAB_SUBJECT_SLUGS's comment)
   // Biotechnology 1st Year Sem 1's given Lab list ("Physics",
   // "Biotechnology", "Mechanics", "Graphics") shares zero names with
   // its given Notes list — all four are lab-only.

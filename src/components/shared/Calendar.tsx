@@ -129,6 +129,7 @@ export function Calendar({
   value,
   onChange,
   minDate,
+  maxDate,
   hideClear,
 }: {
   value: string;
@@ -139,6 +140,13 @@ export function Calendar({
   // the default everywhere else this renders (filters aren't uploads,
   // so browsing/filtering by a past date is always fine).
   minDate?: string;
+  // yyyy-mm-dd — dates after this are shown greyed out and unclickable.
+  // Defaults to today: nothing in Sancturm is ever legitimately
+  // future-dated (it's an archive of already-published resources, and
+  // even admin's own backdating tool has no reason to postdate), so
+  // every caller gets this for free without having to opt in — pass an
+  // explicit value only to loosen it, which nothing currently needs to.
+  maxDate?: string;
   // Hides the Clear button — for callers where value is a required
   // field (e.g. Manage's edit-date button, changing an already-
   // published item's date), not an optional filter. onChange("") is
@@ -149,7 +157,8 @@ export function Calendar({
 }) {
   const selected = value ? parseDateKey(value) : null;
   const today = todayKey();
-  const isDisabled = (key: string) => minDate !== undefined && key < minDate;
+  const effectiveMaxDate = maxDate ?? today;
+  const isDisabled = (key: string) => (minDate !== undefined && key < minDate) || key > effectiveMaxDate;
   const [viewYear, setViewYear] = useState(selected?.getFullYear() ?? new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(selected?.getMonth() ?? new Date().getMonth());
   const [view, setView] = useState<"days" | "months" | "years">("days");
@@ -265,7 +274,7 @@ export function Calendar({
   if (view === "months") {
     const isCurrentYear = viewYear === new Date().getFullYear();
     return (
-      <div className="w-[320px] p-4">
+      <div className="w-[min(320px,calc(100vw-2rem))] p-3.5 sm:p-4">
         <div className="flex items-center justify-between pb-3">
           <button
             type="button"
@@ -328,7 +337,7 @@ export function Calendar({
     const years = Array.from({ length: YEAR_GRID_SIZE }, (_, i) => yearRangeStart + i);
     const thisYear = new Date().getFullYear();
     return (
-      <div className="w-[320px] p-4">
+      <div className="w-[min(320px,calc(100vw-2rem))] p-3.5 sm:p-4">
         <div className="flex items-center justify-between pb-3">
           <button
             type="button"
@@ -411,7 +420,7 @@ export function Calendar({
   }
 
   return (
-    <div className="w-[320px] p-4">
+    <div className="w-[min(320px,calc(100vw-2rem))] p-3.5 sm:p-4">
       <div className="flex items-center justify-between pb-3">
         <button
           type="button"

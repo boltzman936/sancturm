@@ -2,44 +2,252 @@
 @import "tw-animate-css";
 
 /*
-  Sancturm is dark-only by design (no light-mode toggle in the MVP), so
-  these tokens live directly on :root rather than behind a .dark class.
-  Every value below is taken straight from the approved brand palette —
-  change a color ONCE here and it updates everywhere, since every
-  component reads the --color-* variables, never a raw hex code.
+  Sancturm ships 4 themes, each with a Light and Dark mode (8 palettes
+  total), switched via [data-theme="1|2|3|4"] and [data-mode="light|dark"]
+  on <html> (see src/hooks/useTheme.ts / useColorMode.ts) — never a class
+  toggle, so this stays simple attribute-selector CSS with no cascade
+  surprises. Every component reads the --color-* variables from the
+  @theme inline block below, never a raw hex code, so changing a
+  theme's palette here is the ONLY place that ever needs to change.
+
+  Two independent token groups:
+   - Sidebar tokens (--sidebar-*): each theme's own "anchor" color,
+     deliberately the SAME across that theme's Light and Dark mode (see
+     the source palette boards — the sidebar reads as a fixed chrome
+     color per theme; only the main content area actually flips
+     light/dark). Selected by [data-theme] alone.
+   - Content tokens (--background, --card, --foreground, etc.): the
+     part that actually inverts between Light and Dark. Selected by
+     [data-theme][data-mode] together.
+
+  Only the six anchor hexes per theme are pulled directly from the
+  brand palette; every other shade (borders, muted/disabled text,
+  dark-mode surface depth) is derived from those anchors to complete a
+  working 8-palette system — see the design notes above each theme
+  block.
+
+  No default (bare :root) theme is defined further down for content/
+  sidebar tokens — the two attributes are always set together by
+  useTheme's own script tag (see layout.tsx) before first paint, so
+  there's no meaningful "neither attribute is present" state to design
+  for; Theme 1 Dark is that script's own fallback when nothing is
+  stored yet.
 */
 :root {
-  /* Surfaces, darkest to lightest */
-  --background: #06070a;           /* Deep Space Black — page background */
-  --background-secondary: #111318; /* Space Gray — secondary sections */
-  --card: #1a1d24;                 /* Graphite — cards, panels, popovers */
-  --border: #2b313d;               /* Metallic Gray — hairlines, dividers */
-
-  /* Text, brightest to dimmest */
-  --foreground: #f4f7fb;           /* Primary text */
-  --muted-foreground: #a9b3c4;     /* Secondary text */
-  --subtle-foreground: #6e7686;    /* Muted / hint text */
-  --disabled-foreground: #4a4f5a;  /* Disabled state */
-
-  /* Brand accents */
-  --primary: #ff4a2d;              /* Red Horizon — CTAs, active links, hover */
-  --primary-foreground: #f4f7fb;
-  --accent-secondary: #ff6a3d;     /* Orange Glow — highlights, icons */
-  --terminal-blue: #4da8ff;        /* Code, links, active states */
-  --electric-cyan: #00cfff;        /* Sparing use — small ambient accents */
-
-  /* Semantic (kept distinct from brand red so a form error never
-     reads as a call-to-action) */
-  --destructive: #e5484d;
-  --destructive-foreground: #f4f7fb;
-
-  /* Glow colors — for box-shadow / radial-gradient effects, used
-     deliberately at the component level rather than globally */
-  --glow-red: rgba(255, 74, 45, 0.35);
-  --glow-blue: rgba(77, 168, 255, 0.25);
-  --glow-card: rgba(255, 255, 255, 0.03);
-
   --radius: 0.625rem;
+}
+
+/* ============================================================
+   THEME 1 — Deep Navy / Periwinkle
+   Given: Deep Navy #182A3A, Periwinkle Blue #799DCE, Sky Blue #8CC6EA,
+   Warm Cream #FDEBC2, Soft Off-White #F0EADF, White #FFFFFF
+   ============================================================ */
+[data-theme="1"] {
+  --sidebar-background: #182a3a;
+  --sidebar-foreground: #ffffff;
+  --sidebar-muted-foreground: #b7c6dc;
+  --sidebar-border: #2a3f55;
+  --sidebar-active: #799dce;
+}
+[data-theme="1"][data-mode="light"] {
+  --background: #fdebc2;
+  --background-secondary: #f0eadf;
+  --card: #ffffff;
+  --border: #e4d9be;
+  --foreground: #182a3a;
+  --muted-foreground: #4e6178;
+  --subtle-foreground: #7c8ca0;
+  --disabled-foreground: #b9c2ce;
+  --primary: #799dce;
+  --primary-foreground: #ffffff;
+  --accent-secondary: #8cc6ea;
+  --terminal-blue: #5a87c4;
+  --electric-cyan: #8cc6ea;
+  --destructive: #d64545;
+  --destructive-foreground: #ffffff;
+  --glow-red: rgba(121, 157, 206, 0.25);
+  --glow-blue: rgba(140, 198, 234, 0.2);
+  --glow-card: rgba(24, 42, 58, 0.04);
+}
+[data-theme="1"][data-mode="dark"] {
+  --background: #0e1822;
+  --background-secondary: #14202c;
+  --card: #182a3a;
+  --border: #2a3f55;
+  --foreground: #ffffff;
+  --muted-foreground: #b7c6dc;
+  --subtle-foreground: #7e92ac;
+  --disabled-foreground: #4a5a6e;
+  --primary: #799dce;
+  --primary-foreground: #0e1822;
+  --accent-secondary: #8cc6ea;
+  --terminal-blue: #8cc6ea;
+  --electric-cyan: #8cc6ea;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --glow-red: rgba(121, 157, 206, 0.35);
+  --glow-blue: rgba(140, 198, 234, 0.25);
+  --glow-card: rgba(255, 255, 255, 0.03);
+}
+
+/* ============================================================
+   THEME 2 — Terracotta / Cream
+   Given: Cream #FCE9BF, Dark Chocolate #412923, Terracotta Orange
+   #C95D2A, Warm Brown #663624, Peach Orange #E2A169, Soft Beige
+   #D9D3C7, Deep Brown #2A1A12, Light Cream #FDF4DA
+   ============================================================ */
+[data-theme="2"] {
+  --sidebar-background: #412923;
+  --sidebar-foreground: #fdf4da;
+  --sidebar-muted-foreground: #d9b79a;
+  --sidebar-border: #663624;
+  --sidebar-active: #c95d2a;
+}
+[data-theme="2"][data-mode="light"] {
+  --background: #fce9bf;
+  --background-secondary: #fdf4da;
+  --card: #ffffff;
+  --border: #d9c7a0;
+  --foreground: #412923;
+  --muted-foreground: #6b4a3a;
+  --subtle-foreground: #9b7a5e;
+  --disabled-foreground: #c9b79e;
+  --primary: #c95d2a;
+  --primary-foreground: #ffffff;
+  --accent-secondary: #e2a169;
+  --terminal-blue: #c95d2a;
+  --electric-cyan: #e2a169;
+  --destructive: #b33a2e;
+  --destructive-foreground: #ffffff;
+  --glow-red: rgba(201, 93, 42, 0.25);
+  --glow-blue: rgba(226, 161, 105, 0.2);
+  --glow-card: rgba(65, 41, 35, 0.04);
+}
+[data-theme="2"][data-mode="dark"] {
+  --background: #2a1a12;
+  --background-secondary: #351f17;
+  --card: #412923;
+  --border: #663624;
+  --foreground: #fdf4da;
+  --muted-foreground: #d9b79a;
+  --subtle-foreground: #a98567;
+  --disabled-foreground: #5c4636;
+  --primary: #c95d2a;
+  --primary-foreground: #2a1a12;
+  --accent-secondary: #e2a169;
+  --terminal-blue: #e2a169;
+  --electric-cyan: #e2a169;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --glow-red: rgba(201, 93, 42, 0.35);
+  --glow-blue: rgba(226, 161, 105, 0.25);
+  --glow-card: rgba(255, 255, 255, 0.03);
+}
+
+/* ============================================================
+   THEME 3 — Butter / Green
+   Given anchors only: Butter #FFEFB3, Green #013E37 — every other
+   shade below is derived from these two.
+   ============================================================ */
+[data-theme="3"] {
+  --sidebar-background: #013e37;
+  --sidebar-foreground: #ffefb3;
+  --sidebar-muted-foreground: #9fc4bc;
+  --sidebar-border: #0a5347;
+  --sidebar-active: #ffefb3;
+}
+[data-theme="3"][data-mode="light"] {
+  --background: #fff6dc;
+  --background-secondary: #ffefb3;
+  --card: #ffffff;
+  --border: #ebdca0;
+  --foreground: #013e37;
+  --muted-foreground: #3d6259;
+  --subtle-foreground: #6f8f87;
+  --disabled-foreground: #b7c7c2;
+  --primary: #013e37;
+  --primary-foreground: #ffefb3;
+  --accent-secondary: #ffefb3;
+  --terminal-blue: #0a5347;
+  --electric-cyan: #0a5347;
+  --destructive: #c0392b;
+  --destructive-foreground: #ffffff;
+  --glow-red: rgba(1, 62, 55, 0.2);
+  --glow-blue: rgba(255, 239, 179, 0.3);
+  --glow-card: rgba(1, 62, 55, 0.04);
+}
+[data-theme="3"][data-mode="dark"] {
+  --background: #052420;
+  --background-secondary: #0a2f29;
+  --card: #013e37;
+  --border: #0a5347;
+  --foreground: #ffefb3;
+  --muted-foreground: #c7d9c9;
+  --subtle-foreground: #7fa096;
+  --disabled-foreground: #3d5750;
+  --primary: #ffefb3;
+  --primary-foreground: #013e37;
+  --accent-secondary: #ffefb3;
+  --terminal-blue: #ffefb3;
+  --electric-cyan: #ffefb3;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --glow-red: rgba(255, 239, 179, 0.25);
+  --glow-blue: rgba(255, 239, 179, 0.15);
+  --glow-card: rgba(255, 255, 255, 0.03);
+}
+
+/* ============================================================
+   THEME 4 — Purple
+   Given anchors only: Purple #5E4074, Off-white #F7F9EC — every other
+   shade below is derived from these two.
+   ============================================================ */
+[data-theme="4"] {
+  --sidebar-background: #5e4074;
+  --sidebar-foreground: #f7f9ec;
+  --sidebar-muted-foreground: #cbb8da;
+  --sidebar-border: #7a5c91;
+  --sidebar-active: #d9c3ea;
+}
+[data-theme="4"][data-mode="light"] {
+  --background: #f7f9ec;
+  --background-secondary: #eff2e0;
+  --card: #ffffff;
+  --border: #dde0cc;
+  --foreground: #3a2a4a;
+  --muted-foreground: #6b5580;
+  --subtle-foreground: #9585a6;
+  --disabled-foreground: #c9c2d1;
+  --primary: #5e4074;
+  --primary-foreground: #ffffff;
+  --accent-secondary: #8a6ba3;
+  --terminal-blue: #5e4074;
+  --electric-cyan: #8a6ba3;
+  --destructive: #c0392b;
+  --destructive-foreground: #ffffff;
+  --glow-red: rgba(94, 64, 116, 0.2);
+  --glow-blue: rgba(138, 107, 163, 0.18);
+  --glow-card: rgba(94, 64, 116, 0.04);
+}
+[data-theme="4"][data-mode="dark"] {
+  --background: #170f1f;
+  --background-secondary: #1f1529;
+  --card: #2b1d38;
+  --border: #3d2a4d;
+  --foreground: #f7f9ec;
+  --muted-foreground: #c7b8d4;
+  --subtle-foreground: #8f7ba0;
+  --disabled-foreground: #453653;
+  --primary: #9b6fc0;
+  --primary-foreground: #170f1f;
+  --accent-secondary: #b78fd1;
+  --terminal-blue: #b78fd1;
+  --electric-cyan: #b78fd1;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --glow-red: rgba(155, 111, 192, 0.3);
+  --glow-blue: rgba(183, 143, 209, 0.2);
+  --glow-card: rgba(255, 255, 255, 0.03);
 }
 
 @theme inline {
@@ -70,6 +278,14 @@
   --color-accent-secondary: var(--accent-secondary);
   --color-terminal-blue: var(--terminal-blue);
   --color-electric-cyan: var(--electric-cyan);
+
+  /* Sidebar chrome — deliberately separate from the content tokens
+     above (see the file's own header comment) */
+  --color-sidebar-background: var(--sidebar-background);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-active: var(--sidebar-active);
 
   --font-sans: var(--font-space-grotesk);
   --font-mono: var(--font-jetbrains-mono);

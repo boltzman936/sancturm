@@ -45,15 +45,21 @@ export function SelectCard<T>({
   return (
     <div
       className={cn(
-        // No backdrop-blur: with a playing video behind it, blur has to
-        // be resampled by the GPU on every frame, not just once — that
-        // was the actual source of the jank. A near-opaque solid
-        // background gets the same dark-glass look for free.
-        "w-full max-w-sm rounded-2xl border border-white/10 bg-card/95 p-6 shadow-2xl",
+        // Liquid-glass treatment — frosted (backdrop-blur + saturate),
+        // translucent white overlay, a bright top edge and soft dark
+        // base shadow for real depth, same recipe as Apple's own
+        // frosted panels. A modest blur radius (md, ~12px) rather than
+        // an extreme one keeps this affordable even on mobile, the one
+        // tier where the backdrop is still a playing video (tablet/
+        // desktop sit over a static image, where blur cost is a
+        // one-time paint, not a per-frame resample) — an earlier
+        // version of this card skipped blur entirely for that reason;
+        // "md" is the deliberate middle ground, not an oversight.
+        "w-full max-w-[320px] rounded-2xl border border-white/25 bg-white/10 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-md backdrop-saturate-150",
         className
       )}
     >
-      <h2 className="mb-4 text-center font-mono text-xs tracking-[0.08em] text-muted-foreground">{title}</h2>
+      <h2 className="mb-4 text-center font-mono text-xs tracking-[0.08em] text-foreground/80">{title}</h2>
       <AnimatePresence mode="wait" initial={false}>
         {isLoading ? (
           <motion.div
@@ -113,7 +119,7 @@ export function SelectCard<T>({
                 whileHover={{ scale: 1.015 }}
                 whileTap={{ scale: 0.985 }}
                 onClick={() => onSelect(item)}
-                className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-left text-foreground transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/10 active:bg-white/10 hover:shadow-[0_0_20px_rgba(255,74,45,0.15)] active:shadow-[0_0_20px_rgba(255,74,45,0.15)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-left text-foreground transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {getLabel(item)}
               </motion.button>

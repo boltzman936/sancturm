@@ -118,6 +118,7 @@ export function TeamList() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-subtle-foreground">
+                  <th className="px-4 py-2.5 font-normal">#</th>
                   <th className="px-4 py-2.5 font-normal">Name</th>
                   <th className="px-4 py-2.5 font-normal">Role</th>
                   <th className="px-4 py-2.5 font-normal">Branch</th>
@@ -127,8 +128,9 @@ export function TeamList() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {rows.map((row, index) => (
                   <tr key={row.key} className="border-b border-border last:border-b-0">
+                    <td className="px-4 py-3 font-mono text-xs text-subtle-foreground">{index + 1}</td>
                     <td className="px-4 py-3 font-medium text-foreground">{row.name}</td>
                     <td className="px-4 py-3 text-muted-foreground">Admin · CR</td>
                     <td className="px-4 py-3 text-muted-foreground">{row.branchName}</td>
@@ -144,10 +146,13 @@ export function TeamList() {
           {/* Mobile — stacked cards, one labeled field per line so
               nothing has to shrink or scroll sideways. */}
           <div className="flex flex-col gap-2 sm:hidden">
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <div key={row.key} className="rounded-lg border border-border bg-card p-3.5">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium text-foreground">{row.name}</p>
+                  <p className="font-medium text-foreground">
+                    <span className="mr-1.5 font-mono text-xs text-subtle-foreground">{index + 1}.</span>
+                    {row.name}
+                  </p>
                   <span className="shrink-0 font-mono text-[10px] tracking-[0.06em] text-subtle-foreground">
                     Admin · CR
                   </span>

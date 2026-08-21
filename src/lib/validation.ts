@@ -66,10 +66,49 @@ export function assertValidString(
 /** yyyy-mm-dd only — every dateKey in this app (DateFilterInput, Calendar) is already exactly this shape. */
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// IST, not UTC — Sancturm's whole audience is in India, and a UTC
+// comparison would falsely reject a genuinely-"today" pick (or falsely
+// allow a "tomorrow" one) during the ~5.5 hour window where IST's date
+// and UTC's date disagree. en-CA is just the shortest built-in locale
+// that happens to format as yyyy-mm-dd — no timezone math of its own,
+// Intl does that.
+function todayKeyIST(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+}
+
+/**
+ * Every real caller of this (updateResourceFields/updateNoticeFields/
+ * updateSancturmUpdateDate's dateKey) is retroactively setting an
+ * already-published item's date — never a forward-looking one, so
+ * rejecting anything after today is a real content rule here, not
+ * just format validation. Calendar.tsx already disables picking a
+ * future day client-side (see its own maxDate default); this is the
+ * matching server-side enforcement so a crafted request can't bypass
+ * that UI restriction.
+ */
 export function assertValidDateKey(value: unknown, fieldName: string): asserts value is string {
   if (typeof value !== "string" || !DATE_KEY_RE.test(value) || Number.isNaN(Date.parse(value))) {
     throw new Error(`Invalid ${fieldName}.`);
   }
+  if (value > todayKeyIST()) {
+    throw new Error(`${fieldName} can't be in the future.`);
+  }
+}
+
+/**
+ * Same future-date rule as assertValidDateKey, for the one caller that
+ * stores a full ISO timestamp instead of a bare date (uploadResourceDirect
+ * / uploadResourceDirectAllBranches' customCreatedAt — kept as a full
+ * timestamp so same-day uploads still sort correctly against each
+ * other, see actions.ts's own comment). A plain absolute-time
+ * comparison is correct here (no IST/UTC ambiguity like the bare-date
+ * case above) since the value already carries real time-of-day
+ * precision.
+ */
+export function assertNotFutureTimestamp(value: string, fieldName: string): void {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) throw new Error(`Invalid ${fieldName}.`);
+  if (parsed > Date.now()) throw new Error(`${fieldName} can't be in the future.`);
 }
 
 // Field-length ceilings — generous enough that no real title/
