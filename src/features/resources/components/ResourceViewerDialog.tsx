@@ -23,6 +23,39 @@ function isImageUrl(url: string) {
 // a phone is real memory for a difference nobody can see.
 const MAX_RENDER_DPR = 2;
 
+// Module-level, not component state — this is what actually survives
+// the dialog closing (Radix unmounts PdfViewer entirely, see its own
+// key={file_url} comment below) and reopening the SAME resource a
+// moment later. Caches the document's raw bytes, not the parsed
+// PDFDocumentProxy itself — that object owns a live worker/transport
+// that the cleanup effect below deliberately destroy()s on close, so
+// trying to keep IT alive across a full unmount would mean either
+// skipping that teardown (a real resource leak every time a DIFFERENT
+// PDF opens next) or fighting pdf.js's own lifecycle. Raw bytes have
+// no such lifecycle — re-parsing already-in-memory bytes via
+// getDocument({ data }) is fast (no network wait) and starts fully
+// clean every time.
+//
+// Capped at a handful of entries (LRU via Map's insertion-order
+// re-set-on-hit trick), not unbounded — a scanned-notes PDF can run
+// tens of MB, and this app's own upload cap is 100MB; caching every
+// PDF anyone has ever opened this session for free would be a real
+// memory problem on a lower-end phone. A few recently-viewed files is
+// what "reuse already fetched data when safe" is actually asking for,
+// not an unbounded cache.
+const MAX_CACHED_PDFS = 3;
+const pdfBytesCache = new Map<string, ArrayBuffer>();
+
+function cachePdfBytes(url: string, bytes: ArrayBuffer) {
+  pdfBytesCache.delete(url); // re-inserting moves it to the end (most-recent)
+  pdfBytesCache.set(url, bytes);
+  while (pdfBytesCache.size > MAX_CACHED_PDFS) {
+    const oldest = pdfBytesCache.keys().next().value;
+    if (oldest === undefined) break;
+    pdfBytesCache.delete(oldest);
+  }
+}
+
 /**
  * Fetches the PDF and renders pages onto <canvas> elements, top to
  * bottom in a normal scrolling column — not a native
@@ -115,12 +148,26 @@ function PdfViewer({ url }: { url: string }) {
         // actually needs one. Only fetched on demand per-file, not
         // upfront, so this costs nothing for the scanned/image-only
         // PDFs most uploads here actually are.
-        const task = pdfjsLib.getDocument({
-          url,
-          cMapUrl: "/pdf-cmaps/",
-          cMapPacked: true,
-          standardFontDataUrl: "/pdf-standard-fonts/",
-        });
+        //
+        // A cache hit (see pdfBytesCache's own comment) passes the
+        // already-downloaded bytes straight to pdf.js via `data`
+        // instead of `url` — no network fetch at all, so there's
+        // nothing for onProgress to report and this reopens near-
+        // instantly instead of re-fetching from scratch.
+        const cachedBytes = pdfBytesCache.get(url);
+        const task = cachedBytes
+          ? pdfjsLib.getDocument({
+              data: cachedBytes,
+              cMapUrl: "/pdf-cmaps/",
+              cMapPacked: true,
+              standardFontDataUrl: "/pdf-standard-fonts/",
+            })
+          : pdfjsLib.getDocument({
+              url,
+              cMapUrl: "/pdf-cmaps/",
+              cMapPacked: true,
+              standardFontDataUrl: "/pdf-standard-fonts/",
+            });
         loadingTask = task;
         task.onProgress = ({ loaded, total }: { loaded: number; total: number }) => {
           if (!cancelled && total) setProgress(loaded / total);
@@ -131,6 +178,25 @@ function PdfViewer({ url }: { url: string }) {
           return;
         }
         setProgress(null);
+
+        // Best-effort — pdf.js keeps the full document bytes in memory
+        // once loaded (for anything not using its own range-request
+        // streaming, which this app's file sizes never trigger), so
+        // this is just handing that already-in-memory data to the
+        // cache for next time, not a second download. Never blocks
+        // rendering on this — a caching miss just means the next open
+        // re-fetches, same as today.
+        if (!cachedBytes) {
+          doc
+            .getData()
+            .then((bytes: Uint8Array) => {
+              if (!cancelled) cachePdfBytes(url, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+            })
+            .catch(() => {
+              // Orphaned cache opportunity, not a real failure — the
+              // document already loaded successfully either way.
+            });
+        }
 
         // Sized once against the modal's current width — the modal
         // itself is already responsive (see ResourceViewerDialog's
