@@ -169,7 +169,7 @@ function EnabledFlow({
               className={cn(
                 "rounded-md border px-4 py-2 text-sm transition-colors",
                 !customAmount && selectedAmount === amount
-                  ? "border-primary bg-primary/10 text-primary"
+                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
                   : "border-border text-foreground hover:border-primary active:border-primary"
               )}
             >

@@ -206,7 +206,7 @@ export default function NoticesPage() {
               className={cn(
                 "rounded px-3 py-1.5 text-sm capitalize transition-colors",
                 dateSort === option
-                  ? "bg-primary/10 text-primary"
+                  ? "bg-primary text-primary-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground active:text-foreground"
               )}
             >

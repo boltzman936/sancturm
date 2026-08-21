@@ -544,7 +544,7 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
                       className={cn(
                         "min-w-[7rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
                         resourceType === kind
-                          ? "bg-primary/10 text-primary"
+                          ? "bg-primary text-primary-foreground shadow-sm"
                           : "text-muted-foreground hover:text-foreground active:text-foreground"
                       )}
                     >

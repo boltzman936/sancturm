@@ -156,7 +156,7 @@ export function CrCardUploadForm() {
             className={cn(
               "flex w-full items-center gap-2.5 border-b border-border px-3 py-2 text-left text-sm transition-colors last:border-b-0",
               selected?.id === cr.id
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary text-primary-foreground shadow-sm"
                 : "text-foreground hover:bg-background-secondary active:bg-background-secondary"
             )}
           >

@@ -446,7 +446,7 @@ export function CRUploadForm({
             className={cn(
               "min-w-[4.5rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
               resourceType === type
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary text-primary-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground active:text-foreground"
             )}
           >
@@ -478,7 +478,7 @@ export function CRUploadForm({
             onClick={() => setPublishMode(m)}
             className={cn(
               "min-w-[8rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
-              mode === m ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground active:text-foreground"
+              mode === m ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground active:text-foreground"
             )}
           >
             {labels[i]}
@@ -559,7 +559,7 @@ export function CRUploadForm({
                 className={cn(
                   "min-w-[8rem] flex-1 rounded px-3 py-1.5 text-sm transition-colors",
                   pyqKind === kind
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground active:text-foreground"
                 )}
               >

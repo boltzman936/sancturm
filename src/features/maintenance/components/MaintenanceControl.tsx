@@ -125,7 +125,7 @@ export function MaintenanceControl() {
             }}
             className={`flex-1 rounded px-2 py-1.5 text-sm transition-colors ${
               !customMinutes && minutes === d.minutes
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary text-primary-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground active:text-foreground"
             }`}
           >

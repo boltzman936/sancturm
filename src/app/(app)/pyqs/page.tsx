@@ -327,7 +327,7 @@ export default function PYQsPage() {
                 className={cn(
                   "rounded px-3 py-1.5 text-sm transition-colors",
                   pyqKind === kind
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground active:text-foreground"
                 )}
               >
@@ -344,7 +344,7 @@ export default function PYQsPage() {
                 className={cn(
                   "rounded px-3 py-1.5 text-sm capitalize transition-colors",
                   dateSort === option
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground active:text-foreground"
                 )}
               >
@@ -417,7 +417,7 @@ export default function PYQsPage() {
                 className={cn(
                   "flex-1 rounded px-2 py-1.5 text-sm transition-colors",
                   pyqKind === kind
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground active:text-foreground"
                 )}
               >
@@ -434,7 +434,7 @@ export default function PYQsPage() {
                 className={cn(
                   "flex-1 rounded px-2 py-1.5 text-sm capitalize transition-colors",
                   dateSort === option
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground active:text-foreground"
                 )}
               >
