@@ -80,7 +80,17 @@ export function SelectCard<T>({
         // neutral frosted glass. Plain backdrop-blur without a
         // saturation boost is what actually looks like glass over any
         // background hue, not just cool ones.
-        "w-full max-w-[200px] rounded-2xl border border-white/20 bg-white/10 p-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md sm:max-w-[215px] sm:p-3 lg:max-w-[250px] lg:p-3.5 xl:max-w-[300px]",
+        // bg-black/22 (was bg-white/10) — a light glass tint was still
+        // reading as "too bright/washed out" specifically over the
+        // artwork's brighter passages (cream sky), where a near-white
+        // panel barely separated from what's behind it. A dark tint
+        // gives the panel a consistent identity of its own — it now
+        // reads as a distinct floating surface over EITHER a bright or
+        // dark part of the image, not just a slight haze over whatever
+        // is underneath. Still translucent (22% opacity, not solid)
+        // and still blurred — only the tint changed; blur/border/
+        // shadow/radius are untouched.
+        "w-full max-w-[200px] rounded-2xl border border-white/15 bg-black/22 p-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md sm:max-w-[215px] sm:p-3 lg:max-w-[250px] lg:p-3.5 xl:max-w-[300px]",
         className
       )}
     >
@@ -92,8 +102,15 @@ export function SelectCard<T>({
           never over a themed surface, so its text needs to stay
           legible against that art regardless of which theme/mode the
           student has picked (a dark-mode foreground token would go
-          near-black here in some themes). */}
-      <h2 className="mb-2.5 text-center font-mono text-xs tracking-[0.08em] text-white/80 lg:mb-3.5">{title}</h2>
+          near-black here in some themes). Full opacity + medium weight
+          (was /80, regular weight) now that the panel itself is a dark
+          tint (see the panel's own comment) — white text needs less
+          help standing out against a consistently dark surface, but
+          the higher opacity/weight is what was asked for as "increase
+          contrast/weight," done via strength rather than switching to
+          a dark color that would go straight back to low-contrast
+          against this now-dark glass. */}
+      <h2 className="mb-2.5 text-center font-mono text-xs font-medium tracking-[0.08em] text-white lg:mb-3.5">{title}</h2>
       <AnimatePresence mode="wait" initial={false}>
         {isLoading ? (
           <motion.div
@@ -130,11 +147,11 @@ export function SelectCard<T>({
             transition={{ duration: reduceMotion ? 0 : 0.25 }}
             className="flex flex-col items-center gap-3 py-2 text-center"
           >
-            <p className="font-mono text-xs text-white/70">{errorLabel}</p>
+            <p className="font-mono text-xs text-white/85">{errorLabel}</p>
             <button
               type="button"
               onClick={onRetry}
-              className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Retry
             </button>
@@ -162,7 +179,7 @@ export function SelectCard<T>({
                 whileHover={{ scale: 1.015 }}
                 whileTap={{ scale: 0.985 }}
                 onClick={() => onSelect(item)}
-                className="rounded-lg border border-white/15 bg-white/5 px-3.5 py-2 text-left text-white transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:px-4 lg:py-2.5"
+                className="rounded-lg border border-white/15 bg-white/5 px-3.5 py-2 text-left font-medium text-white transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:px-4 lg:py-2.5"
               >
                 {getLabel(item)}
               </motion.button>
