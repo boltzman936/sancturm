@@ -290,13 +290,20 @@ export function IntroExperience() {
       // colored flash behind the media for the split second before the
       // video/image has actually painted a frame. Black is neutral
       // against art of any hue and reads as "not loaded yet" rather
-      // than as a colored placeholder. w-screen h-screen (literal
+      // than as a colored placeholder. w-screen h-dvh (literal
       // viewport size), not just inset-0 — see the onboarding page's
       // own wrapper for why: <html>'s site-wide scrollbar-gutter:
       // stable reserves a thin strip on the right that inset-0 alone
       // doesn't cover, letting the viewer's own theme background
       // (sometimes green) show through as a colored line on that edge.
-      className="fixed inset-0 h-screen w-screen overflow-hidden bg-black"
+      // h-dvh, not h-screen (100vh) — same mobile-viewport fix as the
+      // onboarding page's own wrapper: 100vh is measured against
+      // mobile Chrome/Safari's LARGEST possible viewport (bars
+      // collapsed), taller than what's actually visible with the bars
+      // showing, which left the real warm theme background exposed as
+      // a gap below the media. 100dvh always matches the real visible
+      // viewport.
+      className="fixed inset-0 h-dvh w-screen overflow-hidden bg-black"
       animate={{ opacity: exiting ? 0 : 1 }}
       transition={{ duration: EXIT_DURATION_S }}
     >

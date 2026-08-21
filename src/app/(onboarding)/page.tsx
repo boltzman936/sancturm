@@ -1,5 +1,20 @@
 import { Suspense } from "react";
+import type { Viewport } from "next";
 import { IntroExperience } from "@/features/branches/components/IntroExperience";
+
+// Overrides the root layout's default viewport (which has no explicit
+// export, so Next falls back to width=device-width, initial-scale=1 —
+// pinch/double-tap zoom allowed, as it should be everywhere else in
+// the app: Notes/PYQ/Notices etc. never define their own viewport, so
+// they keep that default untouched). Cockpit is a fixed, full-bleed
+// media experience, not scrollable/zoomable content, so it alone pins
+// the scale — this export only ever applies to this route ("/").
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 // Suspense boundary required by IntroExperience's own useSearchParams()
 // call (reads ?cockpit=1 — see its own comment) — without it, Next
@@ -18,7 +33,7 @@ import { IntroExperience } from "@/features/branches/components/IntroExperience"
 // very first frame, before any client JS runs at all.
 export default function OnboardingPage() {
   return (
-    // w-screen h-screen (literal 100vw/100vh), not just inset-0 —
+    // w-screen h-dvh (literal viewport size), not just inset-0 —
     // globals.css sets `scrollbar-gutter: stable` on <html> site-wide,
     // which reserves a thin strip on the right edge for a scrollbar
     // even when nothing here scrolls. That reserved strip isn't
@@ -29,7 +44,16 @@ export default function OnboardingPage() {
     // color the viewer has picked (e.g. Theme 4's pale green). w-screen
     // is a literal viewport-width value, unaffected by the gutter
     // reservation, so this now always fully covers it.
-    <div className="fixed inset-0 h-screen w-screen bg-black">
+    //
+    // h-dvh, not h-screen (100vh) — on mobile Chrome/Safari, 100vh is
+    // measured against the LARGEST possible viewport (as if the
+    // address bar/nav bar were fully collapsed), which is taller than
+    // what's actually visible once those bars are showing. That left a
+    // real gap at the bottom exposing <body>'s own warm theme
+    // background underneath the media. 100dvh tracks the viewport
+    // Chrome/Safari are ACTUALLY showing right now, so this div always
+    // matches the real visible area with no gap.
+    <div className="fixed inset-0 h-dvh w-screen bg-black">
       <Suspense fallback={null}>
         <IntroExperience />
       </Suspense>
