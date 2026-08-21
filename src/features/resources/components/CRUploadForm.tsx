@@ -66,16 +66,14 @@ export function CRUploadForm({
   // Every branch, always fetched now.
   branches: BranchOption[];
   // Every term — only actually pickable for admin (fixedTermId is
-  // undefined for them); a CR's term never changes, even for PYQ —
-  // only the specialization unlocks there, since a CR is scoped to
-  // their own (branch, specialization, term) and PYQ's
-  // cross-specialization exception stays within their own branch.
+  // undefined for them); a CR's term never changes at all.
   terms: TermOption[];
   fixedBranchId?: string;
   // A CR's specialization — null for a branch with no specialization
-  // concept. Locked for notes_lab; for PYQ, a CR can still pick a
-  // DIFFERENT specialization within this same branch (see
-  // showSpecializationPicker below), never a different branch.
+  // concept. Always fixed to the CR's own, including for PYQ — a
+  // centralized PYQ's visibility comes from its chosen canonical
+  // subject, not from which specialization it was filed under, so
+  // there's no longer a reason to let a CR pick a different one.
   fixedSpecializationId?: string | null;
   fixedTermId?: string;
   // A CR's batch never changes either (their cr_profile's own batch) —
@@ -87,12 +85,13 @@ export function CRUploadForm({
 }) {
   const [resourceType, setResourceType] = useState<UploadType>("notes");
   const [publishMode, setPublishMode] = useState<PublishMode>("upload");
-  // PYQ is cross-SPECIALIZATION even for a CR (never cross-branch —
-  // see supabase/scope_pyq_by_branch.sql), so it needs its own pickable
-  // specialization, separate from the notes_lab-locked
-  // fixedSpecializationId. Only meaningful when the CR's own branch has
-  // specializations at all.
-  const [pyqSpecializationId, setPyqSpecializationId] = useState(fixedSpecializationId ?? "");
+  // No longer a pickable state — a centralized PYQ's visibility comes
+  // from its canonical subject, not from specialization_id (provenance
+  // only now, see actions.ts), so this is just the CR's own fixed
+  // specialization, same as notes_lab's fixedSpecializationId. Kept as
+  // its own name (not reusing fixedSpecializationId directly below)
+  // since the rest of this file still reads it as its own concept.
+  const pyqSpecializationId = fixedSpecializationId ?? "";
   // Paper vs. worked solution — the PYQ equivalent of the Notes/Lab
   // split above, just picked with its own toggle instead of being a
   // separate top-level Type button (that'd make the Type row 6-wide).
@@ -169,11 +168,6 @@ export function CRUploadForm({
     : resourceType === "pyq"
       ? pyqSpecializationId
       : fixedSpecializationId ?? null;
-  // Only a CR (non-bulk) with a specialization-having branch, uploading
-  // a PYQ, ever needs this — admin always goes through the bulk
-  // specialization multi-select below instead.
-  const showSpecializationPicker = !canBulkPublish && resourceType === "pyq" && !!currentBranch?.has_specializations;
-
   // Batch drives Semester now, not the other way — every configured
   // batch is always offered (config-table, zero-resource batches
   // included), newest first.
@@ -701,33 +695,17 @@ export function CRUploadForm({
         </div>
       )}
 
-      {showSpecializationPicker && (
-        <div className="flex flex-col gap-1">
-          <label htmlFor="specialization" className="font-mono text-xs text-subtle-foreground">
-            Specialization
-            {resourceType === "pyq" && (
-              <span className="ml-1.5 normal-case text-subtle-foreground/70">
-                (PYQs are shared within your branch, but still need one on record)
-              </span>
-            )}
-          </label>
-          <Select
-            id="specialization"
-            value={pyqSpecializationId}
-            onChange={(event) => {
-              setPyqSpecializationId(event.target.value);
-              setSubjectValue("");
-            }}
-            className="bg-background"
-          >
-            {currentBranchSpecializations?.map((specialization) => (
-              <option key={specialization.id} value={specialization.id}>
-                {specialization.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      )}
+      {/* Specialization picker removed for PYQ — it used to let a CR
+          post under a DIFFERENT specialization than their own within
+          their branch's sharing pool, back when visibility depended on
+          which specialization's subject row a row was filed under.
+          Centralized PYQ (see centralize_pyq_resources.sql) makes that
+          moot: visibility comes entirely from the chosen canonical
+          subject, not from specialization_id (provenance only now —
+          pyqSpecializationId still resolves to the CR's own fixed
+          specialization automatically, just with no UI to change it),
+          so showing a picker with nothing left to actually decide was
+          pure friction. */}
 
       {/* Admin only — pick any combination of specializations within
           the branch above in one control instead of a single pick or
