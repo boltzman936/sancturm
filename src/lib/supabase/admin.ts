@@ -16,12 +16,16 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
  * src/app/api/support/webhook/route.ts — never from a Server Action a
  * browser can trigger, and never from anything "use client".
  *
- * SUPABASE_SERVICE_ROLE_KEY is intentionally unset in this deployment
- * (Support Sancturm ships dormant — see add_support_sancturm.sql) —
- * this throws rather than silently falling back to the anon key,
- * which would make the webhook route either fail on every write (safe
- * but confusing) or, worse, appear to work while writes silently fail
- * to actually verify anything.
+ * Whether SUPABASE_SERVICE_ROLE_KEY is set doesn't by itself activate
+ * this route — SUPPORT_WEBHOOK_SECRET being unset (see
+ * add_support_sancturm.sql; Support Sancturm ships dormant) is what
+ * makes the webhook 503 before ever reaching this function, regardless
+ * of whether this key happens to be configured in the environment.
+ * This throws rather than silently falling back to the anon key if
+ * BOTH env vars were ever present but this one went missing, which
+ * would make the webhook either fail on every write (safe but
+ * confusing) or, worse, appear to work while writes silently fail to
+ * actually verify anything.
  */
 export function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

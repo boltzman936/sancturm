@@ -259,26 +259,32 @@ export async function mergeCanonicalPyqResources(keepId: string, discardIds: str
     if (id === keepId) throw new Error("Can't discard the resource being kept.");
   }
 
-  for (const discardId of discardIds) {
-    const { data, error } = await supabase
-      .from("resources")
-      .delete()
-      .eq("id", discardId)
-      .select("file_url")
-      .single();
-    if (error) throw safeDbError(error);
-    try {
-      if (data?.file_url) {
+  // One batched delete instead of N sequential ones, same as any other
+  // multi-row admin action in this file.
+  const { data: discarded, error: deleteError } = await supabase
+    .from("resources")
+    .delete()
+    .in("id", discardIds)
+    .select("file_url");
+  if (deleteError) throw safeDbError(deleteError);
+
+  // Best-effort cleanup, same accepted tradeoff as deleteResource — one
+  // reference-count check per unique file_url (almost always 1, since
+  // these are duplicates of the same underlying file), not per row.
+  const uniqueFileUrls = Array.from(new Set((discarded ?? []).map((r) => r.file_url).filter((u): u is string => !!u)));
+  await Promise.all(
+    uniqueFileUrls.map(async (fileUrl) => {
+      try {
         const { count } = await supabase
           .from("resources")
           .select("id", { count: "exact", head: true })
-          .eq("file_url", data.file_url);
-        if (!count) await deleteFromR2(data.file_url);
+          .eq("file_url", fileUrl);
+        if (!count) await deleteFromR2(fileUrl);
+      } catch {
+        // Best-effort, same as deleteResource.
       }
-    } catch {
-      // Best-effort, same as deleteResource.
-    }
-  }
+    })
+  );
 
   revalidatePath("/notes");
   revalidatePath("/pyqs");

@@ -55,17 +55,43 @@ async function resolveCurrentBatchId(
   supabase: Awaited<ReturnType<typeof createClient>>,
   termId: string
 ): Promise<string> {
+  const resolved = await resolveCurrentBatchIdsForTerms(supabase, [termId]);
+  const batchId = resolved.get(termId);
+  if (!batchId) throw new Error("No batch configured for this year yet.");
+  return batchId;
+}
+
+/**
+ * Same resolution as resolveCurrentBatchId, batched across every term
+ * at once — the "All Years" bulk-publish paths below used to call the
+ * single-term version once per selected year, in a sequential loop
+ * (N round trips before the actual insert even started); this is the
+ * identical logic over one `.in("term_id", termIds)` query instead.
+ */
+async function resolveCurrentBatchIdsForTerms(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  termIds: string[]
+): Promise<Map<string, string>> {
   const { data, error } = await supabase
     .from("batch_terms")
-    .select("batch_id, start_date")
-    .eq("term_id", termId)
+    .select("term_id, batch_id, start_date")
+    .in("term_id", termIds)
     .order("start_date", { ascending: true });
   if (error) throw safeDbError(error);
   const today = new Date().toISOString().slice(0, 10);
-  const started = (data ?? []).filter((row) => row.start_date <= today);
-  const chosen = started.length ? started[started.length - 1] : data?.[0];
-  if (!chosen) throw new Error("No batch configured for this year yet.");
-  return chosen.batch_id;
+  const byTerm = new Map<string, { batch_id: string; start_date: string }[]>();
+  for (const row of data ?? []) {
+    const rows = byTerm.get(row.term_id) ?? [];
+    rows.push(row);
+    byTerm.set(row.term_id, rows);
+  }
+  const result = new Map<string, string>();
+  for (const [termId, rows] of byTerm) {
+    const started = rows.filter((row) => row.start_date <= today);
+    const chosen = started.length ? started[started.length - 1] : rows[0];
+    if (chosen) result.set(termId, chosen.batch_id);
+  }
+  return result;
 }
 
 /**
@@ -100,9 +126,11 @@ async function assertIsActiveNoticeContext(
 /**
  * Only a CR (own branch) or admin (any branch) can ever call this
  * successfully — there's no "anyone can submit" policy on `notices`
- * like there is on `resources`. Postgres RLS ("CR or admin manages",
- * supabase/add_admins.sql) rejects the insert outright for anyone else;
- * this function doesn't need its own role check to enforce that.
+ * like there is on `resources`. Postgres RLS (the "CR or admin
+ * inserts" policy — see supabase/*.sql for its current definition,
+ * it's been redefined a few times as scoping tightened) rejects the
+ * insert outright for anyone else; this function doesn't need its own
+ * role check to enforce that.
  */
 export async function createNotice(formData: FormData) {
   const supabase = await createClient();
@@ -158,7 +186,7 @@ export async function createNotice(formData: FormData) {
 /**
  * Admin-only: publishes one notice to any number of branches within
  * one term at once — same reasoning and shape as resources.ts's
- * uploadResourceDirectAllBranches. RLS ("CR or admin manages") only
+ * uploadResourceDirectAllBranches. RLS ("CR or admin inserts") only
  * lets an admin insert outside their own branch scope in the first
  * place, so a non-admin calling this just gets a database rejection
  * either way — the explicit role check here is just a faster, clearer
@@ -200,9 +228,11 @@ export async function createNoticeAllBranches(formData: FormData) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
+  const batchIdsByTerm = await resolveCurrentBatchIdsForTerms(supabase, termIds);
   const rows = [];
   for (const termId of termIds) {
-    const batchId = await resolveCurrentBatchId(supabase, termId);
+    const batchId = batchIdsByTerm.get(termId);
+    if (!batchId) throw new Error("No batch configured for one of the selected years yet.");
     for (const target of targets) {
       rows.push({
         branch_id: target.branchId,
@@ -253,9 +283,11 @@ export async function createCustomNoticeAllBranches(formData: FormData) {
   assertValidTargetArray(targets);
   assertValidIdArray(termIds, "year");
 
+  const batchIdsByTerm = await resolveCurrentBatchIdsForTerms(supabase, termIds);
   const rows = [];
   for (const termId of termIds) {
-    const batchId = await resolveCurrentBatchId(supabase, termId);
+    const batchId = batchIdsByTerm.get(termId);
+    if (!batchId) throw new Error("No batch configured for one of the selected years yet.");
     for (const target of targets) {
       rows.push({
         branch_id: target.branchId,
@@ -424,7 +456,7 @@ export async function updateNoticeFields(
   revalidatePath("/cr/manage");
 }
 
-/** Pin/unpin — same RLS-enforced "CR or admin manages" policy as everything else on notices. */
+/** Pin/unpin — same RLS-enforced "CR or admin updates" policy as any other edit to a notice. */
 export async function toggleNoticePin(noticeId: string, pinned: boolean) {
   const supabase = await createClient();
   const {

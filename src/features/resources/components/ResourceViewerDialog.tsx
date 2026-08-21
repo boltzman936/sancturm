@@ -171,10 +171,33 @@ function PdfViewer({ url }: { url: string }) {
               standardFontDataUrl: "/pdf-standard-fonts/",
             });
         loadingTask = task;
+        // A genuinely stalled connection (bytes trickling or never
+        // arriving, socket never erroring or closing) used to leave
+        // this in "loading" forever — pdf.js's own getDocument() has
+        // no timeout of its own. Resets on every real progress event,
+        // so a large scanned-notes PDF over a slow-but-working
+        // connection still completes fine; only fires if nothing
+        // arrives for 20s straight. A cache hit (data, not url) never
+        // touches the network at all, so it's exempt.
+        let stallTimer: ReturnType<typeof setTimeout> | null = null;
+        let rejectStall: (() => void) | null = null;
+        const stallGuard: Promise<never> | null = cachedBytes
+          ? null
+          : new Promise<never>((_, reject) => {
+              rejectStall = () => reject(new Error("PDF load timed out."));
+              stallTimer = setTimeout(rejectStall, 20_000);
+            });
+        function resetStallTimer() {
+          if (!rejectStall) return;
+          if (stallTimer) clearTimeout(stallTimer);
+          stallTimer = setTimeout(rejectStall, 20_000);
+        }
         task.onProgress = ({ loaded, total }: { loaded: number; total: number }) => {
           if (!cancelled && total) setProgress(loaded / total);
+          resetStallTimer();
         };
-        const doc = await task.promise;
+        const doc = await (stallGuard ? Promise.race([task.promise, stallGuard]) : task.promise);
+        if (stallTimer) clearTimeout(stallTimer);
         if (cancelled) {
           await task.destroy();
           return;
@@ -442,6 +465,12 @@ function PdfViewer({ url }: { url: string }) {
         });
         resizeObserver.observe(wrapper);
       } catch {
+        // Stops the underlying transport/worker on a genuine failure
+        // too, not just on unmount — otherwise a stalled fetch that
+        // hit the timeout above kept the connection open in the
+        // background even after the UI had already moved to the error
+        // state.
+        loadingTask?.destroy();
         if (!cancelled) setStatus("error");
       }
     }

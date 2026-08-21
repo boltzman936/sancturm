@@ -863,8 +863,17 @@ function ResourceGroupRow({
       )
     )
       return;
+    // Unhandled — a session expiring mid-delete, or a race with the
+    // same rows already being removed elsewhere, used to throw
+    // straight through startTransition and crash this entire Manage
+    // list to the route error boundary instead of just this group.
     startDelete(async () => {
-      await Promise.all(deletableItems.map(deleteItem));
+      try {
+        await Promise.all(deletableItems.map(deleteItem));
+      } catch (err) {
+        console.error(err);
+        alert("Couldn't remove some of this. Try again.");
+      }
     });
   }
 
@@ -1252,6 +1261,18 @@ export function ManageResourceList({
     return sortResourcesByBatchThenDate(flat, dateSort, batchStartYear);
   }, [flat, dateSort, batchStartYear]);
 
+  // groupByContent is an O(n) pass building a Map/array over every
+  // visible row — was previously called directly in JSX (once per
+  // render, for whichever of the two mutually-exclusive render paths
+  // below is active), redoing that pass on every unrelated re-render
+  // of this component (a checkbox toggle, a search keystroke) even
+  // though its only real inputs are these two already-memoized values.
+  const flatContentGroups = useMemo(() => (sortedFlat ? groupByContent(sortedFlat) : null), [sortedFlat]);
+  const typedContentGroups = useMemo(
+    () => groups?.map((typeGroup) => ({ ...typeGroup, contentGroups: groupByContent(typeGroup.items) })) ?? null,
+    [groups]
+  );
+
   const isEmpty = visible.length === 0;
 
   // Grouped by content identity independent of which of the two render
@@ -1292,22 +1313,29 @@ export function ManageResourceList({
     () => visible.filter((r) => canDeleteItem(r, isAdmin, adminDisplayNames)),
     [visible, isAdmin, adminDisplayNames]
   );
-  const allVisibleSelected =
-    visibleGroups.length > 0 &&
-    visibleGroups.every((group) => {
-      const deletable = group.items.filter((r) => canDeleteItem(r, isAdmin, adminDisplayNames));
-      return deletable.length === 0 || deletable.every((r) => selectedIds.has(r.id));
-    });
+  const allVisibleSelected = useMemo(
+    () =>
+      visibleGroups.length > 0 &&
+      visibleGroups.every((group) => {
+        const deletable = group.items.filter((r) => canDeleteItem(r, isAdmin, adminDisplayNames));
+        return deletable.length === 0 || deletable.every((r) => selectedIds.has(r.id));
+      }),
+    [visibleGroups, isAdmin, adminDisplayNames, selectedIds]
+  );
 
   // How many CARDS have every one of their DELETABLE rows selected —
   // shown next to the raw selectedIds.size (the actual delete button's
   // own count, since that's what genuinely gets removed) so a multi-
   // context card being selected/removed is never ambiguous about how
   // many rows that really is.
-  const selectedGroupCount = visibleGroups.filter((group) => {
-    const deletable = group.items.filter((r) => canDeleteItem(r, isAdmin, adminDisplayNames));
-    return deletable.length > 0 && deletable.every((r) => selectedIds.has(r.id));
-  }).length;
+  const selectedGroupCount = useMemo(
+    () =>
+      visibleGroups.filter((group) => {
+        const deletable = group.items.filter((r) => canDeleteItem(r, isAdmin, adminDisplayNames));
+        return deletable.length > 0 && deletable.every((r) => selectedIds.has(r.id));
+      }).length,
+    [visibleGroups, isAdmin, adminDisplayNames, selectedIds]
+  );
 
   function toggleSelectAllVisible() {
     setSelectedIds((prev) => {
@@ -1327,8 +1355,13 @@ export function ManageResourceList({
     if (!confirm(`Remove ${items.length} item${items.length > 1 ? "s" : ""}? This can't be undone.`)) return;
 
     startBulkDelete(async () => {
-      await Promise.all(items.map(deleteItem));
-      setSelectedIds(new Set());
+      try {
+        await Promise.all(items.map(deleteItem));
+        setSelectedIds(new Set());
+      } catch (err) {
+        console.error(err);
+        alert("Couldn't remove some of these. Try again.");
+      }
     });
   }
 
@@ -1620,9 +1653,9 @@ export function ManageResourceList({
         </div>
       )}
 
-      {!isEmpty && sortedFlat && (
+      {!isEmpty && flatContentGroups && (
         <ul className="flex flex-col gap-2">
-          {groupByContent(sortedFlat).map((group) => (
+          {flatContentGroups.map((group) => (
             <ResourceGroupRow
               key={group.items[0].id}
               group={group}
@@ -1635,15 +1668,15 @@ export function ManageResourceList({
         </ul>
       )}
 
-      {!isEmpty && groups && (
+      {!isEmpty && typedContentGroups && (
         <div className="flex flex-col gap-5">
-          {groups.map((typeGroup) => (
+          {typedContentGroups.map((typeGroup) => (
             <div key={typeGroup.label} className="flex flex-col gap-2">
               <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">
                 {typeGroup.label.toUpperCase()}
               </h2>
               <ul className="flex flex-col gap-2">
-                {groupByContent(typeGroup.items).map((group) => (
+                {typeGroup.contentGroups.map((group) => (
                   <ResourceGroupRow
                     key={group.items[0].id}
                     group={group}

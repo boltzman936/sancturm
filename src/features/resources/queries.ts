@@ -35,41 +35,17 @@ export function useSubjects(branchId: string | null, specializationId: string | 
 }
 
 /**
- * Every subject across every branch AND specialization for one term —
- * Manage's admin-wide "All years" filter genuinely wants everything,
- * since admin manages every branch at once. Not used for PYQ's own
+ * Every subject across every branch AND specialization, for a SET of
+ * terms — Manage's admin-wide "All years" filter genuinely wants
+ * everything, since admin manages every branch at once, and a Year can
+ * span more than one semester (per the Batch/Semester feature), so a
+ * single termId isn't enough on its own. Not used for PYQ's own
  * subject filter (see useSubjectsForPyqScope below) — a student's PYQ
  * view should only ever see subjects from their own branch's sharing
- * pool, not every branch in the college.
- */
-export function useSubjectsForTerm(termId: string | null) {
-  return useQuery({
-    queryKey: ["subjects", "term", termId],
-    queryFn: async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("subjects")
-        .select("*")
-        .eq("term_id", termId!)
-        .order("sort_order", { ascending: true });
-      if (error) throw error;
-      return data as Subject[];
-    },
-    enabled: !!termId,
-    staleTime: 5 * 60_000,
-  });
-}
-
-/**
- * Every subject across every branch, for a SET of terms — Manage's
- * Year filter is coarser than one term id (a year can span more than
- * one semester, per the Batch/Semester feature), and "All years" means
- * every term, so a single termId hook can't cover it. Same query-key
- * shape as useSubjectsForTerm (["subjects", "term", termId]) so this
- * shares cache entries with it instead of double-fetching. Uses
- * useQueries (not a loop of useSubjectsForTerm calls, which would
- * violate rules of hooks against a dynamic-length term list) — fires
- * every term's query in parallel, not a sequential waterfall.
+ * pool, not every branch in the college. Uses useQueries (not a loop
+ * of individual per-term queries, which would violate rules of hooks
+ * against a dynamic-length term list) — fires every term's query in
+ * parallel, not a sequential waterfall.
  */
 export function useSubjectsForTerms(termIds: string[]) {
   const results = useQueries({

@@ -45,22 +45,6 @@ export function InstagramIcon({ className }: { className?: string }) {
   );
 }
 
-export function SnapchatIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className}>
-      <rect x="1" y="1" width="22" height="22" rx="6.5" fill="#FFFC00" />
-      {/* Bold, simplified ghost silhouette — plain white shape, no fine
-          detail — small brand icons read by silhouette at a glance, not
-          by faithfully reproducing every curve of the real mark, and
-          finer detail was disappearing entirely at 16-18px. */}
-      <path
-        d="M12 4.5c-3.6 0-6 2.7-6 6.3v3.3c0 .5-.6.8-1.3 1-.6.2-.6 1 0 1.2.6.2 1.2.4 1.6.7-.1.4-.3.7-.6 1-.4.4-.1 1 .5 1 .8.1 1.5.2 2 .5.6.9 1.7 1.5 3.1 1.5h.4c1.4 0 2.5-.6 3.1-1.5.5-.3 1.2-.4 2-.5.6 0 .9-.6.5-1-.3-.3-.5-.6-.6-1 .4-.3 1-.5 1.6-.7.6-.2.6-1 0-1.2-.7-.2-1.3-.5-1.3-1v-3.3c0-3.6-2.4-6.3-6-6.3z"
-        fill="#fff"
-      />
-    </svg>
-  );
-}
-
 export function GmailIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className}>
@@ -86,21 +70,6 @@ export function LinkedInIcon({ className }: { className?: string }) {
         d="M11.3 10.3h2.3v1c.4-.65 1.2-1.2 2.3-1.2 2 0 2.6 1.2 2.6 3v4.4h-2.4v-3.9c0-.9-.3-1.5-1.15-1.5-.8 0-1.2.55-1.2 1.5v3.9h-2.4v-7.2z"
         fill="#fff"
       />
-    </svg>
-  );
-}
-
-export function RedditIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className}>
-      <circle cx="12" cy="12" r="11" fill="#FF4500" />
-      <circle cx="12" cy="13.6" r="5.6" fill="#fff" />
-      <circle cx="9.3" cy="13.3" r="0.95" fill="#FF4500" />
-      <circle cx="14.7" cy="13.3" r="0.95" fill="#FF4500" />
-      <path d="M9.5 16c.7.6 1.6.85 2.5.85s1.8-.25 2.5-.85" fill="none" stroke="#FF4500" strokeWidth="0.9" strokeLinecap="round" />
-      <line x1="12" y1="8.4" x2="12" y2="6.1" stroke="#fff" strokeWidth="0.9" strokeLinecap="round" />
-      <circle cx="12" cy="5.3" r="1.1" fill="#fff" />
-      <circle cx="17.3" cy="11.6" r="1.3" fill="#fff" />
     </svg>
   );
 }

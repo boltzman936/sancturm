@@ -29,18 +29,6 @@ export function useBatches() {
 }
 
 /**
- * Resolves the slug stored by useBatch() into the actual batch row —
- * built on useBatches() rather than its own fetch, same reasoning as
- * useBranchBySlug/useTermBySlug: batches is a handful of rows, no
- * reason for a second round trip when the switcher's own useBatches()
- * call already has it.
- */
-export function useBatchByLabel(label: string | null) {
-  const query = useBatches();
-  return { ...query, data: label ? query.data?.find((b) => b.label === label) : undefined };
-}
-
-/**
  * Which batches actually offer a given term (year+semester) — the
  * reverse lookup of useBatchTerms, for the Upload form's admin-only
  * Batch picker: given the Year/Semester already picked (Edit's own

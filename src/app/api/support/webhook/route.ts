@@ -6,12 +6,12 @@ import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 /**
  * Dormant scaffolding for a future payment provider's webhook — no
- * provider is configured to call this yet (SUPPORT_WEBHOOK_SECRET and
- * SUPABASE_SERVICE_ROLE_KEY are both unset in this deployment), so
- * every real request here today either 401s (bad/missing signature)
- * or 503s (createAdminClient's own guard). That's the correct failure
- * mode for infrastructure nothing points at yet — fail closed, never
- * silently accept an unverified "payment succeeded" claim.
+ * provider is configured to call this yet (SUPPORT_WEBHOOK_SECRET is
+ * unset in this deployment), so every real request here today 401s
+ * (bad/missing signature) before createAdminClient() is ever reached.
+ * That's the correct failure mode for infrastructure nothing points at
+ * yet — fail closed, never silently accept an unverified "payment
+ * succeeded" claim.
  *
  * Header name and HMAC-over-raw-body scheme match Razorpay's actual
  * webhook convention (a real possibility for this project later) —
