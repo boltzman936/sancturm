@@ -328,7 +328,6 @@ export async function updateNoticeFields(
     branchId?: string;
     specializationId?: string | null;
     termId?: string;
-    batchId?: string;
     crOnly?: boolean;
     dateKey?: string;
   }
@@ -347,26 +346,27 @@ export async function updateNoticeFields(
   if (fields.branchId !== undefined) assertValidId(fields.branchId, "branch");
   if (fields.specializationId !== undefined) assertValidIdOrNull(fields.specializationId, "specialization");
   if (fields.termId !== undefined) assertValidId(fields.termId, "year");
-  if (fields.batchId !== undefined) assertValidId(fields.batchId, "batch");
   if (fields.crOnly !== undefined && typeof fields.crOnly !== "boolean") {
     throw new Error("Invalid CR-only value.");
   }
   if (fields.dateKey !== undefined) assertValidDateKey(fields.dateKey, "date");
 
-  // Same reasoning as updateResourceFields' identical check — Edit
-  // lets an admin retarget a notice to ANY branch/term/batch, and
-  // nothing before this point already ruled out an unreached pairing.
-  if (fields.termId !== undefined && fields.batchId !== undefined) {
-    // Same fields.specializationId ?? null reasoning as
-    // updateResourceFields' identical check.
-    await assertBatchTermReached(supabase, fields.batchId, fields.termId, fields.specializationId ?? null);
+  // No client-supplied batchId anymore — a notice's Batch has no UI
+  // anywhere (see notices/page.tsx and NoticeComposer's own comments);
+  // moving a notice to a new term resolves batch_id the same way
+  // createNoticeAllBranches already does, server-side, via
+  // resolveCurrentBatchId, instead of trusting a picked value.
+  let resolvedBatchId: string | undefined;
+  if (fields.termId !== undefined) {
+    resolvedBatchId = await resolveCurrentBatchId(supabase, fields.termId);
+    await assertBatchTermReached(supabase, resolvedBatchId, fields.termId, fields.specializationId ?? null);
   }
 
   const update: Record<string, string | boolean | null> = {};
   if (fields.branchId !== undefined) update.branch_id = fields.branchId;
   if (fields.specializationId !== undefined) update.specialization_id = fields.specializationId;
   if (fields.termId !== undefined) update.term_id = fields.termId;
-  if (fields.batchId !== undefined) update.batch_id = fields.batchId;
+  if (resolvedBatchId !== undefined) update.batch_id = resolvedBatchId;
   if (fields.crOnly !== undefined) update.cr_only = fields.crOnly;
 
   if (fields.dateKey !== undefined) {

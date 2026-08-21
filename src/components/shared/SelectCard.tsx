@@ -87,7 +87,13 @@ export function SelectCard<T>({
       {/* mb-2.5/gap-1/py-2 (was mb-3/gap-1.5/py-2.5) — a second ~10%
           rhythm pass on every tier, not just mobile/tablet this time,
           matching the card's own outer shrink above. */}
-      <h2 className="mb-2.5 text-center font-mono text-xs tracking-[0.08em] text-foreground/80 lg:mb-3.5">{title}</h2>
+      {/* Fixed white, not a text-foreground/theme token — this card
+          always sits over the Cockpit's photographic background art,
+          never over a themed surface, so its text needs to stay
+          legible against that art regardless of which theme/mode the
+          student has picked (a dark-mode foreground token would go
+          near-black here in some themes). */}
+      <h2 className="mb-2.5 text-center font-mono text-xs tracking-[0.08em] text-white/80 lg:mb-3.5">{title}</h2>
       <AnimatePresence mode="wait" initial={false}>
         {isLoading ? (
           <motion.div
@@ -124,11 +130,11 @@ export function SelectCard<T>({
             transition={{ duration: reduceMotion ? 0 : 0.25 }}
             className="flex flex-col items-center gap-3 py-2 text-center"
           >
-            <p className="font-mono text-xs text-subtle-foreground">{errorLabel}</p>
+            <p className="font-mono text-xs text-white/70">{errorLabel}</p>
             <button
               type="button"
               onClick={onRetry}
-              className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-foreground transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Retry
             </button>
@@ -156,7 +162,7 @@ export function SelectCard<T>({
                 whileHover={{ scale: 1.015 }}
                 whileTap={{ scale: 0.985 }}
                 onClick={() => onSelect(item)}
-                className="rounded-lg border border-white/15 bg-white/5 px-3.5 py-2 text-left text-foreground transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:px-4 lg:py-2.5"
+                className="rounded-lg border border-white/15 bg-white/5 px-3.5 py-2 text-left text-white transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:px-4 lg:py-2.5"
               >
                 {getLabel(item)}
               </motion.button>

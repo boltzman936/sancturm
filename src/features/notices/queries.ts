@@ -22,27 +22,30 @@ import type { Notice } from "./types";
  * currently resolves to) is still genuinely reachable/browsable, not
  * just correctly scoped in the query.
  *
- * batchId is an optional FILTER (not a scoping dimension) — omitted
- * shows every batch's notices for this (branch, specialization, term),
- * matching useNotesAndLabResources' identical optional-batch pattern.
+ * No Batch dimension at all — a notice is scoped purely by Branch +
+ * Specialization + Year/Semester (termId), matching a real notice's
+ * meaning (a live announcement for whoever's in that academic context
+ * right now), not an archival, per-cohort resource like Notes/PYQ.
+ * Callers resolve termId to whichever semester is genuinely live for
+ * the viewer's Year via useLiveTermForYear (see useBatchSemesterFilter.ts)
+ * — this hook itself has no notion of "current," it just fetches
+ * whatever termId it's given.
  */
 export function useNotices(
   branchId: string | null,
   specializationId: string | null,
   hasSpecializations: boolean,
-  termId: string | string[] | null,
-  batchId?: string | null
+  termId: string | string[] | null
 ) {
   const termKey = Array.isArray(termId) ? [...termId].sort() : termId;
   const hasTerm = Array.isArray(termId) ? termId.length > 0 : !!termId;
   return useQuery({
-    queryKey: ["notices", branchId, specializationId, termKey, batchId ?? null],
+    queryKey: ["notices", branchId, specializationId, termKey],
     queryFn: async () => {
       const supabase = createClient();
       let query = supabase.from("notices").select("*").eq("branch_id", branchId!);
       query = Array.isArray(termId) ? query.in("term_id", termId) : query.eq("term_id", termId!);
       query = hasSpecializations ? query.eq("specialization_id", specializationId!) : query.is("specialization_id", null);
-      if (batchId) query = query.eq("batch_id", batchId);
       const { data, error } = await query
         .order("is_pinned", { ascending: false })
         .order("created_at", { ascending: false });

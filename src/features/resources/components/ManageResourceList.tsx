@@ -488,11 +488,13 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
     startTransition(async () => {
       try {
         if (resource.kind === "notice") {
+          // No batchId — a notice has no Batch dimension anywhere in
+          // its own flow anymore; updateNoticeFields resolves it
+          // server-side from whichever batch is live for termId.
           await updateNoticeFields(resource.id, {
             branchId,
             specializationId: effectiveSpecializationId,
             termId,
-            batchId: effectiveBatchId,
             crOnly,
             dateKey,
           });
@@ -607,20 +609,26 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
               </Select>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-mono text-xs text-subtle-foreground">Batch</label>
-              <Select
-                value={effectiveBatchId}
-                onChange={(event) => setBatchId(event.target.value)}
-                className="bg-background"
-              >
-                {validBatches?.map((batch) => (
-                  <option key={batch.id} value={batch.id}>
-                    {batch.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
+            {/* Notices have no Batch dimension anywhere in their own
+                flow (view, upload, edit) — it's resolved automatically
+                server-side from the Year/Semester instead. Resources
+                (Notes/Lab/PYQ) keep the picker, unchanged. */}
+            {resource.kind !== "notice" && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-xs text-subtle-foreground">Batch</label>
+                <Select
+                  value={effectiveBatchId}
+                  onChange={(event) => setBatchId(event.target.value)}
+                  className="bg-background"
+                >
+                  {validBatches?.map((batch) => (
+                    <option key={batch.id} value={batch.id}>
+                      {batch.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
 
             <div className="flex flex-col gap-1">
               <label className="font-mono text-xs text-subtle-foreground">

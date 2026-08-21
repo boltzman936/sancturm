@@ -5,8 +5,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Eye, Pin, Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useSpecialization } from "@/hooks/useSpecialization";
-import { useBatchSemesterFilter, ALL_BATCHES, ALL_SEMESTERS } from "@/hooks/useBatchSemesterFilter";
+import { useTerm } from "@/hooks/useTerm";
+import { useLiveTermForYear } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useSpecializations } from "@/features/branches/queries";
+import { useTermBySlug, useTerms } from "@/features/terms/queries";
 import { useNotices } from "@/features/notices/queries";
 import { useLatestNotice, useLastSeenNotice } from "@/features/notices/useLatestNotice";
 import { toggleNoticePin } from "@/features/notices/actions";
@@ -14,12 +16,10 @@ import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { PinButton } from "@/components/shared/PinButton";
 import { DateFilterInput } from "@/components/shared/DateFilterInput";
 import { DownloadButton } from "@/components/shared/DownloadButton";
-import { Select } from "@/components/shared/Select";
 import { ResourceListSkeleton } from "@/features/resources/components/ResourceListSkeleton";
 import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import type { Notice } from "@/features/notices/types";
 import { localDateKey, formatShortDate } from "@/lib/date";
-import { ordinalSemesterLabel, ordinalYearLabel } from "@/lib/termLabel";
 import { sortByPinnedThenDate, type DateSortOrder } from "@/lib/sortByDate";
 import { cn } from "@/lib/utils";
 
@@ -42,52 +42,40 @@ export default function NoticesPage() {
     ? branchSpecializations?.find((s) => s.slug === specializationSlug)?.id ?? null
     : null;
 
-  // Same Batch-primary, date-gated Semester resolution Notes & Lab and
-  // PYQs already use — a notice posted for a SPECIFIC semester (not
-  // just whichever one the sidebar's Year switcher currently resolves
-  // to) is genuinely reachable/browsable here, not just correctly
-  // scoped in the query underneath.
-  const {
-    yearNumber,
-    allBatches,
-    eligibleBatches,
-    hasNoReachedBatches,
-    batchFilter,
-    setBatchFilter,
-    reachedTerms,
-    isLoadingReachedTerms,
-    hideSemesterFilter,
-    effectiveTerm: term,
-    effectiveTermId,
-    effectiveTermIds,
-    liveCurrentTermId,
-    setTermId,
-  } = useBatchSemesterFilter();
-  const isAllSemesters = effectiveTermId === ALL_SEMESTERS;
+  // No Batch dimension here at all — a notice is scoped purely by
+  // Branch + Specialization + Year + whichever semester is genuinely
+  // live right now, worked out automatically (see useLiveTermForYear's
+  // own comment). Unlike Notes & Lab / PYQs, there's no Semester picker
+  // either: Notices represents "what's current," not a browsable
+  // archive.
+  const { term: sidebarTermSlug } = useTerm();
+  const { data: sidebarTerm } = useTermBySlug(sidebarTermSlug);
+  const yearNumber = sidebarTerm?.year_number;
+  const liveTermId = useLiveTermForYear(yearNumber);
+  const isLoadingReachedTerms = yearNumber !== undefined && liveTermId === undefined;
+  const hasNoReachedBatches = liveTermId === null;
+  const { data: allTerms } = useTerms();
+  const term = allTerms?.find((t) => t.id === liveTermId);
   const specializationName = branchSpecializations?.find((s) => s.slug === specializationSlug)?.name;
 
   const { data: notices, isLoading, isError } = useNotices(
     branch?.id ?? null,
     specializationId,
     branch?.has_specializations ?? false,
-    isAllSemesters ? effectiveTermIds : term?.id ?? null,
-    batchFilter !== ALL_BATCHES ? batchFilter : null
+    liveTermId ?? null
   );
   const { data: role } = useCurrentRole();
   const queryClient = useQueryClient();
 
-  // Sidebar's own unread red dot (see useLatestNotice's comment) only
-  // clears once the ACTUAL latest notice — not just any notice for
-  // this branch — is genuinely present in the term/batch the viewer
-  // is currently looking at. If the real latest notice lives in a
-  // different semester than the one currently selected here, opening
-  // Notices on the WRONG semester correctly does NOT clear the dot —
-  // "opened the notices list" alone was explicitly not supposed to be
-  // enough (see the sidebar's own comment).
+  // Sidebar's own unread red dot (see useLatestNotice's comment) — same
+  // (branch, specialization, live term) scope this page itself uses
+  // now, so it only ever clears once the real current-semester notice
+  // has actually been seen here.
   const { data: latestNotice } = useLatestNotice(
     branch?.id ?? null,
     specializationId,
-    branch?.has_specializations ?? false
+    branch?.has_specializations ?? false,
+    liveTermId ?? null
   );
   const { markSeen } = useLastSeenNotice(branch?.id ?? null, specializationId);
   useEffect(() => {
@@ -126,42 +114,11 @@ export default function NoticesPage() {
     return sortByPinnedThenDate(bySearch, dateSort);
   }, [notices, dateFilter, searchQuery, dateSort]);
 
-  // Same min-w-floored, side-by-side Semester+Batch pair as Notes &
-  // Lab / PYQs — see their identical comment for why each gets its own
-  // floor instead of a shared fixed width.
-  const semesterSelect = () => (
-    <Select
-      value={effectiveTermId}
-      onChange={(event) => setTermId(event.target.value)}
-      className="min-w-[110px] sm:min-w-[260px] flex-1"
-    >
-      {isLoadingReachedTerms && <option value="">Loading…</option>}
-      {batchFilter === ALL_BATCHES && <option value={ALL_SEMESTERS}>All semesters</option>}
-      {reachedTerms.map((bt) => (
-        <option key={bt.term_id} value={bt.term_id}>
-          {ordinalSemesterLabel(bt.term.semester_number)}
-          {bt.term_id === liveCurrentTermId ? " (current)" : ""}
-        </option>
-      ))}
-    </Select>
-  );
-
-  const batchSelect = () => (
-    <Select
-      value={batchFilter}
-      onChange={(event) => setBatchFilter(event.target.value)}
-      className="min-w-[90px] sm:min-w-[150px] flex-1"
-    >
-      {(eligibleBatches?.length ?? 0) > 1 && <option value={ALL_BATCHES}>All batches</option>}
-      {eligibleBatches?.map((batch) => (
-        <option key={batch.id} value={batch.id}>
-          {batch.label}
-        </option>
-      ))}
-    </Select>
-  );
-
-  // Same reasoning as Notes & Lab / PYQs' identical check.
+  // No Batch/Semester pickers here at all anymore — see this file's
+  // top-level comment. "Not reached yet" still applies (a brand-new
+  // Year with nothing live yet for it) — same fallback shape as Notes
+  // & Lab / PYQs' identical check, just keyed off liveTermId being
+  // null instead of hasNoReachedBatches.
   if (!isLoadingReachedTerms && hasNoReachedBatches) {
     return (
       <div className="flex flex-col gap-4">
@@ -172,8 +129,7 @@ export default function NoticesPage() {
           </p>
         </div>
         <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
-          {specializationName ?? branch?.name ?? "This branch"} hasn&apos;t reached{" "}
-          {yearNumber !== undefined ? ordinalYearLabel(yearNumber) : "this year"} yet.
+          Nothing live for {specializationName ?? branch?.name ?? "this branch"} right now.
         </div>
       </div>
     );
@@ -185,15 +141,7 @@ export default function NoticesPage() {
         <h1 className="text-2xl font-medium text-foreground">Notices</h1>
         <p className="text-muted-foreground">
           Official PDFs for {branch?.name ?? "your branch"}
-          {batchFilter !== ALL_BATCHES && allBatches
-            ? ` — ${allBatches.find((b) => b.id === batchFilter)?.label ?? ""}`
-            : ""}
-          {isAllSemesters
-            ? `, ${reachedTerms[0]?.term.label.split(" - ")[0] ?? ""} - All Semesters`
-            : term
-              ? `, ${term.label}`
-              : ""}
-          .
+          {term ? `, ${term.label}` : ""}.
         </p>
       </div>
 
@@ -223,15 +171,6 @@ export default function NoticesPage() {
             placeholder="Search title, date…"
             className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-        </div>
-
-        {/* Semester + Batch, side by side — Semester first, matching
-            Notes & Lab / PYQs' identical layout. Semester hidden
-            entirely where it isn't a useful filter (see
-            hideSemesterFilter). */}
-        <div className="flex shrink-0 gap-2">
-          {!hideSemesterFilter && semesterSelect()}
-          {batchSelect()}
         </div>
 
         <DateFilterInput value={dateFilter} onChange={setDateFilter} className="min-w-[160px]" />

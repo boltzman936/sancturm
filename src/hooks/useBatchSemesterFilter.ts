@@ -413,3 +413,38 @@ export function useBatchSemesterFilter() {
     setTermId,
   };
 }
+
+/**
+ * "Which term is live for Year N, right now" — batch-independent, no
+ * Batch picker involved at all. Built for Notices (see
+ * notices/page.tsx and useLatestNotice's sidebar badge): a notice is
+ * scoped to Branch + Specialization + Year + whichever semester is
+ * genuinely current, with no Batch dimension exposed anywhere in that
+ * flow. Reuses the same useAllBatchTerms() data this file's own
+ * liveCurrentTermId is built on (already cached, no extra request —
+ * see this file's own top-level useAllBatchTerms call for that data's
+ * source).
+ *
+ * Does NOT assume exactly one batch is ever live for a Year — two
+ * batches' terms can genuinely overlap for a few days (an admission-
+ * transition window: one batch's Year 1 Sem 2 and the next batch's
+ * Year 1 Sem 1 can both have today inside their date range). When that
+ * happens, the newest-started one wins (latest start_date) — same
+ * recency convention resolveDefaultBatchIdForYear/currentTermId's own
+ * fallback already use elsewhere in this file. When NOTHING is live
+ * today (between semesters), falls back to the most recently reached
+ * one, same fallback shape as currentTermId.
+ */
+export function useLiveTermForYear(yearNumber: number | undefined) {
+  const { data: everyBatchTerms } = useAllBatchTerms();
+  return useMemo(() => {
+    if (yearNumber === undefined || !everyBatchTerms) return undefined;
+    const todayKey = localDateKey(new Date().toISOString());
+    const forYear = everyBatchTerms
+      .filter((bt) => bt.term.year_number === yearNumber && isDateReached(bt.start_date, todayKey))
+      .sort((a, b) => b.start_date.localeCompare(a.start_date)); // newest-started first
+    if (forYear.length === 0) return null;
+    const live = forYear.find((bt) => todayKey <= bt.end_date);
+    return (live ?? forYear[0]).term_id;
+  }, [yearNumber, everyBatchTerms]);
+}

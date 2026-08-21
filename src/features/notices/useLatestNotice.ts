@@ -6,31 +6,43 @@ import { createClient } from "@/lib/supabase/client";
 
 /**
  * Just the id + created_at of the single newest notice for this
- * (branch, specialization) — NOT the full useNotices() list (title,
- * body, pdf_url, pinned state, ...), and deliberately not scoped by
- * term/batch the way useNotices() is. This only powers the sidebar's
- * unread red dot (see Sidebar.tsx), which needs to answer one cheap
- * question ("is there anything newer than what I've seen") from every
- * page in the app, not just while actually on /notices — scoping it
- * down to branch/specialization only, instead of replicating the full
- * useBatchSemesterFilter term/batch resolution just for a badge, is a
- * deliberate simplification: an occasional false-positive dot for a
- * notice posted to a semester the viewer isn't currently looking at is
- * a fair trade for not duplicating that machinery (and its own network
- * requests) on every single page load.
+ * (branch, specialization, term) — NOT the full useNotices() list
+ * (title, body, pdf_url, pinned state, ...). This only powers the
+ * sidebar's unread red dot (see Sidebar.tsx), which needs to answer
+ * one cheap question ("is there anything newer than what I've seen,
+ * for MY actual current context") from every page in the app, not
+ * just while actually on /notices.
+ *
+ * termId is the viewer's live term for their sidebar Year (see
+ * useLiveTermForYear in useBatchSemesterFilter.ts) — matching exactly
+ * what the Notices page itself now shows (Branch + Specialization +
+ * Year + current live Semester, no Batch dimension). A notice for a
+ * different semester/year no longer lights up this dot; passing
+ * termId as null (still loading) disables the query entirely rather
+ * than falling back to "any notice ever," which used to produce
+ * false-positive dots for notices the viewer would never actually see.
  */
-export function useLatestNotice(branchId: string | null, specializationId: string | null, hasSpecializations: boolean) {
+export function useLatestNotice(
+  branchId: string | null,
+  specializationId: string | null,
+  hasSpecializations: boolean,
+  termId: string | null
+) {
   return useQuery({
-    queryKey: ["notices", "latest", branchId, hasSpecializations ? specializationId : null],
+    queryKey: ["notices", "latest", branchId, hasSpecializations ? specializationId : null, termId],
     queryFn: async () => {
       const supabase = createClient();
-      let query = supabase.from("notices").select("id, created_at").eq("branch_id", branchId!);
+      let query = supabase
+        .from("notices")
+        .select("id, created_at")
+        .eq("branch_id", branchId!)
+        .eq("term_id", termId!);
       query = hasSpecializations ? query.eq("specialization_id", specializationId!) : query.is("specialization_id", null);
       const { data, error } = await query.order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (error) throw error;
       return data as { id: string; created_at: string } | null;
     },
-    enabled: !!branchId && (!hasSpecializations || !!specializationId),
+    enabled: !!branchId && !!termId && (!hasSpecializations || !!specializationId),
     staleTime: 30_000,
   });
 }

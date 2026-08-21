@@ -11,7 +11,10 @@ import { ThemeSwitcher } from "@/components/layout/ThemeSwitcher";
 import { Logo } from "@/components/layout/Logo";
 import { useBranch } from "@/hooks/useBranch";
 import { useSpecialization } from "@/hooks/useSpecialization";
+import { useTerm } from "@/hooks/useTerm";
+import { useLiveTermForYear } from "@/hooks/useBatchSemesterFilter";
 import { useBranchBySlug, useSpecializationBySlug } from "@/features/branches/queries";
+import { useTermBySlug } from "@/features/terms/queries";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { SignOutButton } from "@/lib/auth/SignOutButton";
 import { useLatestNotice, useLastSeenNotice } from "@/features/notices/useLatestNotice";
@@ -45,15 +48,18 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   // access is a branch CR, so "CR dashboard" stays accurate for them.
   const dashboardLabel = role?.type === "admin" ? "Controller's dashboard" : "CR dashboard";
 
-  // Unread-notice red dot — see useLatestNotice's own comment for why
-  // this is a separate, deliberately narrower query than the Notices
-  // page's own useNotices(), and why it's scoped only to branch/
-  // specialization, not term/batch.
+  // Unread-notice red dot — same (branch, specialization, live term)
+  // scope as the Notices page itself now uses, so the dot only ever
+  // lights up for a notice the viewer would actually see there.
   const specializationId = currentBranch?.has_specializations ? (currentSpecialization?.id ?? null) : null;
+  const { term: sidebarTermSlug } = useTerm();
+  const { data: sidebarTerm } = useTermBySlug(sidebarTermSlug);
+  const liveTermId = useLiveTermForYear(sidebarTerm?.year_number);
   const { data: latestNotice } = useLatestNotice(
     currentBranch?.id ?? null,
     specializationId,
-    currentBranch?.has_specializations ?? false
+    currentBranch?.has_specializations ?? false,
+    liveTermId ?? null
   );
   const { lastSeenId } = useLastSeenNotice(currentBranch?.id ?? null, specializationId);
   const hasUnreadNotice = !!latestNotice && latestNotice.id !== lastSeenId;
