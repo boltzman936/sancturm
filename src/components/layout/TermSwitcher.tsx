@@ -25,11 +25,11 @@ export function TermSwitcher() {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="flex w-full items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Switch year"
         >
-          <span>{current ? current.label.split(" - ")[0] : "Select year"}</span>
-          <ChevronsUpDown className="h-4 w-4 text-subtle-foreground" />
+          <span className="min-w-0 truncate">{current ? current.label.split(" - ")[0] : "Select year"}</span>
+          <ChevronsUpDown className="h-4 w-4 shrink-0 text-subtle-foreground" />
         </button>
       </DropdownMenu.Trigger>
 
