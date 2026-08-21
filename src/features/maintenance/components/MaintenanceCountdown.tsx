@@ -114,7 +114,6 @@ export function MaintenanceCountdown({
       {/* eslint-disable-next-line @next/next/no-img-element -- fixed
           background art per responsive tier, not a content image. */}
       <img src={backgroundSrc} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" />
-      <div className="absolute inset-0 bg-background/55" />
 
       {/* Ambient glow — the same --glow-red/--glow-blue tokens every
           other deliberate accent in this app draws from (see
@@ -152,7 +151,12 @@ export function MaintenanceCountdown({
             <Wrench className="h-4 w-4 text-primary" strokeWidth={1.75} />
           </div>
 
-          <div className="flex flex-col items-center gap-2">
+          {/* A card of its own, not a wash over the background art —
+              the media itself stays untouched; this is the "separate
+              content layer" carrying the text's own readable
+              background instead, same pattern the countdown box below
+              already uses. */}
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card px-6 py-4">
             <h1 className="text-balance font-mono text-[24px] font-medium tracking-[0.05em] text-foreground md:text-[32px]">
               Under maintenance
             </h1>

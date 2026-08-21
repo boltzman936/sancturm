@@ -395,8 +395,6 @@ export function IntroExperience() {
             onLoad={() => setVideoReady(true)}
           />
         )}
-        <div className="absolute inset-0 bg-black/35" />
-
         {/* Positioned at 22% down the frame on tablet/desktop — lines up
             with the new artwork's own open cream-sky area (right of
             the seated figure), not vertically centered, since centering
@@ -408,8 +406,18 @@ export function IntroExperience() {
         <div className="absolute inset-x-0 top-[19%] flex flex-col items-center gap-6 px-6 text-center sm:top-[22%]">
           {videoReady && (
             <h1
-              className="whitespace-nowrap font-mono text-[24px] font-medium tracking-[0.02em] text-foreground sm:text-[30px] sm:tracking-[0.08em] md:text-[40px] lg:text-[56px]"
-              style={{ textShadow: "0 0 10px rgba(77,168,255,.18)" }}
+              // No overlay on the media itself (see the background art's
+              // own comment — a wash over the whole frame was exactly
+              // what made it look faded in a screenshot review). Text
+              // legibility now comes entirely from the text's own
+              // rendering: a tight dark stack (readable against a light
+              // sky) plus the original glow underneath, not anything
+              // layered over the video/image.
+              className="whitespace-nowrap font-mono text-[24px] font-medium tracking-[0.02em] text-white sm:text-[30px] sm:tracking-[0.08em] md:text-[40px] lg:text-[56px]"
+              style={{
+                textShadow:
+                  "0 1px 3px rgba(0,0,0,.85), 0 0 1px rgba(0,0,0,.9), 0 0 20px rgba(77,168,255,.25)",
+              }}
             >
               {typedText}
               <span className={cursorClassName(typingDone, cursorVisible)} aria-hidden="true">

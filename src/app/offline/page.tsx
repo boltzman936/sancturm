@@ -64,10 +64,6 @@ export default function OfflinePage() {
         unoptimized
         className="hidden object-cover lg:block"
       />
-      {/* Dark overlay for text legibility — deliberately light (30%)
-          so the artwork stays the visual focus, not hidden behind it. */}
-      <div className="absolute inset-0 bg-black/30" />
-
       {/* Content sized down proportionally from the original (see item
           22 of the redesign brief) — every piece scaled together, same
           approach as the Maintenance page's identical treatment. */}
@@ -77,21 +73,30 @@ export default function OfflinePage() {
         animate="show"
         className="relative flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center"
       >
-        <motion.div variants={item}>
-          <WifiOff aria-hidden="true" size={44} strokeWidth={1.75} className="text-primary opacity-95" />
-        </motion.div>
+        {/* A card of its own, not a wash over the background art — the
+            media stays untouched at its own original colors/contrast;
+            this is the "separate content layer" carrying the text's
+            own readable background instead. Plain div, not its own
+            motion item — icon/h1/p keep their original individually-
+            staggered reveal (container's staggerChildren), this just
+            gives that same group a shared background underneath it. */}
+        <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card px-8 py-6">
+          <motion.div variants={item}>
+            <WifiOff aria-hidden="true" size={44} strokeWidth={1.75} className="text-primary opacity-95" />
+          </motion.div>
 
-        <motion.h1
-          variants={item}
-          className="font-mono text-[27px] font-medium tracking-[0.08em] text-foreground md:text-[34px] lg:text-[42px]"
-          style={{ textShadow: "0 0 12px var(--glow-red)" }}
-        >
-          No Internet
-        </motion.h1>
+          <motion.h1
+            variants={item}
+            className="font-mono text-[27px] font-medium tracking-[0.08em] text-foreground md:text-[34px] lg:text-[42px]"
+            style={{ textShadow: "0 0 12px var(--glow-red)" }}
+          >
+            No Internet
+          </motion.h1>
 
-        <motion.p variants={item} className={cn(inter.className, "text-[15px] text-muted-foreground")}>
-          Unable to connect to Sancturm.
-        </motion.p>
+          <motion.p variants={item} className={cn(inter.className, "text-[15px] text-muted-foreground")}>
+            Unable to connect to Sancturm.
+          </motion.p>
+        </div>
 
         <motion.button
           variants={item}
