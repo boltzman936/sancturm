@@ -349,8 +349,14 @@ export function IntroExperience() {
         {/* Anchored higher than the frame's own open-sky area's exact
             center so it clears the seated figure/desk lower in frame —
             moved up from the previous 19%/22% anchor, which read as
-            too low against the intended empty space. */}
-        <div className="absolute inset-x-0 top-[6%] flex flex-col items-center gap-6 px-6 text-center sm:top-[8%] lg:top-[11%]">
+            too low against the intended empty space. Mobile/tablet
+            pushed up further still (3%/5%, was 6%/8%) — on a narrow
+            viewport the card's own height eats a bigger share of the
+            frame, and even a modest anchor was low enough for the
+            card's bottom edge to reach the seated figure lower in the
+            art; desktop's figure sits further down relative to the
+            card so 11% was already clear. */}
+        <div className="absolute inset-x-0 top-[3%] flex flex-col items-center gap-6 px-6 text-center sm:top-[5%] lg:top-[11%]">
           {videoReady && (
             <h1
               // No overlay on the media itself (see the background art's

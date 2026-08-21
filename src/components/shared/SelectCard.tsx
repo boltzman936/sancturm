@@ -67,14 +67,19 @@ export function SelectCard<T>({
         className
       )}
     >
-      <h2 className="mb-4 text-center font-mono text-xs tracking-[0.08em] text-foreground/80">{title}</h2>
+      {/* mb-3/gap-1.5/py-2.5 on mobile+tablet (~10% shorter overall
+          than desktop's mb-4/gap-2/py-3, not a flat shrink) — still a
+          real ~40px tap target with normal line-height, just tighter
+          rhythm between title/options so the whole card takes less
+          vertical room on a phone/tablet screen. */}
+      <h2 className="mb-3 text-center font-mono text-xs tracking-[0.08em] text-foreground/80 lg:mb-4">{title}</h2>
       <AnimatePresence mode="wait" initial={false}>
         {isLoading ? (
           <motion.div
             key="loading"
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.2 }}
-            className="flex flex-col gap-2"
+            className="flex flex-col gap-1.5 lg:gap-2"
             aria-live="polite"
             aria-label={loadingLabel}
           >
@@ -127,7 +132,7 @@ export function SelectCard<T>({
                 whileHover={{ scale: 1.015 }}
                 whileTap={{ scale: 0.985 }}
                 onClick={() => onSelect(item)}
-                className="rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-left text-foreground transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-left text-foreground transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:py-3"
               >
                 {getLabel(item)}
               </motion.button>
