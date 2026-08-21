@@ -111,24 +111,21 @@ export function TeamList() {
           {/* Desktop/tablet — same column count as the real table so
               nothing reflows once rows swap in. */}
           <div className="hidden overflow-x-auto rounded-lg border border-border bg-card sm:block" aria-hidden="true">
-            <table className="w-full text-left text-sm">
+            <table className="w-full table-fixed text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-subtle-foreground">
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">No.</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Name</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Role</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Branch</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Specialization</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Year</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Semester</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Card</th>
+                  <th className="w-10 px-3 py-2 font-normal">No.</th>
+                  <th className="px-3 py-2 font-normal">Name</th>
+                  <th className="px-3 py-2 font-normal">Branch</th>
+                  <th className="w-28 px-3 py-2 font-normal">Year · Sem</th>
+                  <th className="w-16 px-3 py-2 font-normal">Card</th>
                 </tr>
               </thead>
               <tbody>
                 {Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} className="border-b border-border last:border-b-0">
-                    {Array.from({ length: 8 }).map((__, col) => (
-                      <td key={col} className="px-4 py-3">
+                    {Array.from({ length: 5 }).map((__, col) => (
+                      <td key={col} className="px-3 py-2.5">
                         <Skeleton className="h-3.5 w-16" />
                       </td>
                     ))}
@@ -164,51 +161,61 @@ export function TeamList() {
 
       {rows && rows.length > 0 && (
         <>
-          {/* Desktop/tablet — a real table, columns stay aligned across
-              every row so scanning down "Year" or "Semester" reads
-              cleanly. overflow-x-auto is a safety net, not the primary
+          {/* Desktop/tablet — a real table. Collapsed to 5 columns (not
+              8) specifically so it fits without horizontal scroll at
+              sm+: "Role" dropped (redundant — every row here is Admin
+              · CR, already said by the heading above), Branch +
+              Specialization combined into one column, Year + Semester
+              combined into one column. overflow-x-auto stays only as a
+              genuine last-resort safety net, not the primary
               responsive strategy (that's the mobile card list below,
-              sm:hidden) — this table's own columns are compact enough
-              to never actually need it at sm+. */}
+              sm:hidden) — five compact columns comfortably fit at sm+
+              without ever needing it in practice. */}
           <div className="hidden overflow-x-auto rounded-lg border border-border bg-card sm:block">
-            <table className="w-full text-left text-sm">
+            <table className="w-full table-fixed text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-subtle-foreground">
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">No.</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Name</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Role</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Branch</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Specialization</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Year</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Semester</th>
-                  <th className="px-3 py-2 font-normal whitespace-nowrap">Card</th>
+                  <th className="w-10 px-3 py-2 font-normal">No.</th>
+                  <th className="px-3 py-2 font-normal">Name</th>
+                  <th className="px-3 py-2 font-normal">Branch</th>
+                  <th className="w-28 px-3 py-2 font-normal">Year · Sem</th>
+                  <th className="w-16 px-3 py-2 font-normal">Card</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, index) => (
                   <tr key={row.key} className="border-b border-border last:border-b-0">
                     <td className="px-3 py-2.5 font-mono text-xs text-subtle-foreground">{index + 1}</td>
-                    <td className="px-3 py-2.5 font-medium text-foreground">{row.name}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">Admin · CR</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{row.branchName}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{row.specializationName ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{row.yearLabel}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{row.semesterLabel}</td>
+                    <td className="truncate px-3 py-2.5 font-medium text-foreground" title={row.name}>
+                      {row.name}
+                    </td>
+                    <td
+                      className="truncate px-3 py-2.5 text-muted-foreground"
+                      title={row.specializationName ? `${row.branchName} — ${row.specializationName}` : row.branchName}
+                    >
+                      {row.branchName}
+                      {row.specializationName && (
+                        <span className="text-subtle-foreground"> — {row.specializationName}</span>
+                      )}
+                    </td>
+                    <td className="truncate px-3 py-2.5 text-muted-foreground">
+                      {row.yearLabel} · {row.semesterLabel}
+                    </td>
                     <td className="px-3 py-2.5">
                       <button
                         type="button"
                         disabled={!row.cardUrl}
                         onClick={() => row.cardUrl && setViewingCard({ name: row.name, url: row.cardUrl })}
+                        aria-label={row.cardUrl ? `View ${row.name}'s CR card` : "No card uploaded yet"}
                         title={row.cardUrl ? `View ${row.name}'s CR card` : "No card uploaded yet"}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs transition-colors",
+                          "inline-flex h-7 w-7 items-center justify-center rounded-md border border-border transition-colors",
                           row.cardUrl
                             ? "text-foreground hover:bg-background-secondary active:bg-background-secondary"
                             : "cursor-not-allowed text-disabled-foreground"
                         )}
                       >
                         <Eye className="h-3.5 w-3.5" />
-                        View
                       </button>
                     </td>
                   </tr>
