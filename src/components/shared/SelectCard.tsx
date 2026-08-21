@@ -69,8 +69,18 @@ export function SelectCard<T>({
         // phone/tablet's own much smaller viewport; a small, subtle
         // panel reads as premium against full-bleed art at every size,
         // a big one reads as a modal. A further ~10% pass (200/215/
-        // 250px, was 220/240/280) on top of that.
-        "w-full max-w-[200px] rounded-2xl border border-white/20 bg-white/10 p-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md backdrop-saturate-150 sm:max-w-[215px] sm:p-3 lg:max-w-[250px] lg:p-3.5",
+        // 250px, was 220/240/280) on top of that, plus one step back up
+        // at xl (300px, ≥1280px) — a large/high-res laptop has enough
+        // room that 250px read as lost/undersized against the frame,
+        // not "compact." backdrop-saturate dropped from 150 to 100
+        // (i.e. off, not boosted) — saturate-150 was punching up
+        // whatever hue sits behind the glass, so a warm/cream sky (like
+        // this artwork's) came through MORE vivid through the "glass"
+        // than the sky itself, reading as a solid warm block instead of
+        // neutral frosted glass. Plain backdrop-blur without a
+        // saturation boost is what actually looks like glass over any
+        // background hue, not just cool ones.
+        "w-full max-w-[200px] rounded-2xl border border-white/20 bg-white/10 p-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md sm:max-w-[215px] sm:p-3 lg:max-w-[250px] lg:p-3.5 xl:max-w-[300px]",
         className
       )}
     >
