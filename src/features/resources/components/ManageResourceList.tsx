@@ -455,11 +455,27 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
     setError(null);
   }, [open, resource]);
 
+  // This button renders once per row in a Manage list that can span
+  // every branch/specialization/term/batch at once ("everything
+  // currently live" — see the page's own copy), so EVERY row used to
+  // fire its own useBatchesForTerm/useSpecializations/useSubjects the
+  // instant the list mounted, purely to pre-populate an Edit dialog
+  // most rows will never have opened — one distinct, uncached network
+  // request per unique (branch, specialization, term) combination in
+  // the list, on every single Manage page load. `open &&` gates below
+  // defer all three to the moment this specific row's dialog actually
+  // opens (their own `enabled` already no-ops on a null/falsy arg, so
+  // this is just withholding the real id until then). useBranches/
+  // useTerms/useCanonicalSubjects stay ungated — same query key as the
+  // parent list's own calls, so React Query already dedupes those to
+  // one shared request regardless of row count.
   const { data: branches } = useBranches();
   const { data: terms } = useTerms();
-  const { data: validBatches } = useBatchesForTerm(termId || null);
+  const { data: validBatches } = useBatchesForTerm(open ? termId || null : null);
   const currentBranch = branches?.find((b) => b.id === branchId);
-  const { data: branchSpecializations } = useSpecializations(currentBranch?.has_specializations ? branchId : null);
+  const { data: branchSpecializations } = useSpecializations(
+    open && currentBranch?.has_specializations ? branchId : null
+  );
   const effectiveSpecializationId = currentBranch?.has_specializations ? specializationId || null : null;
   // Driven by the currently-picked Type, not the resource's original
   // section — switching Type here can move a row between notes_lab
@@ -467,9 +483,9 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   // track whatever's selected right now, not what it started as.
   const isPyqType = resourceType === "pyq" || resourceType === "pyq_solution";
   const { data: allSubjects } = useSubjects(
-    resource.kind === "resource" ? branchId || null : null,
-    resource.kind === "resource" ? effectiveSpecializationId : null,
-    resource.kind === "resource" ? termId || null : null
+    open && resource.kind === "resource" ? branchId || null : null,
+    open && resource.kind === "resource" ? effectiveSpecializationId : null,
+    open && resource.kind === "resource" ? termId || null : null
   );
   const subjects = allSubjects ? filterSubjectsForResourceType(allSubjects, resourceType) : undefined;
   // EditResourceButton only ever renders for an admin (see its call

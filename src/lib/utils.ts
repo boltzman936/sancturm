@@ -40,8 +40,29 @@ export type DownloadProgress = {
  * is the caller's own responsibility now.
  */
 export async function downloadFile(url: string, filename: string, onProgress?: (progress: DownloadProgress) => void) {
-  const response = await fetch(url);
+  // A stall timeout, not a flat one — same shape as uploadFile.ts's
+  // own (see its comment): a large scanned-notes PDF can legitimately
+  // take a while end-to-end, but a connection that opens and then
+  // never delivers another byte (stalled mid-stream, neither erroring
+  // nor closing) used to hang this forever with no way for the caller
+  // to ever see a failure. Resets on every chunk actually received;
+  // only fires if genuinely nothing arrives for 30s straight.
+  const controller = new AbortController();
+  let stallTimer: ReturnType<typeof setTimeout> = setTimeout(() => controller.abort(), 30_000);
+  function resetStallTimer() {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => controller.abort(), 30_000);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } catch {
+    clearTimeout(stallTimer);
+    throw new Error("Download timed out.");
+  }
   if (!response.ok || !response.body) {
+    clearTimeout(stallTimer);
     throw new Error(`Download failed (${response.status}).`);
   }
 
@@ -51,12 +72,19 @@ export async function downloadFile(url: string, filename: string, onProgress?: (
   const chunks: Uint8Array[] = [];
   let loaded = 0;
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    loaded += value.length;
-    onProgress?.({ loaded, total: total && Number.isFinite(total) ? total : null });
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      resetStallTimer();
+      chunks.push(value);
+      loaded += value.length;
+      onProgress?.({ loaded, total: total && Number.isFinite(total) ? total : null });
+    }
+  } catch {
+    throw new Error("Download timed out.");
+  } finally {
+    clearTimeout(stallTimer);
   }
 
   const blob = new Blob(chunks as BlobPart[]);

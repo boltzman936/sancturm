@@ -81,9 +81,14 @@ export async function verifyUploadedFileOrCleanUp(fileUrl: string): Promise<Veri
   const publicBase = process.env.R2_PUBLIC_URL?.replace(/\/$/, "");
   if (!publicBase || !fileUrl.startsWith(`${publicBase}/`)) return invalid;
 
+  // Every fetch below is bounded — a stalled R2 connection (bytes
+  // never arrive, but the socket never errors or closes either) used
+  // to hang this Server Action indefinitely, which hangs the upload's
+  // response to the browser with it. AbortSignal.timeout rejects
+  // (caught by the existing try/catch below) instead of hanging.
   let headResponse: Response;
   try {
-    headResponse = await fetch(fileUrl, { method: "HEAD" });
+    headResponse = await fetch(fileUrl, { method: "HEAD", signal: AbortSignal.timeout(10_000) });
   } catch {
     return invalid;
   }
@@ -103,7 +108,9 @@ export async function verifyUploadedFileOrCleanUp(fileUrl: string): Promise<Veri
 
   let response: Response;
   try {
-    response = await fetch(fileUrl);
+    // Longer bound than the HEAD above — this downloads the whole
+    // body (up to MAX_FILE_SIZE_BYTES), not just headers.
+    response = await fetch(fileUrl, { signal: AbortSignal.timeout(30_000) });
   } catch {
     return invalid;
   }

@@ -2,13 +2,21 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useDeviceTier } from "@/hooks/useDeviceTier";
 
 const OFFLINE_PATH = "/offline";
-// All three tiers — the page picks between them with a CSS breakpoint
-// (see offline/page.tsx), so whichever one ends up visible needs to
-// already be cached regardless of which width the device is at right
-// now.
-const OFFLINE_BG_SRCS = ["/media/error-desktop.webp", "/media/error-tablet.webp", "/media/error-mobile.webp"];
+// Keyed by device tier — offline/page.tsx picks between these with a
+// CSS breakpoint, but a given device can only ever end up showing ONE
+// of them (its own tier doesn't change mid-session), so only that
+// one needs prefetching. All three used to be fetched unconditionally
+// on every single page load for every visitor — up to ~1MB of images
+// nobody's device would ever display, just to cover tiers that could
+// never apply to them.
+const OFFLINE_BG_SRC_BY_TIER = {
+  mobile: "/media/error-mobile.webp",
+  tablet: "/media/error-tablet.webp",
+  desktop: "/media/error-desktop.webp",
+} as const;
 // Where to send the student back to once they're reconnected —
 // sessionStorage (not a ref) because the redirect to /offline is a
 // full route change, and this needs to survive that.
@@ -60,6 +68,7 @@ export function OfflineWatcher() {
   const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
+  const deviceTier = useDeviceTier();
 
   useEffect(() => {
     pathnameRef.current = pathname;
@@ -68,12 +77,11 @@ export function OfflineWatcher() {
   useEffect(() => {
     router.prefetch(OFFLINE_PATH);
     // Plain Image() fetch, not next/image — this just needs the bytes
-    // in the browser cache ahead of time, no resizing involved.
-    for (const src of OFFLINE_BG_SRCS) {
-      const img = new window.Image();
-      img.src = src;
-    }
-  }, [router]);
+    // in the browser cache ahead of time, no resizing involved. Only
+    // this device's own tier — see OFFLINE_BG_SRC_BY_TIER's comment.
+    const img = new window.Image();
+    img.src = OFFLINE_BG_SRC_BY_TIER[deviceTier];
+  }, [router, deviceTier]);
 
   useEffect(() => {
     let cancelled = false;
