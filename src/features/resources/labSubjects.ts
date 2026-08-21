@@ -178,7 +178,7 @@ export const LAB_ONLY_SUBJECT_SLUGS = new Set([
 // previously each reimplemented this branch inline.
 export function filterSubjectsForResourceType<T extends { slug: string }>(
   subjects: T[],
-  resourceType: "notes" | "lab_manual" | "pyq" | "pyq_solution" | "notice" | "update"
+  resourceType: "notes" | "lab_manual" | "pyq" | "pyq_solution" | "notice" | "update" | "cr_card"
 ): T[] {
   return resourceType === "lab_manual"
     ? subjects.filter((subject) => LAB_SUBJECT_SLUGS.has(subject.slug))

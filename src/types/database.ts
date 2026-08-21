@@ -143,6 +143,11 @@ export type TeamDirectoryEntry = {
   batch_id: string;
   year_number: number;
   current_term_id: string;
+  // Public once uploaded — an admin-provided CR card image, shown from
+  // Sancturm Team's own "View" action. Still fine to expose here
+  // alongside the rest of this row: see team_directory()'s own comment
+  // for why `id`/`auth_user_id` stay excluded but this doesn't.
+  card_file_url: string | null;
 };
 
 // Same singleton pattern — `until` is the sole source of truth for

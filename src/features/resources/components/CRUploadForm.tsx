@@ -20,10 +20,11 @@ import { NoticeComposer } from "@/features/notices/components/NoticeComposer";
 import { CustomNoticeComposer } from "@/features/notices/components/CustomNoticeComposer";
 import { UpdateComposer } from "@/features/sancturmUpdates/components/UpdateComposer";
 import { CustomUpdateComposer } from "@/features/sancturmUpdates/components/CustomUpdateComposer";
+import { CrCardUploadForm } from "@/features/team/components/CrCardUploadForm";
 import { localDateKey, formatShortDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
-type UploadType = "notes" | "lab_manual" | "pyq" | "notice" | "update";
+type UploadType = "notes" | "lab_manual" | "pyq" | "notice" | "update" | "cr_card";
 type PublishMode = "upload" | "custom";
 type BranchOption = { id: string; name: string; has_specializations: boolean };
 type TermOption = { id: string; label: string };
@@ -424,7 +425,7 @@ export function CRUploadForm({
     "lab_manual",
     "pyq",
     "notice",
-    ...(isAdmin ? (["update"] as const) : []),
+    ...(isAdmin ? (["update", "cr_card"] as const) : []),
   ] as const;
 
   const typeToggle = (
@@ -457,7 +458,9 @@ export function CRUploadForm({
                   ? "PYQ"
                   : type === "notice"
                     ? "Notice"
-                    : "Update"}
+                    : type === "update"
+                      ? "Update"
+                      : "CR Card"}
           </button>
         ))}
       </div>
@@ -523,6 +526,15 @@ export function CRUploadForm({
         {howToggle(publishMode, ["Upload PDF", "Write custom update"])}
 
         {publishMode === "upload" ? <UpdateComposer /> : <CustomUpdateComposer />}
+      </div>
+    );
+  }
+
+  if (resourceType === "cr_card") {
+    return (
+      <div className="flex flex-col gap-3">
+        {typeToggle}
+        <CrCardUploadForm />
       </div>
     );
   }

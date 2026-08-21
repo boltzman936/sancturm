@@ -1,11 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Eye } from "lucide-react";
 import { useTeamDirectory } from "@/features/team/queries";
 import { useBranches, useAllSpecializations } from "@/features/branches/queries";
 import { useTerms } from "@/features/terms/queries";
 import { Skeleton } from "@/components/shared/Skeleton";
+import { ResourceViewerDialog } from "@/features/resources/components/ResourceViewerDialog";
 import { shortTermLabel, ordinalSemesterLabel } from "@/lib/termLabel";
+import { cn } from "@/lib/utils";
 import type { TeamDirectoryEntry } from "@/types/database";
 
 type ResolvedRow = {
@@ -20,6 +23,10 @@ type ResolvedRow = {
   // work today but breaks the moment a 10th Year exists ("10th Year" <
   // "2nd Year" alphabetically); year_number is the real ordering.
   yearNumber: number;
+  // Null until an admin uploads one (see CrCardUploadForm) — View stays
+  // visible either way (every CR gets the option) but is disabled
+  // until there's actually something to show.
+  cardUrl: string | null;
 };
 
 // Year, then Branch, then Specialization — matches how the sidebar
@@ -61,6 +68,7 @@ function resolveRows(
       yearLabel: term ? shortTermLabel(term) : "—",
       semesterLabel: term ? ordinalSemesterLabel(term.semester_number) : "—",
       yearNumber: term?.year_number ?? Number.MAX_SAFE_INTEGER,
+      cardUrl: entry.card_file_url,
     };
   });
   return sortRows(resolved);
@@ -87,6 +95,13 @@ export function TeamList() {
     return resolveRows(entries, branches, specializations, terms);
   }, [entries, branches, specializations, terms]);
 
+  // Only ever holds {name, url} for the card actually being looked at
+  // — ResourceViewerDialog (reused as-is, same as Sancturm updates'
+  // own PDF viewer) doesn't render an <img> until this is non-null, so
+  // no card image is fetched until its own View button is clicked, not
+  // when the page/list itself loads.
+  const [viewingCard, setViewingCard] = useState<{ name: string; url: string } | null>(null);
+
   return (
     <div className="flex flex-col gap-3">
       <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">Admins · CRs</h2>
@@ -106,12 +121,13 @@ export function TeamList() {
                   <th className="px-4 py-2.5 font-normal">Specialization</th>
                   <th className="px-4 py-2.5 font-normal">Year</th>
                   <th className="px-4 py-2.5 font-normal">Semester</th>
+                  <th className="px-4 py-2.5 font-normal">Card</th>
                 </tr>
               </thead>
               <tbody>
                 {Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} className="border-b border-border last:border-b-0">
-                    {Array.from({ length: 7 }).map((__, col) => (
+                    {Array.from({ length: 8 }).map((__, col) => (
                       <td key={col} className="px-4 py-3">
                         <Skeleton className="h-3.5 w-16" />
                       </td>
@@ -165,6 +181,7 @@ export function TeamList() {
                   <th className="px-4 py-2.5 font-normal">Specialization</th>
                   <th className="px-4 py-2.5 font-normal">Year</th>
                   <th className="px-4 py-2.5 font-normal">Semester</th>
+                  <th className="px-4 py-2.5 font-normal">Card</th>
                 </tr>
               </thead>
               <tbody>
@@ -177,6 +194,23 @@ export function TeamList() {
                     <td className="px-4 py-3 text-muted-foreground">{row.specializationName ?? "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{row.yearLabel}</td>
                     <td className="px-4 py-3 text-muted-foreground">{row.semesterLabel}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        disabled={!row.cardUrl}
+                        onClick={() => row.cardUrl && setViewingCard({ name: row.name, url: row.cardUrl })}
+                        title={row.cardUrl ? `View ${row.name}'s CR card` : "No card uploaded yet"}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs transition-colors",
+                          row.cardUrl
+                            ? "text-foreground hover:bg-background-secondary active:bg-background-secondary"
+                            : "cursor-not-allowed text-disabled-foreground"
+                        )}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        View
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -211,11 +245,33 @@ export function TeamList() {
                   <dt className="text-subtle-foreground">Semester</dt>
                   <dd className="text-foreground">{row.semesterLabel}</dd>
                 </dl>
+                <button
+                  type="button"
+                  disabled={!row.cardUrl}
+                  onClick={() => row.cardUrl && setViewingCard({ name: row.name, url: row.cardUrl })}
+                  className={cn(
+                    "mt-2.5 inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors",
+                    row.cardUrl
+                      ? "text-foreground hover:bg-background-secondary active:bg-background-secondary"
+                      : "cursor-not-allowed text-disabled-foreground"
+                  )}
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  {row.cardUrl ? "View card" : "No card yet"}
+                </button>
               </div>
             ))}
           </div>
         </>
       )}
+
+      <ResourceViewerDialog
+        resource={viewingCard ? { title: viewingCard.name, file_url: viewingCard.url } : null}
+        open={viewingCard !== null}
+        onOpenChange={(open) => {
+          if (!open) setViewingCard(null);
+        }}
+      />
     </div>
   );
 }

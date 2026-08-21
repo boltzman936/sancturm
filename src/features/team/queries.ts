@@ -28,3 +28,40 @@ export function useTeamDirectory() {
     staleTime: 60_000,
   });
 }
+
+export type CrProfileForAdmin = {
+  id: string;
+  display_name: string;
+  branch_id: string;
+  specialization_id: string | null;
+  batch_id: string;
+  year_number: number;
+  card_file_url: string | null;
+};
+
+/**
+ * The CR Card upload picker's own source list — a direct
+ * `.from("cr_profiles")` select, NOT team_directory(). This is safe
+ * specifically because cr_profiles' RLS ("Read own profile, or any if
+ * admin") already limits this to exactly the caller's own admin
+ * session; a non-admin calling this hook gets back at most their own
+ * single row, never the roster. The actual "only admin can upload a
+ * card" boundary is still enforced server-side in uploadCrCard, not by
+ * this query being reachable at all — same belt-and-suspenders shape
+ * every other admin-only mutation in this app already uses.
+ */
+export function useCrProfilesForAdmin() {
+  return useQuery({
+    queryKey: ["cr-profiles-admin"],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("cr_profiles")
+        .select("id, display_name, branch_id, specialization_id, batch_id, year_number, card_file_url")
+        .order("display_name");
+      if (error) throw error;
+      return data as CrProfileForAdmin[];
+    },
+    staleTime: 60_000,
+  });
+}
