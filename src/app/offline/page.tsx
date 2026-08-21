@@ -36,7 +36,11 @@ function handleRetry() {
 
 export default function OfflinePage() {
   return (
-    <main className="fixed inset-0 overflow-hidden bg-background">
+    // bg-black, not bg-background — the theme token is a warm cream/
+    // brown in every palette, which flashed behind the artwork for the
+    // split second before it paints. Black is neutral against art of
+    // any hue instead of reading as a colored placeholder.
+    <main className="fixed inset-0 overflow-hidden bg-black">
       {/* unoptimized: this page's whole point is to render with no
           network available — going through Next's /_next/image
           resizing endpoint would need a live server round-trip it

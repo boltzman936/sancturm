@@ -362,7 +362,7 @@ export function IntroExperience() {
             card's bottom edge to reach the seated figure lower in the
             art; desktop's figure sits further down relative to the
             card so 11% was already clear. */}
-        <div className="absolute inset-x-0 top-[3%] flex flex-col items-center gap-2 px-6 text-center sm:top-[5%] sm:gap-4 lg:top-[11%] lg:gap-6">
+        <div className="absolute inset-x-0 top-[6%] flex flex-col items-center gap-2 px-6 text-center sm:top-[8%] sm:gap-4 lg:top-[11%] lg:gap-6">
           {videoReady && (
             <h1
               // No overlay on the media itself (see the background art's

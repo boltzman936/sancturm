@@ -284,7 +284,26 @@ export function usePyqResources(
         .order("is_pinned", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as unknown as ResourceWithSubject[];
+      const resources = data as unknown as (ResourceWithSubject & { content_hash: string | null })[];
+
+      // The specialization pool (e.g. Core+AIML) is an IN-list against
+      // ONE resources table, so a resource with no subject (the
+      // "Extra" bucket, applies to a whole specialization rather than
+      // one subject) that was uploaded once and fanned out into a row
+      // per specialization — the upload form's own normal behavior for
+      // an "all subjects" pick — comes back as multiple rows the
+      // moment those specializations pool together, even though they
+      // all point at the exact same underlying file. content_hash is
+      // the same for all of them in that case, so dedupe on it
+      // (keeping the first — already sorted pinned-then-newest-first)
+      // rather than on id, which is deliberately different per row.
+      const seenHashes = new Set<string>();
+      return resources.filter((r) => {
+        if (!r.content_hash) return true;
+        if (seenHashes.has(r.content_hash)) return false;
+        seenHashes.add(r.content_hash);
+        return true;
+      });
     },
     enabled: !!branchId && hasTerm && ready,
     staleTime: 30_000,

@@ -97,7 +97,7 @@ function formatFullDate(key: string): string {
 // next year-range) — one 36px (touch-friendly) icon button style
 // instead of three near-identical class strings.
 const NAV_BUTTON_CLASS =
-  "flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground active:bg-background-secondary active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-9 sm:w-9";
 
 /**
  * A hand-built month grid — not a wrapper around <input type="date">'s
@@ -274,7 +274,7 @@ export function Calendar({
   if (view === "months") {
     const isCurrentYear = viewYear === new Date().getFullYear();
     return (
-      <div className="w-[min(320px,calc(100vw-2rem))] p-3.5 sm:p-4">
+      <div className="w-[min(272px,calc(100vw-2rem))] p-2.5 sm:w-[300px] sm:p-3.5">
         <div className="flex items-center justify-between pb-3">
           <button
             type="button"
@@ -317,7 +317,7 @@ export function Calendar({
                 aria-label={`${MONTH_LABELS[index]} ${viewYear}`}
                 aria-pressed={isSelected}
                 className={cn(
-                  "rounded-md py-2.5 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "rounded-md py-2 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:py-2.5 sm:text-sm",
                   !isSelected && "text-foreground hover:bg-background-secondary active:bg-background-secondary",
                   isSelected && "bg-primary text-primary-foreground",
                   isCurrentMonth && !isSelected && "font-medium text-primary"
@@ -337,7 +337,7 @@ export function Calendar({
     const years = Array.from({ length: YEAR_GRID_SIZE }, (_, i) => yearRangeStart + i);
     const thisYear = new Date().getFullYear();
     return (
-      <div className="w-[min(320px,calc(100vw-2rem))] p-3.5 sm:p-4">
+      <div className="w-[min(272px,calc(100vw-2rem))] p-2.5 sm:w-[300px] sm:p-3.5">
         <div className="flex items-center justify-between pb-3">
           <button
             type="button"
@@ -374,7 +374,7 @@ export function Calendar({
                 aria-label={String(year)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "rounded-md py-2.5 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "rounded-md py-2 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:py-2.5 sm:text-sm",
                   !isSelected && "text-foreground hover:bg-background-secondary active:bg-background-secondary",
                   isSelected && "bg-primary text-primary-foreground",
                   year === thisYear && !isSelected && "font-medium text-primary"
@@ -420,7 +420,7 @@ export function Calendar({
   }
 
   return (
-    <div className="w-[min(320px,calc(100vw-2rem))] p-3.5 sm:p-4">
+    <div className="w-[min(272px,calc(100vw-2rem))] p-2.5 sm:w-[300px] sm:p-3.5">
       <div className="flex items-center justify-between pb-3">
         <button
           type="button"
@@ -451,7 +451,7 @@ export function Calendar({
         {WEEKDAY_LABELS.map((label) => (
           <div
             key={label}
-            className="flex h-8 items-center justify-center font-mono text-[11px] tracking-wide text-subtle-foreground"
+            className="flex h-7 items-center justify-center font-mono text-[10px] tracking-wide text-subtle-foreground sm:h-8 sm:text-[11px]"
             aria-hidden="true"
           >
             {label}
@@ -491,7 +491,7 @@ export function Calendar({
               aria-pressed={isSelected}
               aria-current={isToday ? "date" : undefined}
               className={cn(
-                "relative flex h-9 w-9 items-center justify-center justify-self-center rounded-full text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "relative flex h-8 w-8 items-center justify-center justify-self-center rounded-full text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-9 sm:w-9 sm:text-sm",
                 !cell.inMonth && "text-subtle-foreground/30",
                 cell.inMonth && !isSelected && !disabled && "text-foreground hover:bg-background-secondary active:bg-background-secondary",
                 isSelected && "bg-primary font-medium text-primary-foreground",

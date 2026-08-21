@@ -110,7 +110,11 @@ export function MaintenanceCountdown({
         : "/media/maintenance-desktop.webp";
 
   return (
-    <main className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden bg-background px-6 text-center">
+    // bg-black, not bg-background — the theme token is a warm cream/
+    // brown in every palette, which flashed behind the artwork for the
+    // split second before it paints. Black is neutral against art of
+    // any hue instead of reading as a colored placeholder.
+    <main className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden bg-black px-6 text-center">
       {/* eslint-disable-next-line @next/next/no-img-element -- fixed
           background art per responsive tier, not a content image. */}
       <img src={backgroundSrc} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" />
