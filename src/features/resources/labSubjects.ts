@@ -114,6 +114,18 @@ export const LAB_SUBJECT_SLUGS = new Set([
   "automation-robotics-s3-digital-electronics-lab",
   "automation-robotics-s3-engineering-materials-lab",
   "automation-robotics-s3-computer-aided-machine-drawing-lab",
+  // CSE Cyber Security — 1st Year Semester 1, PLACEHOLDER subjects (see
+  // add_cybersecurity_placeholder_subjects.sql) until the real syllabus
+  // is known. Subject 1-5 have both notes and lab (shared, like DSA
+  // above); Subject 6-7 are notes/PYQ only, so they're deliberately NOT
+  // listed here. Renaming these later (subjects.name only, never the
+  // slug) needs no change here or anywhere else — this list matches by
+  // slug, which stays fixed.
+  "cybersecurity-subject-1",
+  "cybersecurity-subject-2",
+  "cybersecurity-subject-3",
+  "cybersecurity-subject-4",
+  "cybersecurity-subject-5",
 ]);
 
 // The reverse case: a handful of LAB_SUBJECT_SLUGS entries are lab-ONLY —
