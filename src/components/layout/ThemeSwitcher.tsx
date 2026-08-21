@@ -34,12 +34,21 @@ export function ThemeSwitcher() {
   const { mode, setMode } = useColorMode();
 
   return (
-    // -mt-1 pulls the pill up by exactly the height it gained over its
-    // previous h-8 size (buttons grew h-6 -> h-7, i.e. +4px), so it
-    // grows upward only — its bottom edge (and every sibling below it,
-    // Dashboard/Sign out included) stays exactly where it was.
+    // -mt-2 pulls the pill up by exactly the height it gained over its
+    // previous 36px size (buttons grew h-7 -> h-8, i.e. +4px more on
+    // top of the +4px it already absorbed the same way last round), so
+    // it keeps growing upward only — its bottom edge (and every
+    // sibling below it, Dashboard/Sign out included) stays exactly
+    // where it was.
     <div
-      className="-mt-1 flex items-center gap-1 rounded-full border border-sidebar-border/70 bg-sidebar-foreground/[0.04] p-1"
+      // Two-layer shadow (a tight near shadow + a softer, farther one)
+      // reads as real elevation off the sidebar rather than a flat
+      // outline — the classic "premium card" recipe — while staying
+      // small enough not to read as a glow. The inset top highlight is
+      // the other half of that: a hairline of light along the top
+      // edge, like light catching a bevel, is what makes a bordered
+      // pill read as a physical object instead of a flat rectangle.
+      className="-mt-2 flex items-center gap-1 rounded-full border border-sidebar-border/70 bg-sidebar-foreground/[0.04] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_1px_2px_rgba(0,0,0,0.14),0_6px_14px_-8px_rgba(0,0,0,0.35)]"
       role="group"
       aria-label="Appearance"
     >
@@ -54,26 +63,28 @@ export function ThemeSwitcher() {
             title={THEME_LABELS[id]}
             onClick={() => setTheme(id)}
             className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-full outline-none transition-all duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring",
-              theme === id ? "ring-1 ring-sidebar-foreground/80 ring-offset-2 ring-offset-sidebar-background" : "opacity-80 hover:opacity-100"
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full outline-none transition-all duration-200 ease-out focus-visible:ring-2 focus-visible:ring-ring",
+              theme === id
+                ? "scale-105 ring-[1.5px] ring-sidebar-foreground/85 ring-offset-2 ring-offset-sidebar-background"
+                : "opacity-75 hover:scale-105 hover:opacity-100"
             )}
           >
             <span
-              className="h-4 w-4 rounded-full border border-black/10"
+              className="h-[18px] w-[18px] rounded-full border border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_1px_1px_rgba(0,0,0,0.2)]"
               style={{ backgroundColor: SWATCH_STYLE[id] }}
             />
           </button>
         ))}
       </div>
-      <div className="mx-0.5 h-5 w-px shrink-0 bg-sidebar-border/70" aria-hidden="true" />
+      <div className="mx-0.5 h-6 w-px shrink-0 bg-sidebar-border/70" aria-hidden="true" />
       <button
         type="button"
         onClick={() => setMode(mode === "dark" ? "light" : "dark")}
         aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-        className="flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-sidebar-muted-foreground outline-none transition-colors duration-150 ease-out hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:bg-sidebar-foreground/10 active:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sidebar-muted-foreground outline-none transition-colors duration-200 ease-out hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:bg-sidebar-foreground/10 active:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {mode === "light" ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
-        <span className="text-[11px] font-medium leading-none">{mode === "light" ? "Light" : "Dark"}</span>
+        {mode === "light" ? <Sun className="h-[18px] w-[18px] shrink-0" /> : <Moon className="h-[18px] w-[18px] shrink-0" />}
+        <span className="text-xs font-medium leading-none">{mode === "light" ? "Light" : "Dark"}</span>
       </button>
     </div>
   );
