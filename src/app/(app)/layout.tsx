@@ -85,7 +85,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <span className="h-9 w-9 shrink-0" aria-hidden="true" />
       </header>
 
-      <Sidebar open={navOpen} onOpen={() => setNavOpen(true)} onClose={() => setNavOpen(false)} />
+      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
 
       <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
