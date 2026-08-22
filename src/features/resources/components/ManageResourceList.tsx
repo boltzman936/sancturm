@@ -231,19 +231,13 @@ function canDeleteItem(item: ManageableResource, isAdmin: boolean, adminDisplayN
   return !item.uploaded_by_name || !adminDisplayNames.includes(item.uploaded_by_name);
 }
 
+// Title only, deliberately — Manage already has dedicated Branch/Year/
+// Batch/Type/Subject/Date dropdown filters for every other field a
+// resource carries, so this box matching those too just meant typing
+// e.g. "1st year" surfaced any resource merely SCOPED to that year,
+// title unrelated, which read as broken rather than helpful.
 function matchesSearch(resource: ManageableResource, query: string) {
-  return matchesQuery(
-    [
-      resource.title,
-      resource.subject?.name,
-      resource.branch?.name,
-      resource.specialization?.name,
-      shortTermLabel(resource.term),
-      uploaderLabel(resource),
-      formatShortDate(resource.created_at),
-    ],
-    query
-  );
+  return matchesQuery([resource.title], query);
 }
 
 function FilterSelect({
@@ -1376,7 +1370,7 @@ export function ManageResourceList({
           <input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search title, subject, branch, year, date…"
+            placeholder="Search title…"
             className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
@@ -1484,7 +1478,7 @@ export function ManageResourceList({
           <input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search title, subject, branch, year, date…"
+            placeholder="Search title…"
             className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>

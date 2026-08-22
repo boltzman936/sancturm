@@ -10,6 +10,7 @@ import { useTerm } from "@/hooks/useTerm";
 import { useCommandPaletteShortcut } from "@/hooks/useCommandPaletteShortcut";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Logo } from "@/components/layout/Logo";
+import { CockpitPrefetcher } from "@/components/CockpitPrefetcher";
 
 // Dynamically imported (not a top-level import) — cmdk's own JS isn't
 // needed until someone actually opens the palette (Ctrl+K or the
@@ -64,6 +65,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // read as "shrinking/distorting". dvh tracks the real, current
     // viewport instead of recalculating against a moving target.
     <div className="flex min-h-dvh flex-col md:flex-row">
+      {/* Warms the Cockpit route + its background media the whole
+          time someone's on any (app) page — not just when the logo
+          link scrolls into view for Next's own automatic Link
+          prefetching — so clicking "sancturm" to go back and change
+          branch/term feels instant instead of kicking off a fresh
+          multi-hundred-KB media fetch on click. */}
+      <CockpitPrefetcher />
       <header className="flex shrink-0 items-center justify-between border-b border-sidebar-border bg-sidebar-background p-4 md:hidden">
         <button
           onClick={() => setNavOpen(true)}

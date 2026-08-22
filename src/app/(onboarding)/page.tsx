@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import type { Viewport } from "next";
 import { IntroExperience } from "@/features/branches/components/IntroExperience";
 
@@ -16,21 +15,15 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-// Suspense boundary required by IntroExperience's own useSearchParams()
-// call (reads ?cockpit=1 — see its own comment) — without it, Next
-// can't statically prerender this page at all and the build fails
-// outright, not just warns.
-//
 // bg-black wrapper, always rendered (not conditional on anything) —
 // IntroExperience itself returns null until its own client-only
 // isLoaded gate resolves (useBranch/useTerm read localStorage, not
-// SSR-safe), and Suspense's own fallback was `null` too. Both of those
-// null states used to expose <body>'s real background underneath —
-// var(--background), a warm cream/brown in every theme (see
-// globals.css) — for a visible beat on first paint, the "warm flash"
-// even after IntroExperience's own bg-black media wrapper was fixed.
-// This div is server-rendered immediately, painting black from the
-// very first frame, before any client JS runs at all.
+// SSR-safe). That null state used to expose <body>'s real background
+// underneath — var(--background), a warm cream/brown in every theme
+// (see globals.css) — for a visible beat on first paint, the "warm
+// flash" even after IntroExperience's own bg-black media wrapper was
+// fixed. This div is server-rendered immediately, painting black from
+// the very first frame, before any client JS runs at all.
 export default function OnboardingPage() {
   return (
     // w-screen (literal viewport-width value), not just inset-0's own
@@ -61,9 +54,7 @@ export default function OnboardingPage() {
     // has no such lag — it's just "the real bottom of the viewport,"
     // recomputed directly by layout rather than approximated by a unit.
     <div className="fixed inset-0 w-screen bg-black">
-      <Suspense fallback={null}>
-        <IntroExperience />
-      </Suspense>
+      <IntroExperience />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 
@@ -42,29 +42,11 @@ function cursorClassName(typingDone: boolean, cursorVisible: boolean) {
 
 export function IntroExperience() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const { branch: savedBranch, setBranch, isLoaded: branchLoaded } = useBranch();
-  const { term: savedTerm, setTerm, isLoaded: termLoaded } = useTerm();
+  const { setBranch, isLoaded: branchLoaded } = useBranch();
+  const { setTerm, isLoaded: termLoaded } = useTerm();
   const { setSpecialization } = useSpecialization();
   const { data: branches } = useBranches();
   const isLoaded = branchLoaded && termLoaded;
-  // A returning visitor who's already picked a branch/term shouldn't
-  // sit through the full typing animation + selector flow on a
-  // genuinely fresh landing on "/" (a bookmark, typing the URL
-  // directly) — skip straight to where AppLayout would send them
-  // anyway. But the sidebar/header's own "sancturm" link is a
-  // deliberate "go change my branch/term" action, not an accidental
-  // landing — it links to "/?cockpit=1" specifically so THIS check
-  // never fires for it, letting someone already picked always reach
-  // the picker again by clicking their own logo. Only fires once
-  // isLoaded is genuinely true (both hooks resolved from localStorage),
-  // so a real first-time visitor (nothing saved yet) still gets the
-  // full intro either way.
-  const forceCockpit = searchParams.get("cockpit") === "1";
-  const alreadyOnboarded = isLoaded && !!savedBranch && !!savedTerm && !forceCockpit;
-  useEffect(() => {
-    if (alreadyOnboarded) router.replace("/notes");
-  }, [alreadyOnboarded, router]);
   const queryClient = useQueryClient();
   const prefersReducedMotion = useReducedMotion();
   const deviceTier = useDeviceTier();
@@ -378,7 +360,7 @@ export function IntroExperience() {
     enterSancturm();
   }
 
-  if (!isLoaded || alreadyOnboarded) return null;
+  if (!isLoaded) return null;
 
   return (
     <motion.div
