@@ -76,12 +76,22 @@ export function ThemeSwitcher() {
           </button>
         ))}
       </div>
-      <div className="mx-0.5 h-6 w-px shrink-0 bg-sidebar-border/70" aria-hidden="true" />
+      <div className="h-6 w-px shrink-0 bg-sidebar-border/70" aria-hidden="true" />
+      {/* px-1.5/gap-1 (tighter than the swatch cluster's own spacing on
+          purpose) — the icon+text pair together are wider than a
+          single swatch, so this side needed to shed width somewhere to
+          fit inside the sidebar's own narrower md/lg column widths
+          (200/224px of content) without the pill itself growing wider
+          than the sidebar. Pulling padding in here, not off the
+          swatches or the container, keeps the 4 circles exactly where
+          they were and keeps the whole pill's outer footprint governed
+          by content instead of a fixed width — it just asks less
+          horizontal room of this one section. */}
       <button
         type="button"
         onClick={() => setMode(mode === "dark" ? "light" : "dark")}
         aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-        className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sidebar-muted-foreground outline-none transition-colors duration-200 ease-out hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:bg-sidebar-foreground/10 active:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-8 shrink-0 items-center gap-1 rounded-full px-1.5 text-sidebar-muted-foreground outline-none transition-colors duration-200 ease-out hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:bg-sidebar-foreground/10 active:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         {mode === "light" ? <Sun className="h-[18px] w-[18px] shrink-0" /> : <Moon className="h-[18px] w-[18px] shrink-0" />}
         <span className="text-xs font-medium leading-none">{mode === "light" ? "Light" : "Dark"}</span>
