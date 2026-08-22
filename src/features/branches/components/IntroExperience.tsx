@@ -312,19 +312,40 @@ export function IntroExperience() {
   // enterSancturm() navigates to /notes), so every other page keeps
   // its own scrollbar-gutter reservation exactly as before.
   //
+  // overflow: hidden on <html> alongside it — still reported afterward,
+  // on Windows specifically, at a constant width regardless of window
+  // size. A reserved *gutter* scales/behaves like normal layout, but a
+  // REAL classic (non-overlay) Windows scrollbar is a fixed OS-defined
+  // width (~17px) no matter the window size, and — critically — native
+  // scrollbar chrome paints in the browser's own UI layer, on top of
+  // everything the page renders, immune to any z-index/width/position
+  // fix from CSS or JS alone. If <html> genuinely has ANY scrollable
+  // overflow (its exact source doesn't matter — content a pixel taller
+  // than the viewport, a browser extension injecting something, font-
+  // load reflow), Windows shows that real scrollbar and no amount of
+  // sizing the background media more precisely can ever paint over it.
+  // The only fix that actually reaches that case is removing the
+  // overflow itself so no scrollbar — gutter-reserved or real — has
+  // any reason to exist while Cockpit, a fixed non-scrolling view, is
+  // what's on screen.
+  //
   // useLayoutEffect, not useEffect — this has to be in force before
   // the very first paint of the media below, not just "soon after
   // mount". useEffect fires after the browser has already painted the
   // initial commit, which would let that first frame render with the
-  // gutter still reserved (the exact gap this is meant to prevent).
-  // useLayoutEffect runs synchronously right after DOM mutation but
-  // before paint, so by the time anything is actually shown on screen
-  // the override is already active.
+  // gutter/scrollbar still present (the exact gap this is meant to
+  // prevent). useLayoutEffect runs synchronously right after DOM
+  // mutation but before paint, so by the time anything is actually
+  // shown on screen the override is already active.
   useLayoutEffect(() => {
-    const previousGutter = document.documentElement.style.scrollbarGutter;
-    document.documentElement.style.scrollbarGutter = "auto";
+    const html = document.documentElement;
+    const previousGutter = html.style.scrollbarGutter;
+    const previousOverflow = html.style.overflow;
+    html.style.scrollbarGutter = "auto";
+    html.style.overflow = "hidden";
     return () => {
-      document.documentElement.style.scrollbarGutter = previousGutter;
+      html.style.scrollbarGutter = previousGutter;
+      html.style.overflow = previousOverflow;
     };
   }, []);
 
