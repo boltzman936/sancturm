@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Eye, Pin, Search, Sparkles } from "lucide-react";
 import { useSancturmUpdates } from "@/features/sancturmUpdates/queries";
@@ -45,6 +45,10 @@ export default function SancturmUpdatesPage() {
   }
 
   const [searchQuery, setSearchQuery] = useState("");
+  // See Notes' own identical comment — the input stays bound to
+  // searchQuery for instant keystroke feedback, filtering reads this
+  // deferred copy so it never blocks typing.
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [dateFilter, setDateFilter] = useState("");
   const [viewingUpdate, setViewingUpdate] = useState<SancturmUpdate | null>(null);
 
@@ -53,8 +57,8 @@ export default function SancturmUpdatesPage() {
     const byDate = dateFilter
       ? base.filter((update) => localDateKey(update.created_at) === dateFilter)
       : base;
-    return byDate.filter((update) => matchesSearch(update, searchQuery));
-  }, [updates, dateFilter, searchQuery]);
+    return byDate.filter((update) => matchesSearch(update, deferredSearchQuery));
+  }, [updates, dateFilter, deferredSearchQuery]);
 
   return (
     <div className="flex flex-col gap-4">

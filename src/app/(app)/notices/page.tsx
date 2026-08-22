@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Eye, Pin, Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
@@ -111,6 +111,10 @@ export default function NoticesPage() {
   }
 
   const [searchQuery, setSearchQuery] = useState("");
+  // See Notes' own identical comment — the input stays bound to
+  // searchQuery for instant keystroke feedback, filtering reads this
+  // deferred copy so it never blocks typing.
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [dateFilter, setDateFilter] = useState("");
   const [dateSort, setDateSort] = useState<DateSortOrder>("newest");
   const [viewingNotice, setViewingNotice] = useState<Notice | null>(null);
@@ -120,9 +124,9 @@ export default function NoticesPage() {
     const byDate = dateFilter
       ? base.filter((notice) => localDateKey(notice.created_at) === dateFilter)
       : base;
-    const bySearch = byDate.filter((notice) => matchesSearch(notice, searchQuery));
+    const bySearch = byDate.filter((notice) => matchesSearch(notice, deferredSearchQuery));
     return sortByPinnedThenDate(bySearch, dateSort);
-  }, [notices, dateFilter, searchQuery, dateSort]);
+  }, [notices, dateFilter, deferredSearchQuery, dateSort]);
 
   // No Batch/Semester pickers here at all anymore — see this file's
   // top-level comment. "Not reached yet" still applies (a brand-new

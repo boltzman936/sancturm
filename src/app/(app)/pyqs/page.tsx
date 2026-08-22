@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useSpecialization } from "@/hooks/useSpecialization";
@@ -118,6 +118,10 @@ export default function PYQsPage() {
     ALL_SUBJECTS
   );
   const [searchQuery, setSearchQuery] = useState("");
+  // See Notes' own identical comment — the input stays bound to
+  // searchQuery for instant keystroke feedback, filtering reads this
+  // deferred copy so it never blocks typing.
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
@@ -256,9 +260,9 @@ export default function PYQsPage() {
     const byDate = dateFilter
       ? byBatch.filter((resource) => localDateKey(resource.created_at) === dateFilter)
       : byBatch;
-    const bySearch = byDate.filter((resource) => matchesSearch(resource, searchQuery));
+    const bySearch = byDate.filter((resource) => matchesSearch(resource, deferredSearchQuery));
     return sortByAcademicPriority(bySearch, dateSort, batchStartYear);
-  }, [resources, pyqKind, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort, batchStartYear]);
+  }, [resources, pyqKind, subjectFilter, batchFilter, dateFilter, deferredSearchQuery, dateSort, batchStartYear]);
 
   // Same batch-group partitioning as Notes & Lab — see its identical
   // comment for why this is a cheap partition, not a re-sort.

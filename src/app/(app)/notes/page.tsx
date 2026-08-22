@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useBranch } from "@/hooks/useBranch";
 import { useSpecialization } from "@/hooks/useSpecialization";
@@ -108,6 +108,13 @@ export default function NotesAndLabPage() {
     ALL_SUBJECTS
   );
   const [searchQuery, setSearchQuery] = useState("");
+  // The input itself stays bound to searchQuery (instant keystroke
+  // feedback); the actual filtering below reads this deferred copy
+  // instead — React deprioritizes recomputing it while a keystroke is
+  // still in flight, so a fast typist never feels the list's own
+  // filter/re-render work as input lag, and the list still updates a
+  // frame or two later without any explicit debounce timer to tune.
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
   const [viewingResource, setViewingResource] = useState<ResourceWithSubject | null>(null);
@@ -197,9 +204,9 @@ export default function NotesAndLabPage() {
     const byDate = dateFilter
       ? byBatch.filter((resource) => localDateKey(resource.created_at) === dateFilter)
       : byBatch;
-    const bySearch = byDate.filter((resource) => matchesSearch(resource, searchQuery));
+    const bySearch = byDate.filter((resource) => matchesSearch(resource, deferredSearchQuery));
     return sortByAcademicPriority(bySearch, dateSort, batchStartYear);
-  }, [resources, subjectFilter, batchFilter, dateFilter, searchQuery, dateSort, batchStartYear]);
+  }, [resources, subjectFilter, batchFilter, dateFilter, deferredSearchQuery, dateSort, batchStartYear]);
 
   // `filtered` is already batch-grouped (batch is the primary sort key
   // above) — this just partitions the already-sorted list into

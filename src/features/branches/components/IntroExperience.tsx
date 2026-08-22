@@ -508,9 +508,15 @@ export function IntroExperience() {
             viewport the card's own height eats a bigger share of the
             frame, and even a modest anchor was low enough for the
             card's bottom edge to reach the seated figure lower in the
-            art; desktop's figure sits further down relative to the
-            card so 11% was already clear. */}
-        <div className="absolute inset-x-0 top-[6%] flex flex-col items-center gap-2 px-6 text-center sm:top-[8%] sm:gap-4 lg:top-[11%] lg:gap-6">
+            art. Desktop (lg+, 1024px+ — the same width step
+            SelectCard's own card sizing already treats as "desktop")
+            nudged up again, 11% -> 8%, alongside that card shrinking a
+            touch (see SelectCard's own comment) — a smaller card at
+            the old 11% anchor left more open sky above it than
+            intended; moving both up together keeps the headline +
+            card group reading as one balanced unit instead of just
+            floating lower against a now-smaller card. */}
+        <div className="absolute inset-x-0 top-[6%] flex flex-col items-center gap-2 px-6 text-center sm:top-[8%] sm:gap-4 lg:top-[8%] lg:gap-6">
           {videoReady && (
             <h1
               // No overlay on the media itself (see the background art's

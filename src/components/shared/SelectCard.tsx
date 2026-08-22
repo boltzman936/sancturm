@@ -72,7 +72,11 @@ export function SelectCard<T>({
         // 250px, was 220/240/280) on top of that, plus one step back up
         // at xl (300px, ≥1280px) — a large/high-res laptop has enough
         // room that 250px read as lost/undersized against the frame,
-        // not "compact." backdrop-saturate dropped from 150 to 100
+        // not "compact." Then trimmed again at lg/xl specifically (230/
+        // 270px, was 250/300) — a real laptop screen (the common case
+        // at both those widths) read the 250/300px card as a touch
+        // large against the frame; mobile/sm (200/215px) untouched,
+        // this pass is desktop-only. backdrop-saturate dropped from 150 to 100
         // (i.e. off, not boosted) — saturate-150 was punching up
         // whatever hue sits behind the glass, so a warm/cream sky (like
         // this artwork's) came through MORE vivid through the "glass"
@@ -90,7 +94,7 @@ export function SelectCard<T>({
         // is underneath. Still translucent (22% opacity, not solid)
         // and still blurred — only the tint changed; blur/border/
         // shadow/radius are untouched.
-        "w-full max-w-[200px] rounded-2xl border border-white/15 bg-black/22 p-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md sm:max-w-[215px] sm:p-3 lg:max-w-[250px] lg:p-3.5 xl:max-w-[300px]",
+        "w-full max-w-[200px] rounded-2xl border border-white/15 bg-black/22 p-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md sm:max-w-[215px] sm:p-3 lg:max-w-[230px] lg:p-3 xl:max-w-[270px]",
         className
       )}
     >

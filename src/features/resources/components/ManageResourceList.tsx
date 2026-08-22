@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "react";
 import { Search, Calendar as CalendarIcon, Pencil, ChevronDown } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DeleteResourceButton } from "@/features/resources/components/DeleteResourceButton";
@@ -1068,6 +1068,11 @@ export function ManageResourceList({
   adminDisplayNames: string[];
 }) {
   const [searchQuery, setSearchQuery] = useState("");
+  // See Notes page's own identical comment — the input stays bound to
+  // searchQuery for instant keystroke feedback; the (comparatively
+  // expensive, given this list's grouping/merging work) filtering
+  // below reads this deferred copy instead, so it never blocks typing.
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   // yyyy-mm-dd from <input type="date">, or "" for no date filter.
   const [dateFilter, setDateFilter] = useState("");
   // Persisted for the session (see useSessionPersistedState) so an
@@ -1200,7 +1205,7 @@ export function ManageResourceList({
   const visible = useMemo(() => {
     return resources
       .filter((r) => !dateFilter || localDateKey(r.created_at) === dateFilter)
-      .filter((r) => matchesSearch(r, searchQuery))
+      .filter((r) => matchesSearch(r, deferredSearchQuery))
       .filter((r) => branchFilter === ALL || r.branch?.name === branchFilter)
       .filter((r) => specializationFilter === ALL || r.specialization?.name === specializationFilter)
       .filter((r) => termFilter === ALL || shortTermLabel(r.term) === termFilter)
@@ -1210,7 +1215,7 @@ export function ManageResourceList({
   }, [
     resources,
     dateFilter,
-    searchQuery,
+    deferredSearchQuery,
     branchFilter,
     specializationFilter,
     termFilter,
