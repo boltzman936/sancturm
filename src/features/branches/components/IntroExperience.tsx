@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
@@ -289,6 +289,45 @@ export function IntroExperience() {
     };
   }, []);
 
+  // The right-edge strip some users still saw (real background color
+  // showing past the media's right edge — reported after the w-screen/
+  // h-dvh fixes already landed) traces back to `scrollbar-gutter:
+  // stable` on <html> (globals.css — reserved everywhere else in the
+  // app to stop the scrollbar popping in and shifting content once a
+  // resource list loads). That reservation carves out real gutter
+  // space on the right edge of <html>'s own box even when nothing is
+  // scrolling; `100vw`/w-screen is SUPPOSED to still span that gutter,
+  // but exactly how much of it different Chromium/WebKit versions and
+  // OS display-scaling factors (125%/150% Windows scaling especially)
+  // fold into `100vw` isn't fully consistent — which is exactly the
+  // kind of unit-based inaccuracy the height fix (dropping h-dvh for
+  // plain inset-0) sidestepped entirely by not depending on a unit's
+  // value at all. This is that same fix, mirrored onto the width axis:
+  // rather than trying to size across a reserved gutter with a vw
+  // unit, remove the gutter reservation outright for as long as
+  // Cockpit is on screen, so inset-0's own left:0 + right:0 (see both
+  // wrapper divs' own comments) is flush against the TRUE window edge
+  // with no gutter and no unit math involved anywhere. Scoped to this
+  // component's mount lifetime and reverted on unmount (e.g. once
+  // enterSancturm() navigates to /notes), so every other page keeps
+  // its own scrollbar-gutter reservation exactly as before.
+  //
+  // useLayoutEffect, not useEffect — this has to be in force before
+  // the very first paint of the media below, not just "soon after
+  // mount". useEffect fires after the browser has already painted the
+  // initial commit, which would let that first frame render with the
+  // gutter still reserved (the exact gap this is meant to prevent).
+  // useLayoutEffect runs synchronously right after DOM mutation but
+  // before paint, so by the time anything is actually shown on screen
+  // the override is already active.
+  useLayoutEffect(() => {
+    const previousGutter = document.documentElement.style.scrollbarGutter;
+    document.documentElement.style.scrollbarGutter = "auto";
+    return () => {
+      document.documentElement.style.scrollbarGutter = previousGutter;
+    };
+  }, []);
+
   function enterSancturm() {
     setExiting(true);
     setTimeout(() => {
@@ -327,25 +366,27 @@ export function IntroExperience() {
       // colored flash behind the media for the split second before the
       // video/image has actually painted a frame. Black is neutral
       // against art of any hue and reads as "not loaded yet" rather
-      // than as a colored placeholder. w-screen (literal viewport-
-      // width value), not just inset-0's own left/right — see the
-      // onboarding page's own wrapper for why: <html>'s site-wide
-      // scrollbar-gutter: stable reserves a thin strip on the right
-      // that inset-0 alone doesn't cover, letting the viewer's own
-      // theme background (sometimes green) show through as a colored
-      // line on that edge.
+      // than as a colored placeholder.
       //
-      // Height is deliberately left unset (no h-screen/h-dvh) — see
-      // the onboarding page's own wrapper for the full reasoning.
-      // Short version: inset-0's top:0 + bottom:0 sizes a `fixed`
-      // element against the real, current viewport with no vh-based
-      // unit involved, so it's exact on every reflow. Explicit
-      // height (both 100vh and 100dvh were tried) over-constrains the
-      // box and makes the browser drop the bottom:0 constraint in
-      // favor of top:0 + height instead — any lag in that height
-      // value (dvh recalculates asynchronously as the mobile toolbar
-      // animates) then shows up as a real gap against the true bottom
-      // edge, exposing the warm theme background underneath.
+      // Neither dimension is set with an explicit vw/vh unit here —
+      // inset-0 (top:0 + right:0 + bottom:0 + left:0) sizes a `fixed`
+      // element against the real, current viewport directly, with no
+      // unit involved at all, so it's exact on every reflow. Explicit
+      // sizing units were tried on both axes and both went wrong in
+      // their own way: h-screen/h-dvh over-constrained the box (an
+      // explicit height makes the browser drop the bottom:0 constraint
+      // in favor of top:0 + height, so any lag/inaccuracy in that vh
+      // value showed up as a real gap against the bottom edge); w-screen
+      // was added to cover a real gap on the right edge from <html>'s
+      // site-wide `scrollbar-gutter: stable` (globals.css) — needed
+      // elsewhere in the app, but 100vw's own handling of that reserved
+      // gutter isn't fully consistent across browsers/OS display-scaling
+      // factors, so w-screen itself still occasionally left a gap there.
+      // Both are now solved the same way: the gutter reservation is
+      // switched off for as long as Cockpit is mounted (see the
+      // useLayoutEffect above), so there's no gutter for any unit to
+      // get wrong — inset-0 alone is flush against the true window edge
+      // on every side, unconditionally.
       //
       // touch-none (touch-action: none) — belt-and-suspenders with the
       // onboarding page's own viewport export (which already sets
@@ -357,7 +398,7 @@ export function IntroExperience() {
       // — the branch/term cards below stay fully clickable — only the
       // browser's own default pan/zoom gesture handling, which this
       // fixed, non-scrolling view never needed anyway.
-      className="fixed inset-0 w-screen touch-none overflow-hidden bg-black"
+      className="fixed inset-0 touch-none overflow-hidden bg-black"
       animate={{ opacity: exiting ? 0 : 1 }}
       transition={{ duration: EXIT_DURATION_S }}
     >
