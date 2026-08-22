@@ -95,5 +95,11 @@ export async function downloadFile(url: string, filename: string, onProgress?: (
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(blobUrl);
+  // Not revoked synchronously right after click() — some browsers
+  // (Firefox especially, Safari intermittently) start the actual save
+  // asynchronously relative to that call, so revoking the object URL
+  // on the very next line can abort a large in-flight download. A
+  // short delay lets the browser's own download actually start reading
+  // from the blob before the URL backing it disappears.
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 }

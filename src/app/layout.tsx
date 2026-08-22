@@ -38,7 +38,25 @@ export const metadata: Metadata = {
 // useEffect-only theme switcher can't avoid. Mirrors useTheme.ts's and
 // useColorMode.ts's own resolution logic exactly; keep the three in
 // sync if any of them ever changes.
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('sancturm:theme');if(t!=='1'&&t!=='2'&&t!=='3'&&t!=='4')t='1';var m=localStorage.getItem('sancturm:mode');if(m!=='light'&&m!=='dark')m='light';document.documentElement.setAttribute('data-theme',t);document.documentElement.setAttribute('data-mode',m);}catch(e){}})();`;
+//
+// Also covers a second, different flash — the warm theme color (body's
+// own bg-background) briefly visible before Cockpit's black wrapper
+// div paints over it, on the very first request to "/". Both divs
+// involved ARE server-rendered (not a hydration-timing issue) — this
+// is a real streaming race: on a slow connection, the browser can
+// apply <head>'s CSS (giving body its themed background) before the
+// rest of the HTML response (body's own content, further down the
+// same document) has fully arrived to paint over it. body's
+// background can't be fixed unconditionally to black — every OTHER
+// route legitimately wants its own theme color as the first thing
+// painted — so this only intervenes for the exact "/" pathname, and
+// only for as long as it takes: writing a plain <style> tag into
+// <head> (not touching body directly — body doesn't exist in the DOM
+// yet when a <head> script runs, so there's nothing to style
+// directly) is itself synchronous, ordered before the browser
+// continues parsing/painting body, matching this whole script's own
+// "runs before first paint, no timing race possible" guarantee.
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('sancturm:theme');if(t!=='1'&&t!=='2'&&t!=='3'&&t!=='4')t='1';var m=localStorage.getItem('sancturm:mode');if(m!=='light'&&m!=='dark')m='light';document.documentElement.setAttribute('data-theme',t);document.documentElement.setAttribute('data-mode',m);if(window.location.pathname==='/'){var s=document.createElement('style');s.textContent='body{background:#000!important}';document.head.appendChild(s);}}catch(e){}})();`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

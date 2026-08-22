@@ -857,16 +857,27 @@ function ResourceGroupRow({
       )
     )
       return;
-    // Unhandled — a session expiring mid-delete, or a race with the
-    // same rows already being removed elsewhere, used to throw
-    // straight through startTransition and crash this entire Manage
-    // list to the route error boundary instead of just this group.
+    // allSettled, not all — Promise.all rejects the instant ONE delete
+    // fails (a session expiring mid-batch, a race with the same row
+    // already being removed elsewhere), which used to throw straight
+    // through startTransition before the OTHER, already-succeeded
+    // deletes ever got a chance to be distinguished from the failed
+    // one — every row in the group re-rendered as "still there,
+    // something went wrong" even for contexts that were actually gone
+    // server-side already. Settling lets each row's own outcome stand
+    // on its own; only a genuine failure gets called out.
     startDelete(async () => {
-      try {
-        await Promise.all(deletableItems.map(deleteItem));
-      } catch (err) {
-        console.error(err);
-        alert("Couldn't remove some of this. Try again.");
+      const results = await Promise.allSettled(deletableItems.map(deleteItem));
+      const failedCount = results.filter((r) => r.status === "rejected").length;
+      if (failedCount > 0) {
+        results.forEach((r) => {
+          if (r.status === "rejected") console.error(r.reason);
+        });
+        alert(
+          failedCount === deletableItems.length
+            ? "Couldn't remove this. Try again."
+            : `Removed ${deletableItems.length - failedCount} of ${deletableItems.length} — ${failedCount} failed. Try again for the rest.`
+        );
       }
     });
   }
@@ -1354,12 +1365,29 @@ export function ManageResourceList({
     if (!confirm(`Remove ${items.length} item${items.length > 1 ? "s" : ""}? This can't be undone.`)) return;
 
     startBulkDelete(async () => {
-      try {
-        await Promise.all(items.map(deleteItem));
-        setSelectedIds(new Set());
-      } catch (err) {
-        console.error(err);
-        alert("Couldn't remove some of these. Try again.");
+      // allSettled, not all — see the per-group Remove button's own
+      // identical comment. A single failed delete used to skip
+      // clearing selection entirely (it was after the Promise.all
+      // await, inside the same try), leaving already-deleted items'
+      // checkboxes stuck "selected" even though they'd actually
+      // succeeded and were already gone from the list.
+      const results = await Promise.allSettled(items.map(deleteItem));
+      const succeededIds = items.filter((_, i) => results[i]?.status === "fulfilled").map((item) => item.id);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of succeededIds) next.delete(id);
+        return next;
+      });
+      const failedCount = results.filter((r) => r.status === "rejected").length;
+      if (failedCount > 0) {
+        results.forEach((r) => {
+          if (r.status === "rejected") console.error(r.reason);
+        });
+        alert(
+          failedCount === items.length
+            ? "Couldn't remove these. Try again."
+            : `Removed ${items.length - failedCount} of ${items.length} — ${failedCount} failed. Try again for the rest.`
+        );
       }
     });
   }

@@ -94,7 +94,7 @@ export function SelectCard<T>({
         // is underneath. Still translucent (22% opacity, not solid)
         // and still blurred — only the tint changed; blur/border/
         // shadow/radius are untouched.
-        "w-full max-w-[200px] rounded-2xl border border-white/15 bg-black/22 p-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md sm:max-w-[215px] sm:p-3 lg:max-w-[230px] lg:p-3 xl:max-w-[270px]",
+        "w-full max-w-[200px] rounded-2xl border border-white/15 bg-black/22 p-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-md sm:max-w-[215px] sm:p-3 lg:max-w-[230px] lg:p-2.5 xl:max-w-[270px]",
         className
       )}
     >
@@ -114,14 +114,18 @@ export function SelectCard<T>({
           contrast/weight," done via strength rather than switching to
           a dark color that would go straight back to low-contrast
           against this now-dark glass. */}
-      <h2 className="mb-2.5 text-center font-mono text-xs font-medium tracking-[0.08em] text-white lg:mb-3.5">{title}</h2>
+      {/* lg:mb-2 (was mb-3.5), lg:gap-1 + lg:py-2 below (was gap-1.5/
+          py-2.5) — a further desktop-only height trim on top of the
+          card's own outer shrink above; mobile/tablet spacing
+          untouched. */}
+      <h2 className="mb-2.5 text-center font-mono text-xs font-medium tracking-[0.08em] text-white lg:mb-2">{title}</h2>
       <AnimatePresence mode="wait" initial={false}>
         {isLoading ? (
           <motion.div
             key="loading"
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.2 }}
-            className="flex flex-col gap-1 lg:gap-1.5"
+            className="flex flex-col gap-1 lg:gap-1"
             aria-live="polite"
             aria-label={loadingLabel}
           >
@@ -135,7 +139,7 @@ export function SelectCard<T>({
             {Array.from({ length: skeletonCount }).map((_, i) => (
               <div
                 key={i}
-                className="animate-shimmer rounded-lg border border-white/15 bg-[linear-gradient(90deg,rgba(255,255,255,0.04)_25%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.04)_75%)] bg-[length:200%_100%] px-3.5 py-2 lg:px-4 lg:py-2.5"
+                className="animate-shimmer rounded-lg border border-white/15 bg-[linear-gradient(90deg,rgba(255,255,255,0.04)_25%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.04)_75%)] bg-[length:200%_100%] px-3.5 py-2 lg:px-4 lg:py-2"
                 style={{ animationDelay: reduceMotion ? "0s" : `${i * 0.08}s` }}
               >
                 &nbsp;
@@ -167,7 +171,7 @@ export function SelectCard<T>({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.2 }}
-            className="flex flex-col gap-1 lg:gap-1.5"
+            className="flex flex-col gap-1 lg:gap-1"
           >
             {items?.map((item, i) => (
               <motion.button
@@ -183,7 +187,7 @@ export function SelectCard<T>({
                 whileHover={{ scale: 1.015 }}
                 whileTap={{ scale: 0.985 }}
                 onClick={() => onSelect(item)}
-                className="rounded-lg border border-white/15 bg-white/5 px-3.5 py-2 text-left font-medium text-white transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:px-4 lg:py-2.5"
+                className="rounded-lg border border-white/15 bg-white/5 px-3.5 py-2 text-left font-medium text-white transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary active:border-primary hover:bg-white/15 active:bg-white/15 hover:shadow-[0_0_20px_-4px_var(--glow-red)] active:shadow-[0_0_20px_-4px_var(--glow-red)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:px-4 lg:py-2"
               >
                 {getLabel(item)}
               </motion.button>

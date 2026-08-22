@@ -510,13 +510,17 @@ export function IntroExperience() {
             card's bottom edge to reach the seated figure lower in the
             art. Desktop (lg+, 1024px+ — the same width step
             SelectCard's own card sizing already treats as "desktop")
-            nudged up again, 11% -> 8%, alongside that card shrinking a
-            touch (see SelectCard's own comment) — a smaller card at
-            the old 11% anchor left more open sky above it than
-            intended; moving both up together keeps the headline +
-            card group reading as one balanced unit instead of just
-            floating lower against a now-smaller card. */}
-        <div className="absolute inset-x-0 top-[6%] flex flex-col items-center gap-2 px-6 text-center sm:top-[8%] sm:gap-4 lg:top-[8%] lg:gap-6">
+            nudged up again, 11% -> 8% -> 5%, alongside that card
+            shrinking further each pass (see SelectCard's own comment)
+            — a smaller card at the old anchor left more open sky above
+            it than intended each time; moving both up together keeps
+            the headline + card group reading as one balanced unit
+            instead of just floating lower against a now-smaller card.
+            lg:gap-4 (was gap-6) tightens the headline-to-card spacing
+            to match — a smaller card and smaller headline (see the
+            heading's own text-size comment) read as loosely spaced
+            with the old, larger gap still in place. */}
+        <div className="absolute inset-x-0 top-[6%] flex flex-col items-center gap-2 px-6 text-center sm:top-[8%] sm:gap-4 lg:top-[5%] lg:gap-4">
           {videoReady && (
             <h1
               // No overlay on the media itself (see the background art's
@@ -526,7 +530,10 @@ export function IntroExperience() {
               // rendering: a tight dark stack (readable against a light
               // sky) plus the original glow underneath, not anything
               // layered over the video/image.
-              className="whitespace-nowrap font-mono text-[24px] font-medium tracking-[0.02em] text-white sm:text-[30px] sm:tracking-[0.08em] md:text-[40px] lg:text-[56px]"
+              // lg:text-[46px] (was 56px) — matches the desktop card's
+              // own shrink; the same headline read oversized against
+              // the smaller card and tighter top anchor.
+              className="whitespace-nowrap font-mono text-[24px] font-medium tracking-[0.02em] text-white sm:text-[30px] sm:tracking-[0.08em] md:text-[40px] lg:text-[46px]"
               style={{
                 textShadow:
                   "0 1px 3px rgba(0,0,0,.85), 0 0 1px rgba(0,0,0,.9), 0 0 20px rgba(77,168,255,.25)",

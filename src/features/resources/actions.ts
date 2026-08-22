@@ -627,6 +627,31 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
       subjectId = subject?.id ?? null;
     }
 
+    // Makes a retry after a mid-loop failure idempotent instead of
+    // duplicating: if an earlier attempt already got this exact file
+    // into this exact target scope before the loop threw on a LATER
+    // target, re-running the whole bulk publish would otherwise insert
+    // a second identical row here rather than recognizing it's already
+    // done. Scoped to this one target only (not a global content-hash
+    // check) — the same file genuinely does need its own row per
+    // target in this non-centralized fan-out path.
+    if (verification.contentHash) {
+      let dupQuery = supabase
+        .from("resources")
+        .select("id")
+        .eq("branch_id", branchId)
+        .eq("term_id", termId)
+        .eq("batch_id", batchId)
+        .eq("resource_type", resourceType)
+        .eq("content_hash", verification.contentHash);
+      // .eq() with a JS `null` doesn't match NULL rows in Postgres —
+      // needs .is() instead (same distinction this function's own
+      // subject lookup above already makes for the same column).
+      dupQuery = specializationId ? dupQuery.eq("specialization_id", specializationId) : dupQuery.is("specialization_id", null);
+      const { data: existingDup } = await dupQuery.maybeSingle();
+      if (existingDup) continue;
+    }
+
     const { error: insertError } = await supabase.from("resources").insert({
       branch_id: branchId,
       specialization_id: specializationId,

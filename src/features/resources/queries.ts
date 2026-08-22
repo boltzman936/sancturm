@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueries, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useMutation } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { Resource, ResourceType, Subject } from "./types";
 
@@ -362,8 +362,6 @@ export function useExistingResourceTitles(
  * button) since they're the exact same RPC call with a different
  * column name. */
 export function useIncrementResourceCounter(columnName: "download_count" | "view_count") {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async (resourceId: string) => {
       const supabase = createClient();
@@ -374,11 +372,17 @@ export function useIncrementResourceCounter(columnName: "download_count" | "view
       });
       if (error) throw error;
     },
-    onSuccess: () => {
-      // Broad "resources" prefix, not just "notes_lab" — this same
-      // counter bump also fires from the PYQ page's Download/View.
-      queryClient.invalidateQueries({ queryKey: ["resources"] });
-    },
+    // No onSuccess invalidation — deliberately. download_count/
+    // view_count aren't rendered anywhere in the UI (grep confirms:
+    // only ever read back via the database types, never displayed),
+    // so there's nothing on screen this counter bump needs to refresh.
+    // This used to invalidate the entire "resources" query prefix,
+    // which matches every resources-namespaced query mounted on the
+    // page (Notes, PYQs, canonical PYQ, existing-title checks) —
+    // meaning View/Download, the single most common interaction on
+    // the whole site, silently triggered a full list refetch + re-
+    // render every single click. Fire-and-forget really means
+    // fire-and-forget here.
   });
 }
 
