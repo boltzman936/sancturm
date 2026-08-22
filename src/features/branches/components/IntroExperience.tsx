@@ -411,8 +411,12 @@ export function IntroExperience() {
           never distorts the media (aspect ratio is always preserved,
           only overflow is cropped), it just means the frame reaches
           every edge on every viewport instead of floating in a
-          smaller box. */}
-      <div className="absolute inset-0">
+          smaller box. overflow-hidden here (on top of the same
+          property already on the outer `fixed` wrapper) is what clips
+          the media's own deliberate 1px overscan below back down to
+          this box's exact edges — see the media element's own comment
+          for why it intentionally overshoots slightly. */}
+      <div className="absolute inset-0 overflow-hidden">
         {/* Background media — decorative only, not meaningful content,
             so it's hidden from screen readers and never keyboard-
             focusable. Mobile gets a dedicated video (autoplaying,
@@ -423,12 +427,37 @@ export function IntroExperience() {
             (nobody's staring at Cockpit long enough to notice a loop
             seam at tablet/desktop width the way a phone-in-hand moment
             might). Always object-cover, never object-contain — see
-            this wrapper's own comment for why. */}
+            this wrapper's own comment for why.
+
+            inset-0 + h-full + w-full, all three — unlike a plain
+            non-replaced box, an absolutely-positioned REPLACED element
+            (img/video) with width/height left `auto` does NOT stretch
+            to fill its inset offsets; per spec it instead sizes to its
+            own intrinsic pixel dimensions, with only ONE side's inset
+            actually honored. (Tried removing h-full/w-full here,
+            reasoning by analogy from the OUTER wrapper's own h-screen/
+            w-screen fix further up this file — that was wrong: this
+            element is a replaced element, and the "let inset alone
+            define the box" trick that fixed the wrapper's over-
+            constraint only applies to non-replaced boxes. Verified
+            live: without an explicit height/width, this rendered at
+            its native asset resolution, anchored only top-left,
+            leaving the rest of the viewport exposed — an actual
+            regression, not the fix. Explicit h-full/w-full is what
+            gives object-cover a real box to scale/crop against in the
+            first place; it's required here, not redundant.) The 1%
+            scale below is the real fix for any residual sub-pixel gap:
+            a pure post-layout visual transform, so it can't reopen the
+            over-constraint problem the way an inset trick did — it
+            just blows the already-correctly-sized image up 1% past
+            every edge as a safety margin, and the parent's own
+            overflow-hidden two levels up (plus this element's own)
+            clips that 1% straight back off, invisibly. */}
         {deviceTier === "mobile" ? (
           <video
             ref={videoRef}
             src="/media/cockpit-mobile.mp4"
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full scale-[1.01] object-cover"
             autoPlay
             loop
             muted
@@ -462,7 +491,9 @@ export function IntroExperience() {
             src={deviceTier === "tablet" ? "/media/cockpit-tablet.webp" : "/media/cockpit-desktop.webp"}
             alt=""
             aria-hidden="true"
-            className="absolute inset-0 h-full w-full object-cover"
+            // inset-0 + h-full + w-full + scale-[1.01] — see the video
+            // element's own comment above for the full reasoning.
+            className="absolute inset-0 h-full w-full scale-[1.01] object-cover"
             onLoad={() => setVideoReady(true)}
           />
         )}
