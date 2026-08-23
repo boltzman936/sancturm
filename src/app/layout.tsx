@@ -56,7 +56,19 @@ export const metadata: Metadata = {
 // directly) is itself synchronous, ordered before the browser
 // continues parsing/painting body, matching this whole script's own
 // "runs before first paint, no timing race possible" guarantee.
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('sancturm:theme');if(t!=='1'&&t!=='2'&&t!=='3'&&t!=='4')t='1';var m=localStorage.getItem('sancturm:mode');if(m!=='light'&&m!=='dark')m='light';document.documentElement.setAttribute('data-theme',t);document.documentElement.setAttribute('data-mode',m);if(window.location.pathname==='/'){var s=document.createElement('style');s.textContent='body{background:#000!important}';document.head.appendChild(s);}}catch(e){}})();`;
+//
+// Self-removing via requestAnimationFrame, NOT left in <head>
+// permanently — this was the actual bug in an earlier version of this
+// fix. The override's only job is covering the gap until the next
+// real paint; once that next frame happens, Cockpit's own (properly
+// themed/hydrated) black wrapper is what's actually on screen, so the
+// <style> override is already redundant. Leaving it in place instead
+// meant it kept forcing body black forever afterward, INCLUDING after
+// a client-side navigation away from "/" — Next's App Router doesn't
+// reload <head> on a client-side route change, so anyone landing on
+// Notes/PYQs/etc. straight from Cockpit inherited a black body
+// background that had nothing to do with their actual selected theme.
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('sancturm:theme');if(t!=='1'&&t!=='2'&&t!=='3'&&t!=='4')t='1';var m=localStorage.getItem('sancturm:mode');if(m!=='light'&&m!=='dark')m='light';document.documentElement.setAttribute('data-theme',t);document.documentElement.setAttribute('data-mode',m);if(window.location.pathname==='/'){var s=document.createElement('style');s.textContent='body{background:#000!important}';document.head.appendChild(s);requestAnimationFrame(function(){requestAnimationFrame(function(){s.remove();})});}}catch(e){}})();`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

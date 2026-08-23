@@ -166,7 +166,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                     href={link.href}
                     onClick={onClose}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                      "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
                         ? "bg-sidebar-active/15 text-sidebar-active"
                         : "text-sidebar-muted-foreground hover:bg-sidebar-foreground/10 active:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:text-sidebar-foreground"
@@ -220,7 +220,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 href="/cr"
                 onClick={onClose}
                 className={cn(
-                  "flex items-center justify-center gap-2.5 rounded-md px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex items-center justify-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                   pathname.startsWith("/cr")
                     ? "bg-sidebar-active/15 text-sidebar-active"
                     : "text-sidebar-muted-foreground hover:bg-sidebar-foreground/10 active:bg-sidebar-foreground/10 hover:text-sidebar-foreground active:text-sidebar-foreground"
@@ -238,7 +238,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                   to the same full-width row as the link above it (flex-col
                   parent's default stretch), so centering its text lines it
                   up directly under the centered dashboard link. */}
-              {role && <SignOutButton className="px-3 py-1 text-center text-sidebar-muted-foreground" />}
+              {role && (
+                <SignOutButton className="px-3 py-1 text-center font-medium text-sidebar-muted-foreground" />
+              )}
             </div>
           </div>
         </div>

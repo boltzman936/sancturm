@@ -154,20 +154,33 @@ export function CrCardUploadForm() {
               reset();
             }}
             className={cn(
-              "flex w-full items-center gap-2.5 border-b border-border px-3 py-2 text-left text-sm transition-colors last:border-b-0",
+              // Stacked on mobile (name row, then identify+badge row
+              // below it, both full-width and free to wrap on their
+              // own), single row from sm: up — the previous single-row-
+              // always layout had the identify text (branch ·
+              // specialization · Year N, sometimes fairly long — e.g.
+              // "Automation & Robotics · Year 2") and the "has card"
+              // badge both shrink-0 with nothing willing to give up
+              // width, so on a narrow phone the row simply overflowed
+              // past the card's own border instead of wrapping.
+              "flex w-full flex-col gap-1 border-b border-border px-3 py-2 text-left text-sm transition-colors last:border-b-0 sm:flex-row sm:items-center sm:gap-2.5",
               selected?.id === cr.id
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "text-foreground hover:bg-background-secondary active:bg-background-secondary"
             )}
           >
-            <UserRound className="h-3.5 w-3.5 shrink-0 text-subtle-foreground" />
-            <span className="min-w-0 flex-1 truncate">{cr.display_name}</span>
-            <span className="shrink-0 font-mono text-xs text-subtle-foreground">{identify(cr)}</span>
-            {cr.card_file_url && (
-              <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
-                has card
-              </span>
-            )}
+            <span className="flex min-w-0 items-center gap-2.5">
+              <UserRound className="h-3.5 w-3.5 shrink-0 text-subtle-foreground" />
+              <span className="min-w-0 flex-1 truncate sm:flex-1">{cr.display_name}</span>
+            </span>
+            <span className="flex flex-wrap items-center gap-2 pl-6 sm:shrink-0 sm:flex-nowrap sm:pl-0">
+              <span className="shrink-0 font-mono text-xs text-subtle-foreground">{identify(cr)}</span>
+              {cr.card_file_url && (
+                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                  has card
+                </span>
+              )}
+            </span>
           </button>
         ))}
       </div>

@@ -166,7 +166,7 @@ export default function NoticesPage() {
               key={option}
               onClick={() => setDateSort(option)}
               className={cn(
-                "rounded px-3 py-1.5 text-sm capitalize transition-colors",
+                "flex-1 min-w-0 rounded px-3 py-1.5 text-center text-sm capitalize transition-colors",
                 dateSort === option
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground active:text-foreground"

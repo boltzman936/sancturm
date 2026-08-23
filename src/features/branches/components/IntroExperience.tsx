@@ -496,7 +496,23 @@ export function IntroExperience() {
             aria-hidden="true"
             // inset-0 + h-full + w-full + scale-[1.01] — see the video
             // element's own comment above for the full reasoning.
-            className="absolute inset-0 h-full w-full scale-[1.01] object-cover"
+            //
+            // object-bottom on desktop only — object-cover's own
+            // default (object-center) crops equally off the top AND
+            // bottom whenever the viewport is wider than the source
+            // image's own aspect ratio, which most real desktop windows
+            // are. This composition has the seated figure/backpack
+            // near the very bottom and mostly open sky at the top (see
+            // the headline/card's own anchor comment below) — a centered
+            // crop was cutting into the backpack while there was still
+            // plenty of spare sky above to give up instead. Anchoring
+            // the crop to the bottom edge keeps the backpack/figure
+            // fully in frame and only ever trims from the top, where
+            // it doesn't cost anything. Tablet's own composition isn't
+            // known to have the same issue, so it keeps the default
+            // centered crop rather than inheriting a fix tuned for a
+            // different image.
+            className={`absolute inset-0 h-full w-full scale-[1.01] object-cover ${deviceTier === "desktop" ? "object-bottom" : ""}`}
             onLoad={() => setVideoReady(true)}
           />
         )}

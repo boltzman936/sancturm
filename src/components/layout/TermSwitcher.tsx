@@ -25,7 +25,7 @@ export function TermSwitcher() {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-primary active:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Switch year"
         >
           <span className="min-w-0 truncate">{current ? current.label.split(" - ")[0] : "Select year"}</span>
@@ -53,7 +53,7 @@ export function TermSwitcher() {
               key={t.slug}
               onSelect={() => setTerm(t.slug)}
               className={cn(
-                "flex cursor-pointer items-center justify-between rounded-sm px-2 py-2 text-sm text-foreground outline-none data-[highlighted]:bg-background-secondary"
+                "flex cursor-pointer items-center justify-between rounded-sm px-2 py-2 text-sm font-medium text-foreground outline-none data-[highlighted]:bg-background-secondary"
               )}
             >
               {t.label.split(" - ")[0]}
