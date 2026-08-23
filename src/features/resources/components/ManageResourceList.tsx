@@ -6,10 +6,18 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DeleteResourceButton } from "@/features/resources/components/DeleteResourceButton";
 import { DeleteNoticeButton } from "@/features/notices/components/DeleteNoticeButton";
 import { DeleteSancturmUpdateButton } from "@/features/sancturmUpdates/components/DeleteSancturmUpdateButton";
-import { deleteResource, updateResourceFields } from "@/features/resources/actions";
+import {
+  deleteResource,
+  updateResourceFields,
+  bulkUpdateResourceFields,
+  addResourceContexts,
+  type MultiContextTarget,
+  type MultiContextResult,
+} from "@/features/resources/actions";
 import { deleteNotice, updateNoticeFields } from "@/features/notices/actions";
 import { deleteSancturmUpdate, updateSancturmUpdateDate } from "@/features/sancturmUpdates/actions";
-import { useBranches, useSpecializations } from "@/features/branches/queries";
+import { useBranches, useSpecializations, useAllSpecializations } from "@/features/branches/queries";
+import { BranchMultiSelect } from "@/components/shared/BranchMultiSelect";
 import { useTerms } from "@/features/terms/queries";
 import { useBatches, useBatchesForTerm } from "@/features/batches/queries";
 import { useSubjects, useSubjectsForTerms, useCanonicalSubjects } from "@/features/resources/queries";
@@ -394,6 +402,20 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   const [crOnly, setCrOnly] = useState(resource.cr_only);
   const [title, setTitle] = useState(resource.title);
   const [description, setDescription] = useState(resource.description ?? "");
+  // "Add to more contexts" state — declared here (not down near where
+  // it's actually used, right before handleAddContexts) specifically
+  // so the reset effect below can reference every setter in source
+  // order, same requirement as every other field's own state above.
+  const [addContextOpen, setAddContextOpen] = useState(false);
+  const [addBranchIds, setAddBranchIds] = useState<string[]>([]);
+  const [addBatchIds, setAddBatchIds] = useState<string[]>([]);
+  const [addYearNumbers, setAddYearNumbers] = useState<number[]>([]);
+  const [addSemesterOrdinals, setAddSemesterOrdinals] = useState<(1 | 2)[]>([]);
+  const [addSpecializationIds, setAddSpecializationIds] = useState<string[]>([]);
+  const [addSubjectName, setAddSubjectName] = useState("");
+  const [isAddingContexts, startAddContexts] = useTransition();
+  const [addContextResult, setAddContextResult] = useState<MultiContextResult | null>(null);
+  const [addContextError, setAddContextError] = useState<string | null>(null);
   // Legacy "pdf" rows (pre-dating the pyq/pyq_solution split) get
   // normalized to "pyq" here — same equivalence the rest of the app
   // already treats them as (see usePyqResources/Manage's own PYQ
@@ -447,6 +469,20 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
         : (resource.resource_type as "notes" | "lab_manual" | "pyq" | "pyq_solution" | null) ?? "notes"
     );
     setError(null);
+    // "Add to more contexts" panel resets alongside every other field —
+    // otherwise a previous resource's stale in-progress add-context
+    // selection would carry over the next time Edit opens for a
+    // DIFFERENT resource, same underlying reason as every other reset
+    // above.
+    setAddContextOpen(false);
+    setAddBranchIds([]);
+    setAddBatchIds([]);
+    setAddYearNumbers([]);
+    setAddSemesterOrdinals([]);
+    setAddSpecializationIds([]);
+    setAddSubjectName("");
+    setAddContextResult(null);
+    setAddContextError(null);
   }, [open, resource]);
 
   // This button renders once per row in a Manage list that can span
@@ -490,6 +526,68 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
   // "syncing" once validBatches loads async — same reasoning as
   // CRUploadForm's identical effectiveBatchId.
   const effectiveBatchId = batchId || validBatches?.[0]?.id || "";
+
+  // "Add to more contexts" — the Edit-dialog half of multi-context
+  // (see addResourceContexts in actions.ts; its own state is declared
+  // up near the rest of this button's field state, so the reset effect
+  // above can reference it — this is just the derived/handler half).
+  // Deliberately separate state from the single-context fields above:
+  // this never re-uploads or changes this resource's OWN row, it only
+  // ever creates ADDITIONAL rows sharing the exact same file. Only
+  // meaningful for an actual resource (not a notice/update), admin-only
+  // — same as this whole button.
+  const { data: allBatchesForAdd } = useBatches();
+  const { data: allSpecializationsForAdd } = useAllSpecializations();
+  const distinctYearsForAdd = Array.from(new Set((terms ?? []).map((t) => t.year_number))).sort((a, b) => a - b);
+  const addBranchesWithSpecializations = (branches ?? []).filter((b) => b.has_specializations && addBranchIds.includes(b.id));
+  const addSpecializationOptions = addBranchesWithSpecializations.flatMap((branch) =>
+    (allSpecializationsForAdd ?? [])
+      .filter((s) => s.branch_id === branch.id)
+      .map((s) => ({ id: s.id, name: `${branch.name} — ${s.name}` }))
+  );
+  const addNeedsSpecializationPick = addBranchesWithSpecializations.length > 0;
+
+  function handleAddContexts() {
+    if (addBranchIds.length === 0 || addBatchIds.length === 0 || addYearNumbers.length === 0 || addSemesterOrdinals.length === 0) {
+      return;
+    }
+    const relevantTerms = (terms ?? []).filter(
+      (t) => addYearNumbers.includes(t.year_number) && addSemesterOrdinals.includes((((t.semester_number - 1) % 2) + 1) as 1 | 2)
+    );
+    const targets: MultiContextTarget[] = [];
+    for (const bId of addBranchIds) {
+      const branch = branches?.find((b) => b.id === bId);
+      if (!branch) continue;
+      if (branch.has_specializations) {
+        const specs = addSpecializationOptions.filter((s) => s.name.startsWith(`${branch.name} — `) && addSpecializationIds.includes(s.id));
+        for (const spec of specs) {
+          for (const t of relevantTerms) for (const batId of addBatchIds) {
+            targets.push({ branchId: bId, specializationId: spec.id, termId: t.id, batchId: batId });
+          }
+        }
+      } else {
+        for (const t of relevantTerms) for (const batId of addBatchIds) {
+          targets.push({ branchId: bId, specializationId: null, termId: t.id, batchId: batId });
+        }
+      }
+    }
+    if (targets.length === 0) return;
+    setAddContextError(null);
+    startAddContexts(async () => {
+      try {
+        const outcome = await addResourceContexts(resource.id, targets, addSubjectName || null);
+        setAddContextResult(outcome);
+        setAddBranchIds([]);
+        setAddBatchIds([]);
+        setAddYearNumbers([]);
+        setAddSemesterOrdinals([]);
+        setAddSpecializationIds([]);
+        setAddSubjectName("");
+      } catch (err) {
+        setAddContextError(err instanceof Error ? err.message : "Couldn't add those contexts. Try again.");
+      }
+    });
+  }
 
   function handleSave() {
     if (!branchId || !termId || !effectiveBatchId || !dateKey) return;
@@ -747,6 +845,134 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
               <label className="font-mono text-xs text-subtle-foreground">Date</label>
               <DateFilterInput value={dateKey} onChange={setDateKey} placeholder="Pick a date" className="bg-background" />
             </div>
+
+            {resource.kind === "resource" && (
+              <div className="flex flex-col gap-2 rounded-md border border-primary/40 p-3">
+                <button
+                  type="button"
+                  onClick={() => setAddContextOpen((v) => !v)}
+                  className="self-start font-mono text-xs text-primary underline-offset-2 hover:underline"
+                >
+                  {addContextOpen ? "Hide" : "Add this file to more contexts"}
+                </button>
+                {addContextOpen && (
+                  <>
+                    <p className="font-mono text-xs text-subtle-foreground">
+                      Publishes the SAME file (no re-upload) as new rows in every combination picked below — this
+                      resource&apos;s own row above is untouched.
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-xs text-subtle-foreground">Branch</label>
+                        <BranchMultiSelect
+                          branches={branches ?? []}
+                          selectedBranchIds={addBranchIds}
+                          itemLabel="branch"
+                          itemLabelPlural="branches"
+                          onChange={(ids) => {
+                            setAddBranchIds(ids);
+                            setAddSpecializationIds((prev) => prev.filter((id) => addSpecializationOptions.some((o) => o.id === id)));
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-xs text-subtle-foreground">Batch</label>
+                        <BranchMultiSelect
+                          branches={(allBatchesForAdd ?? []).map((b) => ({ id: b.id, name: b.label }))}
+                          selectedBranchIds={addBatchIds}
+                          itemLabel="batch"
+                          itemLabelPlural="batches"
+                          onChange={setAddBatchIds}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-xs text-subtle-foreground">Year</label>
+                        <div className="flex flex-wrap gap-1 rounded-md border border-border bg-background p-1">
+                          {distinctYearsForAdd.map((year) => (
+                            <button
+                              key={year}
+                              type="button"
+                              onClick={() =>
+                                setAddYearNumbers((prev) => (prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year]))
+                              }
+                              className={cn(
+                                "flex-1 rounded px-2 py-1.5 text-sm transition-colors",
+                                addYearNumbers.includes(year)
+                                  ? "bg-primary text-primary-foreground shadow-sm"
+                                  : "text-muted-foreground hover:text-foreground active:text-foreground"
+                              )}
+                            >
+                              Year {year}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-xs text-subtle-foreground">Semester</label>
+                        <div className="flex flex-wrap gap-1 rounded-md border border-border bg-background p-1">
+                          {([1, 2] as const).map((ord) => (
+                            <button
+                              key={ord}
+                              type="button"
+                              onClick={() =>
+                                setAddSemesterOrdinals((prev) => (prev.includes(ord) ? prev.filter((o) => o !== ord) : [...prev, ord]))
+                              }
+                              className={cn(
+                                "flex-1 rounded px-2 py-1.5 text-sm transition-colors",
+                                addSemesterOrdinals.includes(ord)
+                                  ? "bg-primary text-primary-foreground shadow-sm"
+                                  : "text-muted-foreground hover:text-foreground active:text-foreground"
+                              )}
+                            >
+                              {ord === 1 ? "1st Sem" : "2nd Sem"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    {addNeedsSpecializationPick && (
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-xs text-subtle-foreground">Specialization</label>
+                        <BranchMultiSelect
+                          branches={addSpecializationOptions}
+                          selectedBranchIds={addSpecializationIds}
+                          itemLabel="specialization"
+                          itemLabelPlural="specializations"
+                          onChange={setAddSpecializationIds}
+                        />
+                      </div>
+                    )}
+                    <input
+                      value={addSubjectName}
+                      onChange={(event) => setAddSubjectName(event.target.value)}
+                      placeholder="Subject name for the new contexts (blank = Extra)"
+                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddContexts}
+                      disabled={
+                        isAddingContexts ||
+                        addBranchIds.length === 0 ||
+                        addBatchIds.length === 0 ||
+                        addYearNumbers.length === 0 ||
+                        addSemesterOrdinals.length === 0
+                      }
+                      className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      {isAddingContexts ? "Adding…" : "Add to selected contexts"}
+                    </button>
+                    {addContextResult && (
+                      <p className="font-mono text-xs text-terminal-blue">
+                        Added {addContextResult.published} context{addContextResult.published === 1 ? "" : "s"}
+                        {addContextResult.skipped.length > 0 ? ` — ${addContextResult.skipped.length} skipped.` : "."}
+                      </p>
+                    )}
+                    {addContextError && <p className="font-mono text-xs text-destructive">{addContextError}</p>}
+                  </>
+                )}
+              </div>
+            )}
 
             <button
               type="button"
@@ -1103,6 +1329,44 @@ export function ManageResourceList({
   const [dateSort, setDateSort] = useState<"newest" | "oldest">("newest");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, startBulkDelete] = useTransition();
+  // Admin-only bulk-edit panel for the current selection — scoped to
+  // Title/Description/Date only (never Branch/Term/Batch/Subject,
+  // which are each tied to ONE specific context and would silently
+  // corrupt a heterogeneous selection if force-set the same way — see
+  // bulkUpdateResourceFields's own comment). Blank field = "leave
+  // unchanged" for every selected row, same convention as
+  // updateResourceFields's per-row Edit dialog.
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkEditTitle, setBulkEditTitle] = useState("");
+  const [bulkEditDescription, setBulkEditDescription] = useState("");
+  const [bulkEditDate, setBulkEditDate] = useState("");
+  const [isBulkEditing, startBulkEdit] = useTransition();
+  const [bulkEditError, setBulkEditError] = useState<string | null>(null);
+
+  function handleBulkEditApply() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    const fields: { title?: string; description?: string; dateKey?: string } = {};
+    if (bulkEditTitle.trim()) fields.title = bulkEditTitle.trim();
+    if (bulkEditDescription.trim()) fields.description = bulkEditDescription.trim();
+    if (bulkEditDate) fields.dateKey = bulkEditDate;
+    if (Object.keys(fields).length === 0) {
+      setBulkEditError("Fill in at least one field to apply.");
+      return;
+    }
+    setBulkEditError(null);
+    startBulkEdit(async () => {
+      try {
+        await bulkUpdateResourceFields(ids, fields);
+        setBulkEditOpen(false);
+        setBulkEditTitle("");
+        setBulkEditDescription("");
+        setBulkEditDate("");
+      } catch (err) {
+        setBulkEditError(err instanceof Error ? err.message : "Couldn't apply. Try again.");
+      }
+    });
+  }
 
   // Branch/Year/Batch all feed subjectOptions above (directly, or via
   // termIdsForSubjects) — same reset-on-change already applied to the
@@ -1668,6 +1932,14 @@ export function ManageResourceList({
               >
                 Clear
               </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setBulkEditOpen((v) => !v)}
+                  className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary"
+                >
+                  Bulk edit
+                </button>
+              )}
               <button
                 onClick={handleBulkDelete}
                 disabled={isBulkDeleting}
@@ -1677,6 +1949,47 @@ export function ManageResourceList({
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {isAdmin && bulkEditOpen && selectedIds.size > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-card p-4">
+          <p className="font-mono text-xs text-subtle-foreground">
+            Applies to all {selectedIds.size} selected rows at once — one batched update, not one per row. Leave a
+            field blank to leave it unchanged. Branch/Term/Batch/Subject can only be changed per-row (Edit), since
+            those are tied to one specific context each.
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <input
+              value={bulkEditTitle}
+              onChange={(event) => setBulkEditTitle(event.target.value)}
+              placeholder="Title (unchanged if blank)"
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <input
+              value={bulkEditDescription}
+              onChange={(event) => setBulkEditDescription(event.target.value)}
+              placeholder="Description (unchanged if blank)"
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <DateFilterInput value={bulkEditDate} onChange={setBulkEditDate} placeholder="Date (unchanged if blank)" />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBulkEditApply}
+              disabled={isBulkEditing}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+            >
+              {isBulkEditing ? "Applying…" : `Apply to ${selectedIds.size}`}
+            </button>
+            <button
+              onClick={() => setBulkEditOpen(false)}
+              className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-background-secondary active:bg-background-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+          {bulkEditError && <p className="font-mono text-xs text-destructive">{bulkEditError}</p>}
         </div>
       )}
 
