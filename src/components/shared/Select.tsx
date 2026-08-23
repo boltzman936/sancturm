@@ -26,13 +26,19 @@ export function Select({
 }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode }) {
   return (
     <div className={cn("relative rounded-md border border-border bg-card", className)}>
+      {/* Tighter on mobile/tablet (py-1.5, smaller chevron) than
+          desktop (sm:py-2) — every filter dropdown app-wide reads off
+          this one component, so this single change is what compacts
+          Notes/PYQ/Notices/Updates/Manage's filters everywhere at
+          once, rather than six separate per-page adjustments. Options,
+          values and onChange behavior are untouched — sizing only. */}
       <select
         {...props}
-        className="w-full appearance-none bg-transparent px-3 py-2 pr-8 text-sm text-foreground outline-none [color-scheme:dark] focus-visible:ring-2 focus-visible:ring-ring"
+        className="w-full appearance-none bg-transparent px-2.5 py-1.5 pr-7 text-sm text-foreground outline-none [color-scheme:dark] focus-visible:ring-2 focus-visible:ring-ring sm:px-3 sm:py-2 sm:pr-8"
       >
         {children}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle-foreground" />
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle-foreground sm:right-3 sm:h-4 sm:w-4" />
     </div>
   );
 }
