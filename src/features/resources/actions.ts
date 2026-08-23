@@ -4,11 +4,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
-import { withDateKey } from "@/lib/date";
+import { withDateKey, localDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyUploadedFileOrCleanUp, urlObjectExists } from "@/lib/uploadVerification";
 import { assertBatchTermReached, assertSubjectMatchesScope } from "@/features/batches/academicValidation";
-import { isBatchTermHiddenForSpecialization } from "@/features/batches/academicChronology";
+import { isBatchTermHiddenForSpecialization, isDateReached } from "@/features/batches/academicChronology";
 import type { ResourceSection, ResourceType } from "./types";
 import {
   assertValidId,
@@ -794,4 +794,530 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
   revalidatePath("/notes");
   revalidatePath("/pyqs");
   revalidatePath("/cr");
+}
+
+// ---------------------------------------------------------------
+// Admin multi-context publish — one resource (one physical file, one
+// title/description) published across ANY combination of Branch ×
+// Batch × Year × Semester × Specialization at once, instead of
+// repeating the upload/edit per combination. Additive only: neither
+// uploadResourceDirect (CR) nor uploadResourceDirectAllBranches
+// (admin's existing single-branch/multi-specialization flow) is
+// touched by any of this — CR's own permissions/options and the
+// existing admin flow are both byte-for-byte unchanged.
+// ---------------------------------------------------------------
+
+export type MultiContextTarget = {
+  branchId: string;
+  specializationId: string | null;
+  termId: string;
+  batchId: string;
+};
+
+export type MultiContextResult = {
+  published: number;
+  skipped: (MultiContextTarget & { reason: string })[];
+};
+
+/**
+ * Shared core for both "publish a fresh upload to many contexts" and
+ * "add more contexts to an already-existing resource" — the only
+ * difference between those two callers is whether fileUrl/contentHash
+ * come from a brand-new upload+dedup resolution or are already known
+ * from an existing resources row (see addResourceContexts below,
+ * which never re-uploads or re-verifies anything).
+ *
+ * Every validity check that already exists for a single-target publish
+ * (isBatchTermHiddenForSpecialization, the batch_terms "has this
+ * semester started" check, per-target content-hash retry guard) is
+ * reused here — just resolved with THREE batched queries up front
+ * instead of one query per combination, since a real cross-product
+ * (e.g. 3 branches × 2 batches × 4 terms × 3 specializations) would
+ * otherwise mean dozens of sequential round trips. An invalid
+ * combination is skipped with a reason, never thrown — matching the
+ * existing bulk action's own "some targets filtered, the rest still
+ * publish" precedent, just extended to every dimension instead of only
+ * specialization.
+ *
+ * Centralized PYQ (canonicalSubjectId set) is a deliberate special
+ * case: per the existing model (see uploadResourceDirectAllBranches's
+ * identical short-circuit), a centralized PYQ is always exactly ONE
+ * row — visibility comes entirely from canonical_subject_id at read
+ * time, so inserting one row per target here would just be redundant
+ * duplication of the same row, defeating the whole point of
+ * centralizing it. Only the first valid target is used as that one
+ * row's provenance; every other target is reported as "skipped" with
+ * an informational (not error) reason.
+ */
+async function publishResourceToContexts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  params: {
+    fileUrl: string;
+    contentHash: string | null;
+    section: string;
+    resourceType: string;
+    title: string;
+    description: string | null;
+    subjectName: string | null;
+    canonicalSubjectId: string | null;
+    customCreatedAt: string | null;
+    uploadedByName: string | null;
+    targets: MultiContextTarget[];
+  }
+): Promise<MultiContextResult> {
+  const { targets, canonicalSubjectId } = params;
+  if (targets.length === 0) return { published: 0, skipped: [] };
+
+  if (canonicalSubjectId) {
+    const validTargets = targets.filter(
+      (t) => !isBatchTermHiddenForSpecialization(t.batchId, t.termId, t.specializationId)
+    );
+    if (validTargets.length === 0) {
+      return {
+        published: 0,
+        skipped: targets.map((t) => ({ ...t, reason: "not available for this specialization" })),
+      };
+    }
+    const primary = validTargets[0];
+    const { error } = await supabase.from("resources").insert({
+      branch_id: primary.branchId,
+      specialization_id: primary.specializationId,
+      term_id: primary.termId,
+      batch_id: primary.batchId,
+      subject_id: null,
+      canonical_subject_id: canonicalSubjectId,
+      section: params.section,
+      resource_type: params.resourceType,
+      title: params.title,
+      description: params.description,
+      file_url: params.fileUrl,
+      content_hash: params.contentHash,
+      status: "approved",
+      uploaded_by_device: null,
+      uploaded_by_name: params.uploadedByName,
+      ...(params.customCreatedAt ? { created_at: params.customCreatedAt } : {}),
+    });
+    if (error) throw safeDbError(error);
+    return {
+      published: 1,
+      skipped: targets
+        .filter((t) => t !== primary)
+        .map((t) => ({ ...t, reason: "centralized PYQ — one shared row already covers this subject everywhere" })),
+    };
+  }
+
+  const batchIds = [...new Set(targets.map((t) => t.batchId))];
+  const termIds = [...new Set(targets.map((t) => t.termId))];
+  const branchIds = [...new Set(targets.map((t) => t.branchId))];
+
+  const { data: batchTermRows, error: batchTermsError } = await supabase
+    .from("batch_terms")
+    .select("batch_id, term_id, start_date")
+    .in("batch_id", batchIds)
+    .in("term_id", termIds);
+  if (batchTermsError) throw safeDbError(batchTermsError);
+  const today = localDateKey(new Date().toISOString());
+  const reachedPairs = new Set(
+    (batchTermRows ?? [])
+      .filter((r) => isDateReached(r.start_date, today))
+      .map((r) => `${r.batch_id}|${r.term_id}`)
+  );
+
+  const subjectMap = new Map<string, string>();
+  if (params.subjectName) {
+    const { data: subjectRows, error: subjectsError } = await supabase
+      .from("subjects")
+      .select("id, branch_id, specialization_id, term_id, name")
+      .in("branch_id", branchIds)
+      .in("term_id", termIds);
+    if (subjectsError) throw safeDbError(subjectsError);
+    for (const s of subjectRows ?? []) {
+      subjectMap.set(`${s.branch_id}|${s.specialization_id ?? "null"}|${s.term_id}|${s.name.toLowerCase()}`, s.id);
+    }
+  }
+
+  // Same idempotent-retry guard as uploadResourceDirectAllBranches's
+  // per-target loop, just resolved once for every target at once
+  // instead of one query per target.
+  const existingDupKeys = new Set<string>();
+  if (params.contentHash) {
+    const { data: dupRows, error: dupError } = await supabase
+      .from("resources")
+      .select("branch_id, specialization_id, term_id, batch_id")
+      .eq("resource_type", params.resourceType)
+      .eq("content_hash", params.contentHash)
+      .in("branch_id", branchIds)
+      .in("term_id", termIds)
+      .in("batch_id", batchIds);
+    if (dupError) throw safeDbError(dupError);
+    for (const d of dupRows ?? []) {
+      existingDupKeys.add(`${d.branch_id}|${d.specialization_id ?? "null"}|${d.term_id}|${d.batch_id}`);
+    }
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  const skipped: (MultiContextTarget & { reason: string })[] = [];
+
+  for (const t of targets) {
+    if (isBatchTermHiddenForSpecialization(t.batchId, t.termId, t.specializationId)) {
+      skipped.push({ ...t, reason: "not available for this specialization" });
+      continue;
+    }
+    if (!reachedPairs.has(`${t.batchId}|${t.termId}`)) {
+      skipped.push({ ...t, reason: "that semester hasn't started yet for that batch" });
+      continue;
+    }
+    const key = `${t.branchId}|${t.specializationId ?? "null"}|${t.termId}|${t.batchId}`;
+    if (existingDupKeys.has(key)) {
+      skipped.push({ ...t, reason: "already published to this exact context" });
+      continue;
+    }
+    const subjectId = params.subjectName
+      ? (subjectMap.get(`${t.branchId}|${t.specializationId ?? "null"}|${t.termId}|${params.subjectName.toLowerCase()}`) ?? null)
+      : null;
+    rows.push({
+      branch_id: t.branchId,
+      specialization_id: t.specializationId,
+      term_id: t.termId,
+      batch_id: t.batchId,
+      subject_id: subjectId,
+      section: params.section,
+      resource_type: params.resourceType,
+      title: params.title,
+      description: params.description,
+      file_url: params.fileUrl,
+      content_hash: params.contentHash,
+      status: "approved",
+      uploaded_by_device: null,
+      uploaded_by_name: params.uploadedByName,
+      ...(params.customCreatedAt ? { created_at: params.customCreatedAt } : {}),
+    });
+  }
+
+  if (rows.length > 0) {
+    const { error: insertError } = await supabase.from("resources").insert(rows);
+    if (insertError) throw safeDbError(insertError);
+  }
+
+  return { published: rows.length, skipped };
+}
+
+/**
+ * Admin-only: the actual entry point for a fresh multi-context
+ * publish — uploads/verifies/dedupes the file exactly once (same
+ * verifyUploadedFileOrCleanUp + resolveDedupedFileUrl as every other
+ * upload path), then fans out via publishResourceToContexts above.
+ * branchIds/batchIds/yearNumbers/semesterOrdinals/specializationIds
+ * all arrive as JSON-stringified arrays; "semesterOrdinals" is 1 or 2,
+ * relative to whichever Year(s) it's paired with (1st/2nd semester OF
+ * that year — see CRUploadForm's multi-context panel for the exact UI
+ * this maps from), not an absolute semester_number, since that's the
+ * only interpretation that stays meaningful across more than one Year
+ * at once.
+ */
+export async function uploadResourceDirectMultiContext(formData: FormData): Promise<MultiContextResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const role = await getCurrentRole();
+  if (role?.type !== "admin") throw new Error("Admin only.");
+  await checkRateLimit("uploadResourceDirectMultiContext", user.id, 20, 60_000);
+
+  function parseIdArray(field: string, label: string): string[] {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse((formData.get(field) as string) || "[]");
+    } catch {
+      throw new Error(`Invalid ${label} selection.`);
+    }
+    if (!Array.isArray(parsed) || !parsed.every((v) => typeof v === "string")) {
+      throw new Error(`Invalid ${label} selection.`);
+    }
+    for (const id of parsed) assertValidId(id, label);
+    return parsed;
+  }
+
+  const branchIds = parseIdArray("branchIds", "branch");
+  const batchIds = parseIdArray("batchIds", "batch");
+  const specializationIds = parseIdArray("specializationIds", "specialization");
+
+  let yearNumbers: unknown;
+  let semesterOrdinals: unknown;
+  try {
+    yearNumbers = JSON.parse((formData.get("yearNumbers") as string) || "[]");
+    semesterOrdinals = JSON.parse((formData.get("semesterOrdinals") as string) || "[]");
+  } catch {
+    throw new Error("Invalid year/semester selection.");
+  }
+  if (
+    !Array.isArray(yearNumbers) ||
+    !yearNumbers.every((n) => typeof n === "number") ||
+    !Array.isArray(semesterOrdinals) ||
+    !semesterOrdinals.every((n) => n === 1 || n === 2)
+  ) {
+    throw new Error("Invalid year/semester selection.");
+  }
+  if (branchIds.length === 0 || batchIds.length === 0 || yearNumbers.length === 0 || semesterOrdinals.length === 0) {
+    throw new Error("Pick at least one Branch, Batch, Year, and Semester.");
+  }
+
+  const subjectName = (formData.get("subjectName") as string) || null;
+  const canonicalSubjectId = (formData.get("canonicalSubjectId") as string) || null;
+  const section = formData.get("section") as string;
+  const resourceType = formData.get("resourceType") as string;
+  const title = formData.get("title") as string;
+  const description = (formData.get("description") as string) || null;
+  const fileUrl = formData.get("fileUrl") as string;
+  const customCreatedAt = (formData.get("customCreatedAt") as string) || null;
+
+  assertValidSection(section);
+  assertValidResourceType(resourceType);
+  assertValidString(title, "Title", { maxLength: MAX_TITLE_LENGTH });
+  assertValidString(description ?? "", "Description", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
+  if (customCreatedAt) {
+    assertValidString(customCreatedAt, "Date", { maxLength: 40 });
+    assertNotFutureTimestamp(customCreatedAt, "Date");
+  }
+
+  // Resolve the actual academic_terms rows for the requested Year(s) ×
+  // relative Semester(s) — the only place this ordinal math happens,
+  // since academic_terms itself only stores an absolute semester_number
+  // (Year 2 is semester_number 3/4, not 1/2).
+  const { data: termRows, error: termsError } = await supabase
+    .from("academic_terms")
+    .select("id, year_number, semester_number")
+    .in("year_number", yearNumbers);
+  if (termsError) throw safeDbError(termsError);
+  const termIds = (termRows ?? [])
+    .filter((t) => semesterOrdinals.includes((((t.semester_number - 1) % 2) + 1) as 1 | 2))
+    .map((t) => t.id);
+  if (termIds.length === 0) {
+    throw new Error("No semesters match the selected Year(s)/Semester(s).");
+  }
+
+  const { data: branchRows, error: branchesError } = await supabase
+    .from("branches")
+    .select("id, has_specializations")
+    .in("id", branchIds);
+  if (branchesError) throw safeDbError(branchesError);
+
+  const { data: specializationRows, error: specializationsError } = await supabase
+    .from("specializations")
+    .select("id, branch_id")
+    .in("id", specializationIds);
+  if (specializationsError) throw safeDbError(specializationsError);
+  const specializationsByBranch = new Map<string, string[]>();
+  for (const s of specializationRows ?? []) {
+    const list = specializationsByBranch.get(s.branch_id) ?? [];
+    list.push(s.id);
+    specializationsByBranch.set(s.branch_id, list);
+  }
+
+  await assertBatchTermReached(supabase, batchIds[0], termIds[0], null).catch(() => {
+    // Deliberately swallowed — this single-pair check exists elsewhere
+    // only to fail fast on an obviously-wrong single selection; with a
+    // full cross-product, per-target validity is what actually decides
+    // what publishes (see publishResourceToContexts), not this.
+  });
+
+  const targets: MultiContextTarget[] = [];
+  const preSkipped: (MultiContextTarget & { reason: string })[] = [];
+  for (const branch of branchRows ?? []) {
+    if (branch.has_specializations) {
+      const specsForBranch = (specializationsByBranch.get(branch.id) ?? []).filter((id) =>
+        specializationIds.includes(id)
+      );
+      if (specsForBranch.length === 0) {
+        for (const termId of termIds) {
+          for (const batchId of batchIds) {
+            preSkipped.push({ branchId: branch.id, specializationId: null, termId, batchId, reason: "no specialization selected for this branch" });
+          }
+        }
+        continue;
+      }
+      for (const specializationId of specsForBranch) {
+        for (const termId of termIds) {
+          for (const batchId of batchIds) {
+            targets.push({ branchId: branch.id, specializationId, termId, batchId });
+          }
+        }
+      }
+    } else {
+      for (const termId of termIds) {
+        for (const batchId of batchIds) {
+          targets.push({ branchId: branch.id, specializationId: null, termId, batchId });
+        }
+      }
+    }
+  }
+
+  const verification = await verifyUploadedFileOrCleanUp(fileUrl);
+  if (!verification.valid) {
+    throw new Error("Uploaded file is invalid or too large. The file was rejected.");
+  }
+  const dedupedFileUrl = await resolveDedupedFileUrl(supabase, fileUrl, verification.contentHash);
+
+  const result = await publishResourceToContexts(supabase, {
+    fileUrl: dedupedFileUrl,
+    contentHash: verification.contentHash,
+    section,
+    resourceType,
+    title,
+    description,
+    subjectName,
+    canonicalSubjectId,
+    customCreatedAt,
+    uploadedByName: role.displayName,
+    targets,
+  });
+  result.skipped = [...preSkipped, ...result.skipped];
+
+  revalidatePath("/notes");
+  revalidatePath("/pyqs");
+  revalidatePath("/cr");
+  revalidatePath("/cr/manage");
+  return result;
+}
+
+/**
+ * Admin-only: adds MORE context rows to an ALREADY-PUBLISHED resource
+ * — the Edit-dialog half of multi-context (see Manage's
+ * EditResourceButton). Never re-uploads, never re-verifies, never
+ * re-hashes: the file identity (file_url/content_hash) is read
+ * straight off the existing row and reused as-is for every new row,
+ * exactly like every other already-shared-file case in this codebase.
+ * The resource's own existing row is never touched by this — adding
+ * contexts is purely additive, same guarantee as Part A's dedup.
+ */
+export async function addResourceContexts(
+  resourceId: string,
+  targets: MultiContextTarget[],
+  subjectName: string | null
+): Promise<MultiContextResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const role = await getCurrentRole();
+  if (role?.type !== "admin") throw new Error("Admin only.");
+  await checkRateLimit("addResourceContexts", user.id, 30, 60_000);
+
+  assertValidId(resourceId, "resource");
+  if (!Array.isArray(targets) || targets.length === 0) throw new Error("Pick at least one context to add.");
+  for (const t of targets) {
+    assertValidId(t.branchId, "branch");
+    assertValidIdOrNull(t.specializationId, "specialization");
+    assertValidId(t.termId, "year");
+    assertValidId(t.batchId, "batch");
+  }
+
+  const { data: source, error: sourceError } = await supabase
+    .from("resources")
+    .select("file_url, content_hash, section, resource_type, title, description, canonical_subject_id, created_at")
+    .eq("id", resourceId)
+    .single();
+  if (sourceError) throw safeDbError(sourceError);
+
+  const result = await publishResourceToContexts(supabase, {
+    fileUrl: source.file_url,
+    contentHash: source.content_hash,
+    section: source.section,
+    resourceType: source.resource_type,
+    title: source.title,
+    description: source.description,
+    subjectName,
+    canonicalSubjectId: source.canonical_subject_id,
+    customCreatedAt: source.created_at,
+    uploadedByName: role.displayName,
+    targets,
+  });
+
+  revalidatePath("/notes");
+  revalidatePath("/pyqs");
+  revalidatePath("/cr");
+  revalidatePath("/cr/manage");
+  return result;
+}
+
+/**
+ * Admin-only, batched bulk-edit for Manage's multi-select — ONE
+ * UPDATE ... WHERE id = ANY(...) instead of firing updateResourceFields
+ * once per selected row (the explicit optimization asked for). Scoped
+ * to fields that are safe to set identically across rows from
+ * DIFFERENT academic contexts: Title, Description, Date. Deliberately
+ * excludes Subject/Branch/Term/Batch — those are tied to one specific
+ * context each (a subject_id from a CSE row is meaningless force-set
+ * onto a Mechanical row), so bulk-setting them the same way across a
+ * heterogeneous selection would silently corrupt data rather than
+ * "batch edit" it. Per-row updateResourceFields (unchanged) remains
+ * the only way to retarget an individual resource's context.
+ */
+export async function bulkUpdateResourceFields(
+  resourceIds: string[],
+  fields: { title?: string; description?: string | null; dateKey?: string }
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const role = await getCurrentRole();
+  if (role?.type !== "admin") throw new Error("Admin only.");
+  await checkRateLimit("bulkUpdateResourceFields", user.id, 30, 60_000);
+
+  if (!Array.isArray(resourceIds) || resourceIds.length === 0) throw new Error("Nothing selected.");
+  for (const id of resourceIds) assertValidId(id, "resource");
+
+  if (fields.title !== undefined) assertValidString(fields.title, "Title", { maxLength: MAX_TITLE_LENGTH });
+  if (fields.description !== undefined) {
+    assertValidString(fields.description ?? "", "Description", { maxLength: MAX_DESCRIPTION_LENGTH, required: false });
+  }
+  if (fields.dateKey !== undefined) assertValidDateKey(fields.dateKey, "date");
+
+  const update: Record<string, string | null> = {};
+  if (fields.title !== undefined) update.title = fields.title;
+  if (fields.description !== undefined) update.description = fields.description;
+
+  if (Object.keys(update).length === 0 && fields.dateKey === undefined) {
+    throw new Error("Nothing to update.");
+  }
+
+  if (Object.keys(update).length > 0) {
+    const { error } = await supabase.from("resources").update(update).in("id", resourceIds);
+    if (error) throw safeDbError(error);
+  }
+
+  // Date needs each row's own existing created_at time-of-day preserved
+  // (same withDateKey helper every other date edit already uses) — a
+  // single UPDATE can't vary the time component per row from one
+  // literal value, so this one field alone still needs to read
+  // existing rows first, but it's still ONE batched select + one
+  // Promise.all of per-row updates, not N sequential round trips like
+  // a naive per-row updateResourceFields loop would be.
+  if (fields.dateKey !== undefined) {
+    const { data: existing, error: fetchError } = await supabase
+      .from("resources")
+      .select("id, created_at")
+      .in("id", resourceIds);
+    if (fetchError) throw safeDbError(fetchError);
+    await Promise.all(
+      (existing ?? []).map((row) =>
+        supabase
+          .from("resources")
+          .update({ created_at: withDateKey(row.created_at, fields.dateKey!) })
+          .eq("id", row.id)
+      )
+    );
+  }
+
+  revalidatePath("/notes");
+  revalidatePath("/pyqs");
+  revalidatePath("/cr");
+  revalidatePath("/cr/manage");
 }

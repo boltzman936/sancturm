@@ -27,6 +27,7 @@ import { CustomNoticeComposer } from "@/features/notices/components/CustomNotice
 import { UpdateComposer } from "@/features/sancturmUpdates/components/UpdateComposer";
 import { CustomUpdateComposer } from "@/features/sancturmUpdates/components/CustomUpdateComposer";
 import { CrCardUploadForm } from "@/features/team/components/CrCardUploadForm";
+import { MultiContextUploadForm } from "@/features/resources/components/MultiContextUploadForm";
 import { localDateKey, formatShortDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
@@ -154,6 +155,12 @@ export function CRUploadForm({
   // every one of them is just how many are selected, not a separate
   // mode/checkbox to toggle first.
   const canBulkPublish = isAdmin && (resourceType === "notes" || resourceType === "lab_manual" || resourceType === "pyq");
+  // Separate, deliberately un-entangled mode — publish across ANY
+  // combination of Branch/Batch/Year/Semester/Specialization at once
+  // (MultiContextUploadForm, its own self-contained mini-form) instead
+  // of the single-branch bulk flow below. Toggling this never touches
+  // any state the single-branch flow reads, and vice versa.
+  const [multiContextMode, setMultiContextMode] = useState(false);
   const showBatchPicker = !fixedBatchId;
   const showTermPicker = !fixedTermId;
   // A CR's branch never changes, even for PYQ — only which
@@ -568,6 +575,31 @@ export function CRUploadForm({
     );
   }
 
+  if (canBulkPublish && multiContextMode) {
+    return (
+      <div className="flex flex-col gap-3">
+        {typeToggle}
+        <div className="flex flex-wrap gap-1 self-start rounded-md border border-border bg-background p-1">
+          <button
+            type="button"
+            onClick={() => setMultiContextMode(false)}
+            className="rounded px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground active:text-foreground"
+          >
+            Single branch
+          </button>
+          <button
+            type="button"
+            onClick={() => setMultiContextMode(true)}
+            className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground shadow-sm transition-colors"
+          >
+            Multi-context
+          </button>
+        </div>
+        <MultiContextUploadForm branches={branches} resourceType={resourceType} />
+      </div>
+    );
+  }
+
   return (
     <form
       ref={formRef}
@@ -575,6 +607,25 @@ export function CRUploadForm({
       className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
     >
       {typeToggle}
+
+      {canBulkPublish && (
+        <div className="flex flex-wrap gap-1 self-start rounded-md border border-border bg-background p-1">
+          <button
+            type="button"
+            onClick={() => setMultiContextMode(false)}
+            className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground shadow-sm transition-colors"
+          >
+            Single branch
+          </button>
+          <button
+            type="button"
+            onClick={() => setMultiContextMode(true)}
+            className="rounded px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground active:text-foreground"
+          >
+            Multi-context
+          </button>
+        </div>
+      )}
 
       {resourceType === "pyq" && (
         <div className="flex flex-col gap-1">
