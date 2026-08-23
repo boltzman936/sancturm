@@ -57,18 +57,32 @@ export const metadata: Metadata = {
 // continues parsing/painting body, matching this whole script's own
 // "runs before first paint, no timing race possible" guarantee.
 //
-// Self-removing via requestAnimationFrame, NOT left in <head>
-// permanently — this was the actual bug in an earlier version of this
-// fix. The override's only job is covering the gap until the next
-// real paint; once that next frame happens, Cockpit's own (properly
-// themed/hydrated) black wrapper is what's actually on screen, so the
-// <style> override is already redundant. Leaving it in place instead
-// meant it kept forcing body black forever afterward, INCLUDING after
-// a client-side navigation away from "/" — Next's App Router doesn't
-// reload <head> on a client-side route change, so anyone landing on
-// Notes/PYQs/etc. straight from Cockpit inherited a black body
-// background that had nothing to do with their actual selected theme.
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('sancturm:theme');if(t!=='1'&&t!=='2'&&t!=='3'&&t!=='4')t='1';var m=localStorage.getItem('sancturm:mode');if(m!=='light'&&m!=='dark')m='light';document.documentElement.setAttribute('data-theme',t);document.documentElement.setAttribute('data-mode',m);if(window.location.pathname==='/'){var s=document.createElement('style');s.textContent='body{background:#000!important}';document.head.appendChild(s);requestAnimationFrame(function(){requestAnimationFrame(function(){s.remove();})});}}catch(e){}})();`;
+// Self-removing, NOT left in <head> permanently — leaving it in place
+// forever meant it kept forcing body black even after a client-side
+// navigation away from "/" (Next's App Router doesn't reload <head> on
+// a route change), so anyone landing on Notes/PYQs/etc. straight from
+// Cockpit inherited a black body background unrelated to their actual
+// theme.
+//
+// Removed on the `load` event, NOT a fixed double-requestAnimationFrame
+// timer — that was the actual remaining bug: two rAF frames is ~33ms,
+// long enough on a fast connection but nowhere near long enough on a
+// genuinely slow/throttled one, where the HTML for body's own content
+// (Cockpit's black wrapper div, streamed in as part of the same
+// response, further down the document) can take far longer than 33ms
+// to actually arrive and paint. Removing the override on that fixed
+// timer re-exposed body's real themed background for however much
+// longer the real content took beyond that — exactly the "warm flash
+// still visible on a slow load" report, even though the override
+// itself was working correctly for the first 33ms. `load` fires only
+// once the entire document (including that streamed-in body content)
+// has fully loaded, so the override now survives for exactly as long
+// as the gap it exists to cover, on any connection speed — not a fixed
+// guess tuned for a fast one. The 4s fallback is only a safety net for
+// `load` somehow never firing (a genuinely hung request, which means
+// nothing is painting anyway); harmless either way since real Cockpit
+// content is black too, so overshooting slightly is invisible.
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('sancturm:theme');if(t!=='1'&&t!=='2'&&t!=='3'&&t!=='4')t='1';var m=localStorage.getItem('sancturm:mode');if(m!=='light'&&m!=='dark')m='light';document.documentElement.setAttribute('data-theme',t);document.documentElement.setAttribute('data-mode',m);if(window.location.pathname==='/'){var s=document.createElement('style');s.textContent='body{background:#000!important}';document.head.appendChild(s);var done=false;function remove(){if(done)return;done=true;s.remove();}window.addEventListener('load',remove);setTimeout(remove,4000);}}catch(e){}})();`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
