@@ -6,7 +6,7 @@ import { getCurrentRole } from "@/lib/auth/role";
 import { deleteFromR2 } from "@/lib/r2";
 import { withDateKey } from "@/lib/date";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { verifyUploadedFileOrCleanUp } from "@/lib/uploadVerification";
+import { verifyUploadedFileOrCleanUp, urlObjectExists } from "@/lib/uploadVerification";
 import { assertBatchTermReached, assertSubjectMatchesScope } from "@/features/batches/academicValidation";
 import { isBatchTermHiddenForSpecialization } from "@/features/batches/academicChronology";
 import type { ResourceSection, ResourceType } from "./types";
@@ -50,6 +50,84 @@ function assertValidSection(value: unknown): asserts value is ResourceSection {
 }
 
 /**
+ * Exact-file storage dedup — decides which R2 object a NEW upload's
+ * resources row should actually reference. Called once per upload
+ * action (both uploadResourceDirect and uploadResourceDirectAllBranches
+ * — the latter resolves it once before its per-target loop, since one
+ * bulk-publish already shares one physical upload across every target)
+ * right after verifyUploadedFileOrCleanUp confirms the just-uploaded
+ * object is valid and has a contentHash.
+ *
+ * `resource_files` (content_hash PRIMARY KEY, see
+ * supabase/add_resource_files_registry.sql) is the single source of
+ * truth for "which physical object represents this hash" — a plain
+ * SELECT-then-INSERT check here would have a real race window under
+ * genuine concurrency (two uploads of the same brand-new file could
+ * both see "no match" and both become canonical); the unique
+ * constraint's own ON CONFLICT resolution is what makes this atomic
+ * instead — Postgres itself guarantees only one upsert can ever win
+ * for a given hash, not application-level timing.
+ *
+ * global, not scoped by resource_type/section — the same bytes are the
+ * same physical file regardless of whether one context calls it Notes
+ * and another calls it a PYQ; each resources row's own type/section/
+ * subject/branch/etc. stay completely independent of which object its
+ * file_url happens to point at.
+ */
+async function resolveDedupedFileUrl(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  freshFileUrl: string,
+  contentHash: string | null
+): Promise<string> {
+  if (!contentHash) return freshFileUrl;
+
+  // ignoreDuplicates: true is what makes this an INSERT ... ON CONFLICT
+  // (content_hash) DO NOTHING at the Postgres level — a normal .insert()
+  // would instead fail the whole action with a unique-violation error
+  // the moment a second upload of the same content ever happened.
+  const { data: won } = await supabase
+    .from("resource_files")
+    .upsert({ content_hash: contentHash, file_url: freshFileUrl }, { onConflict: "content_hash", ignoreDuplicates: true })
+    .select("file_url")
+    .maybeSingle();
+  // A row came back → no conflict occurred → this upload's object just
+  // became canonical for this hash (either genuinely new content, or
+  // this request happened to win a real concurrent race).
+  if (won) return freshFileUrl;
+
+  // Conflict — another physical object is already registered for this
+  // hash. Confirm it's actually still live before trusting it (closes
+  // the gap where the registry could point at something already
+  // deleted — see resource_files' own migration comment).
+  const { data: existing } = await supabase
+    .from("resource_files")
+    .select("file_url")
+    .eq("content_hash", contentHash)
+    .maybeSingle();
+  if (!existing?.file_url) return freshFileUrl; // shouldn't happen; safe fallback
+
+  const stillLive = await urlObjectExists(existing.file_url);
+  if (stillLive) {
+    // Our own freshly-uploaded object is now a redundant duplicate —
+    // best-effort cleanup, same accepted tradeoff as every other R2
+    // cleanup in this codebase (a failed delete here is a harmless
+    // orphan, not a correctness problem).
+    try {
+      await deleteFromR2(freshFileUrl);
+    } catch {
+      // Intentionally ignored — see comment above.
+    }
+    return existing.file_url;
+  }
+
+  // Registered object is actually gone (manual deletion, a missed
+  // cleanup elsewhere) — self-heal: this upload becomes canonical
+  // instead of reusing a dead link.
+  await supabase.from("resource_files").update({ file_url: freshFileUrl }).eq("content_hash", contentHash);
+  return freshFileUrl;
+}
+
+/**
  * Takes down an already-published resource — same RLS-enforced
  * "CR or admin deletes" policy as everything else here. Deletes the
  * database row; the underlying R2 object is only deleted alongside it
@@ -74,7 +152,7 @@ export async function deleteResource(resourceId: string) {
     .from("resources")
     .delete()
     .eq("id", resourceId)
-    .select("file_url")
+    .select("file_url, content_hash")
     .single();
   if (error) throw safeDbError(error);
 
@@ -87,7 +165,23 @@ export async function deleteResource(resourceId: string) {
         .from("resources")
         .select("id", { count: "exact", head: true })
         .eq("file_url", data.file_url);
-      if (!count) await deleteFromR2(data.file_url);
+      if (!count) {
+        await deleteFromR2(data.file_url);
+        // Keeps the exact-file dedup registry (resource_files) from
+        // pointing at an object that no longer exists — without this,
+        // a future upload of the same content would match this entry
+        // and skip storing a new object, producing a resources row
+        // with a dead file_url. (resolveDedupedFileUrl's own HEAD
+        // check is the runtime safety net if this ever gets missed,
+        // but keeping the registry accurate here is the normal path.)
+        if (data.content_hash) {
+          await supabase
+            .from("resource_files")
+            .delete()
+            .eq("content_hash", data.content_hash)
+            .eq("file_url", data.file_url);
+        }
+      }
     }
   } catch {
     // Orphaned object in R2 — same as before this fix existed, not a
@@ -265,21 +359,31 @@ export async function mergeCanonicalPyqResources(keepId: string, discardIds: str
     .from("resources")
     .delete()
     .in("id", discardIds)
-    .select("file_url");
+    .select("file_url, content_hash");
   if (deleteError) throw safeDbError(deleteError);
 
   // Best-effort cleanup, same accepted tradeoff as deleteResource — one
   // reference-count check per unique file_url (almost always 1, since
   // these are duplicates of the same underlying file), not per row.
-  const uniqueFileUrls = Array.from(new Set((discarded ?? []).map((r) => r.file_url).filter((u): u is string => !!u)));
+  const uniqueFiles = new Map<string, string | null>();
+  for (const r of discarded ?? []) {
+    if (r.file_url) uniqueFiles.set(r.file_url, r.content_hash ?? null);
+  }
   await Promise.all(
-    uniqueFileUrls.map(async (fileUrl) => {
+    Array.from(uniqueFiles.entries()).map(async ([fileUrl, contentHash]) => {
       try {
         const { count } = await supabase
           .from("resources")
           .select("id", { count: "exact", head: true })
           .eq("file_url", fileUrl);
-        if (!count) await deleteFromR2(fileUrl);
+        if (!count) {
+          await deleteFromR2(fileUrl);
+          // Same resource_files cleanup as deleteResource — see its
+          // own comment for why.
+          if (contentHash) {
+            await supabase.from("resource_files").delete().eq("content_hash", contentHash).eq("file_url", fileUrl);
+          }
+        }
       } catch {
         // Best-effort, same as deleteResource.
       }
@@ -411,6 +515,14 @@ export async function uploadResourceDirect(formData: FormData) {
     }
   }
 
+  // Exact-file storage dedup — reuses an existing physical object
+  // instead of keeping this fresh one if the bytes already exist
+  // somewhere else (any branch/specialization/term/batch, any resource
+  // type). See resolveDedupedFileUrl's own comment for the full
+  // reasoning; this never affects any of the academic-context fields
+  // above, only which file_url this row ends up pointing at.
+  const dedupedFileUrl = await resolveDedupedFileUrl(supabase, fileUrl, verification.contentHash);
+
   const { error: insertError } = await supabase.from("resources").insert({
     branch_id: branchId,
     specialization_id: specializationId,
@@ -422,7 +534,7 @@ export async function uploadResourceDirect(formData: FormData) {
     resource_type: resourceType,
     title,
     description,
-    file_url: fileUrl,
+    file_url: dedupedFileUrl,
     content_hash: verification.contentHash,
     status: "approved",
     uploaded_by_device: null,
@@ -547,6 +659,13 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
     throw new Error("Uploaded file is invalid or too large. The file was rejected.");
   }
 
+  // Exact-file storage dedup — resolved ONCE for the whole bulk
+  // publish (every target below already shares this one physical
+  // upload) instead of per-target. See resolveDedupedFileUrl's own
+  // comment; this never affects any academic-context field, only
+  // which file_url every row inserted below ends up pointing at.
+  const dedupedFileUrl = await resolveDedupedFileUrl(supabase, fileUrl, verification.contentHash);
+
   // Centralized PYQ: exactly ONE row, visible everywhere the canonical
   // subject applies — never fanned out across the selected
   // specializations. branch_id/specialization_id/term_id/batch_id are
@@ -578,7 +697,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
       resource_type: resourceType,
       title,
       description,
-      file_url: fileUrl,
+      file_url: dedupedFileUrl,
       content_hash: verification.contentHash,
       status: "approved",
       uploaded_by_device: null,
@@ -662,7 +781,7 @@ export async function uploadResourceDirectAllBranches(formData: FormData) {
       resource_type: resourceType,
       title,
       description,
-      file_url: fileUrl,
+      file_url: dedupedFileUrl,
       content_hash: verification.contentHash,
       status: "approved",
       uploaded_by_device: null,

@@ -66,6 +66,36 @@ export type VerificationResult = {
  * 16-byte Range request) is what lets steps 1 and 2 share a single
  * download instead of two separate requests.
  */
+// Same SSRF guard as verifyUploadedFileOrCleanUp below — a fileUrl
+// coming back out of the database (not one this server just minted)
+// still needs the same "only ever fetch our own R2 public base"
+// restriction before this server issues a request to it.
+function isOwnR2Url(fileUrl: string): boolean {
+  const publicBase = process.env.R2_PUBLIC_URL?.replace(/\/$/, "");
+  return !!publicBase && fileUrl.startsWith(`${publicBase}/`);
+}
+
+/**
+ * Cheap existence check (HEAD only, no body download) for a file_url
+ * this server didn't just mint itself — used by the resource-storage
+ * dedup registry (resource_files, see actions.ts's
+ * resolveDedupedFileUrl) to confirm a matching hash's registered
+ * object is still actually live in R2 before reusing it, since the
+ * registry could in principle point at something already deleted
+ * (deleteResource missing its own cleanup step, a manual R2 console
+ * deletion, etc.) — self-healing that case is cheaper and safer than
+ * trusting the registry blindly.
+ */
+export async function urlObjectExists(fileUrl: string): Promise<boolean> {
+  if (!isOwnR2Url(fileUrl)) return false;
+  try {
+    const response = await fetch(fileUrl, { method: "HEAD", signal: AbortSignal.timeout(10_000) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function verifyUploadedFileOrCleanUp(fileUrl: string): Promise<VerificationResult> {
   const invalid: VerificationResult = { valid: false, contentHash: null };
 
@@ -78,8 +108,7 @@ export async function verifyUploadedFileOrCleanUp(fileUrl: string): Promise<Veri
   // and get this server to fetch it — the exact SSRF shape deleteFromR2
   // already guards against for the same reason, just on the read path
   // instead of delete.
-  const publicBase = process.env.R2_PUBLIC_URL?.replace(/\/$/, "");
-  if (!publicBase || !fileUrl.startsWith(`${publicBase}/`)) return invalid;
+  if (!isOwnR2Url(fileUrl)) return invalid;
 
   // Every fetch below is bounded — a stalled R2 connection (bytes
   // never arrive, but the socket never errors or closes either) used
