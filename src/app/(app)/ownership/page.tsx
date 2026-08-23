@@ -56,7 +56,7 @@ export default function OwnershipPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
       <div className="flex flex-col gap-2">
         <div className="text-center sm:text-left">
-          <h1 className="text-2xl font-medium text-foreground">Sancturm Team</h1>
+          <h1 className="text-2xl font-bold text-foreground">Sancturm Team</h1>
           <p className="text-muted-foreground">People who build, maintain and help run Sancturm.</p>
         </div>
 

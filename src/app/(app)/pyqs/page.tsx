@@ -335,7 +335,7 @@ export default function PYQsPage() {
     return (
       <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-2xl font-medium text-foreground">PYQs</h1>
+          <h1 className="text-2xl font-bold text-foreground">PYQs</h1>
           <p className="text-muted-foreground">
             Previous year questions for {specializationName ?? branch?.name ?? "your branch"}.
           </p>
@@ -351,7 +351,7 @@ export default function PYQsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-medium text-foreground">PYQs</h1>
+        <h1 className="text-2xl font-bold text-foreground">PYQs</h1>
         <p className="text-muted-foreground">
           Previous year questions — {sharingDescription}
           {batchFilter !== ALL_BATCHES && allBatches

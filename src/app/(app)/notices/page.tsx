@@ -137,7 +137,7 @@ export default function NoticesPage() {
     return (
       <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-2xl font-medium text-foreground">Notices</h1>
+          <h1 className="text-2xl font-bold text-foreground">Notices</h1>
           <p className="text-muted-foreground">
             Official PDFs for {specializationName ?? branch?.name ?? "your branch"}.
           </p>
@@ -152,7 +152,7 @@ export default function NoticesPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-medium text-foreground">Notices</h1>
+        <h1 className="text-2xl font-bold text-foreground">Notices</h1>
         <p className="text-muted-foreground">
           Official PDFs for {branch?.name ?? "your branch"}
           {term ? `, ${term.label}` : ""}.
@@ -234,7 +234,7 @@ export default function NoticesPage() {
                     {notice.is_pinned && (
                       <Pin className="h-3.5 w-3.5 shrink-0 fill-current text-primary" />
                     )}
-                    <p className="text-foreground">{notice.title}</p>
+                    <p className="font-medium text-foreground">{notice.title}</p>
                     {/* Only ever true here because RLS already kept a
                         cr_only notice from being fetched at all unless
                         this viewer is signed in as CR/admin — a

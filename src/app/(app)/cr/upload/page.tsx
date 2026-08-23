@@ -30,7 +30,7 @@ export default async function CRUploadPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-medium text-foreground">Upload</h1>
+        <h1 className="text-2xl font-bold text-foreground">Upload</h1>
       </div>
 
       <CRUploadForm

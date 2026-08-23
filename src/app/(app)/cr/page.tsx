@@ -16,7 +16,7 @@ export default async function CRDashboardPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-medium text-foreground">
+        <h1 className="text-2xl font-bold text-foreground">
           {role.type === "admin" ? "Controller's dashboard" : "CR dashboard"}
         </h1>
         <p className="text-muted-foreground">

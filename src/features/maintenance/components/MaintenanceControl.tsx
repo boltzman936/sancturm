@@ -208,7 +208,7 @@ export function MaintenanceControl() {
                 type="button"
                 onClick={handleTakeOffline}
                 disabled={isPending}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
               >
                 {isPending ? "Taking offline…" : "Confirm"}
               </button>
@@ -236,7 +236,7 @@ export function MaintenanceControl() {
                 type="button"
                 onClick={handleExtend}
                 disabled={isPending}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
               >
                 {isPending ? "Extending…" : "Confirm"}
               </button>
@@ -265,7 +265,7 @@ export function MaintenanceControl() {
                 type="button"
                 onClick={handleBringOnline}
                 disabled={isPending}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
               >
                 {isPending ? "Bringing online…" : "Confirm"}
               </button>

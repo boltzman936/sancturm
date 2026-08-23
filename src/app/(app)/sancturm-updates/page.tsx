@@ -63,7 +63,7 @@ export default function SancturmUpdatesPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="flex items-center gap-2 text-2xl font-medium text-foreground">
+        <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
           <Sparkles className="h-5 w-5 text-primary" />
           Sancturm updates
         </h1>
@@ -151,7 +151,7 @@ export default function SancturmUpdatesPage() {
                       {update.is_pinned && (
                         <Pin className="h-3.5 w-3.5 shrink-0 fill-current text-primary" />
                       )}
-                      <p className="text-foreground">{update.title}</p>
+                      <p className="font-medium text-foreground">{update.title}</p>
                       {isRecent(update.created_at) && (
                         <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] tracking-wide text-primary">
                           NEW

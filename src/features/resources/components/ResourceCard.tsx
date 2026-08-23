@@ -114,7 +114,7 @@ export function ResourceCard({
               Desktop has enough width that this basically never
               triggers, so it reverts to the original 1-line behavior
               rather than changing how it already looks there. */}
-          <p className="break-words text-foreground line-clamp-2 lg:line-clamp-1">
+          <p className="break-words font-medium text-foreground line-clamp-2 lg:line-clamp-1">
             {resource.title}
           </p>
         </div>

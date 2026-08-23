@@ -288,7 +288,7 @@ export default function NotesAndLabPage() {
     return (
       <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-2xl font-medium text-foreground">Notes & lab</h1>
+          <h1 className="text-2xl font-bold text-foreground">Notes & lab</h1>
           <p className="text-muted-foreground">
             Notes and lab manuals for {specializationName ?? branch?.name ?? "your branch"}.
           </p>
@@ -304,7 +304,7 @@ export default function NotesAndLabPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-medium text-foreground">Notes & lab</h1>
+        <h1 className="text-2xl font-bold text-foreground">Notes & lab</h1>
         <p className="text-muted-foreground">
           Notes and lab manuals for {branch?.name ?? "your branch"}
           {batchFilter !== ALL_BATCHES && allBatches

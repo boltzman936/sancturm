@@ -195,7 +195,7 @@ export default async function CRManagePage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-medium text-foreground">Manage</h1>
+        <h1 className="text-2xl font-bold text-foreground">Manage</h1>
         <p className="text-muted-foreground">
           {role.type === "admin"
             ? "Everything currently live, across every branch and year."
