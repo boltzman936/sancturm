@@ -70,10 +70,16 @@
   --glow-card: rgba(24, 42, 58, 0.04);
 }
 [data-theme="1"][data-mode="dark"] {
-  --background: #0e1822;
-  --background-secondary: #14202c;
-  --card: #182a3a;
-  --border: #2a3f55;
+  /* Deliberately near-black, not just a darker navy — the previous
+     #0e1822 read as "dim daylight," not genuinely dark. Only a faint
+     blue tint of the theme's own hue survives at this depth; every
+     accent (--primary, --terminal-blue, --electric-cyan, --destructive)
+     stays exactly as it was, so the theme's identity comes through in
+     the accents against a true dark ground, not in the ground itself. */
+  --background: #050809;
+  --background-secondary: #0a0e12;
+  --card: #10161d;
+  --border: #1e2a37;
   --foreground: #ffffff;
   --muted-foreground: #b7c6dc;
   --subtle-foreground: #7e92ac;
@@ -124,10 +130,12 @@
   --glow-card: rgba(65, 41, 35, 0.04);
 }
 [data-theme="2"][data-mode="dark"] {
-  --background: #2a1a12;
-  --background-secondary: #351f17;
-  --card: #412923;
-  --border: #663624;
+  /* See Theme 1's identical note — near-black with a faint terracotta/
+     brown tint, not a lighter dark-brown. Accents unchanged. */
+  --background: #0d0806;
+  --background-secondary: #140d0a;
+  --card: #1c130e;
+  --border: #2e1f16;
   --foreground: #fdf4da;
   --muted-foreground: #d9b79a;
   --subtle-foreground: #a98567;
@@ -177,10 +185,12 @@
   --glow-card: rgba(1, 62, 55, 0.04);
 }
 [data-theme="3"][data-mode="dark"] {
-  --background: #052420;
-  --background-secondary: #0a2f29;
-  --card: #013e37;
-  --border: #0a5347;
+  /* See Theme 1's identical note — near-black with a faint deep-green
+     tint, not the previous mid-depth teal. Accents unchanged. */
+  --background: #030a09;
+  --background-secondary: #08120f;
+  --card: #0d1a17;
+  --border: #16302a;
   --foreground: #ffefb3;
   --muted-foreground: #c7d9c9;
   --subtle-foreground: #7fa096;
@@ -230,10 +240,12 @@
   --glow-card: rgba(94, 64, 116, 0.04);
 }
 [data-theme="4"][data-mode="dark"] {
-  --background: #170f1f;
-  --background-secondary: #1f1529;
-  --card: #2b1d38;
-  --border: #3d2a4d;
+  /* See Theme 1's identical note — near-black with a faint purple
+     tint, not the previous mid-depth plum. Accents unchanged. */
+  --background: #0a0710;
+  --background-secondary: #100b18;
+  --card: #171022;
+  --border: #291c38;
   --foreground: #f7f9ec;
   --muted-foreground: #c7b8d4;
   --subtle-foreground: #8f7ba0;
