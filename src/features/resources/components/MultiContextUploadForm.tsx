@@ -148,7 +148,10 @@ export function MultiContextUploadForm({
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-card p-4"
+      // Same liquid-glass treatment as the single-branch form (see its
+      // own comment) — border-primary/40 kept as-is on top of it so
+      // this "special mode" panel still reads as visually distinct.
+      className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-card/75 p-4 shadow-[0_1px_2px_rgba(0,0,0,0.06),0_12px_28px_-16px_rgba(0,0,0,0.3)] backdrop-blur-md"
     >
       <p className="font-mono text-xs text-subtle-foreground">
         Publish one file to any combination of Branch × Batch × Year × Semester

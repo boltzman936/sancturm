@@ -640,7 +640,12 @@ function EditResourceButton({ resource }: { resource: ManageableResource }) {
         <Pencil className="h-4 w-4" />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-sm">
+        {/* Glass override for this one dialog instance only (className
+            merges via cn/tailwind-merge in the shared Dialog component,
+            never touching its own base bg-card) — the PDF viewer dialog
+            and every other DialogContent in the app keep their default
+            opaque styling untouched. */}
+        <DialogContent className="max-w-sm border-border/70 bg-card/85 backdrop-blur-md">
           <div className="flex max-h-[85vh] flex-col gap-3 overflow-y-auto p-6">
             <h2 className="pr-6 text-lg font-medium text-foreground">Edit</h2>
 
@@ -1110,9 +1115,13 @@ function ResourceGroupRow({
 
   return (
     <li
+      // Liquid-glass card — bg-card/75 + backdrop-blur instead of an
+      // opaque bg-card, same theme-aware treatment as Upload's own
+      // panel (see CRUploadForm's identical comment) — reads correctly
+      // in every theme/mode automatically, no separate palette needed.
       className={cn(
-        "flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors",
-        allSelected ? "border-primary" : "border-border"
+        "flex flex-col gap-3 rounded-lg border bg-card/75 p-4 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_10px_24px_-16px_rgba(0,0,0,0.25)] backdrop-blur-md transition-colors",
+        allSelected ? "border-primary" : "border-border/70"
       )}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -1767,7 +1776,7 @@ export function ManageResourceList({
           card, filters laid out in a fixed 2-column grid (fullWidth
           selects) so every control lines up regardless of how long
           its selected option's text is. */}
-      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card/40 p-3 lg:hidden">
+      <div className="flex flex-col gap-3 rounded-lg border border-border/70 bg-card/60 p-3 backdrop-blur-md lg:hidden">
         <h2 className="font-mono text-xs tracking-[0.08em] text-subtle-foreground">Filters</h2>
 
         <div className="relative">
@@ -1953,7 +1962,7 @@ export function ManageResourceList({
       )}
 
       {isAdmin && bulkEditOpen && selectedIds.size > 0 && (
-        <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-card p-4">
+        <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-card/75 p-4 shadow-[0_1px_2px_rgba(0,0,0,0.06),0_12px_28px_-16px_rgba(0,0,0,0.3)] backdrop-blur-md">
           <p className="font-mono text-xs text-subtle-foreground">
             Applies to all {selectedIds.size} selected rows at once — one batched update, not one per row. Leave a
             field blank to leave it unchanged. Branch/Term/Batch/Subject can only be changed per-row (Edit), since

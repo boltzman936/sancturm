@@ -604,7 +604,17 @@ export function CRUploadForm({
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
+      // Liquid-glass panel — a translucent, blurred version of the
+      // theme's own --card/--border tokens (bg-card/70 + backdrop-blur,
+      // not a fixed color), so it reads correctly in every theme/mode
+      // automatically instead of needing its own palette. CSS-only, no
+      // entrance animation/JS — the blur applies on first paint exactly
+      // like every other utility class, same "instant, no flicker"
+      // guarantee as Cockpit's own glass card. Actual form CONTROLS
+      // below (inputs/selects) stay solid (bg-background) — only the
+      // outer container is glass, matching standard frosted-glass UI
+      // convention (translucent shell, legible solid controls inside).
+      className="flex flex-col gap-3 rounded-lg border border-border/70 bg-card/75 p-4 shadow-[0_1px_2px_rgba(0,0,0,0.06),0_12px_28px_-16px_rgba(0,0,0,0.3)] backdrop-blur-md"
     >
       {typeToggle}
 
