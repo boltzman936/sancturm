@@ -98,10 +98,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-      </head>
-      <body className="min-h-full flex flex-col bg-background text-foreground">
-        <OfflineWatcher />
-        <Providers>{children}</Providers>
         <Script
   src="https://www.googletagmanager.com/gtag/js?id=G-DYXLQQECXB"
   strategy="afterInteractive"
@@ -115,6 +111,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     gtag('config', 'G-DYXLQQECXB');
   `}
 </Script>
+      </head>
+      <body className="min-h-full flex flex-col bg-background text-foreground">
+        <OfflineWatcher />
+        <Providers>{children}</Providers>
+        
       </body>
     </html>
   );
